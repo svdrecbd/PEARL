@@ -1,0 +1,28 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Local environments
+.venv/
+.env
+.env.*
+
+# Local notes and scratch artifacts
+FORLATERUSE.md
+
+# Generated experiment outputs
+reports/
+data/
+dry_run_lora_v1_report.json
+*.log
+*.tmp
+
+# Editor / OS
+.idea/
+.vscode/
