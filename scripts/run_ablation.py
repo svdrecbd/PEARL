@@ -190,6 +190,25 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
     family_rewards = [record["reward_components"]["family_reward"] for record in records]
     esm_rewards = [record["reward_components"]["esm_reward"] for record in records]
     lengths = [record["sequence_quality"]["length"] for record in records]
+    functional_bridge_steps = [
+        record["step"]
+        for record in records
+        if (
+            record["sequence_quality"]["motif_count"] == 1
+            and bool(record["reward_components"].get("esm_gate_pass"))
+            and record["family_evaluation"] is not None
+            and bool(record["family_evaluation"]["catalytic_geometry"]["passes"])
+        )
+    ]
+    family_faithful_bridge_steps = [
+        record["step"]
+        for record in records
+        if (
+            record["step"] in functional_bridge_steps
+            and record["family_evaluation"] is not None
+            and bool(record["family_evaluation"]["has_family_serine_motif"])
+        )
+    ]
 
     return {
         "checkpoint_path": report["checkpoint_path"],
@@ -218,6 +237,8 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
             sum(bool(evaluation["catalytic_geometry"]["passes"]) for evaluation in family_evaluations),
             len(records),
         ),
+        "functional_bridge_rate": safe_rate(len(functional_bridge_steps), len(records)),
+        "family_faithful_bridge_rate": safe_rate(len(family_faithful_bridge_steps), len(records)),
         "core_screen_rate": safe_rate(
             sum(bool(evaluation["passes_core_screen"]) for evaluation in family_evaluations),
             len(records),
@@ -241,6 +262,8 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
             for record in records
             if record["family_evaluation"] is not None and record["family_evaluation"]["catalytic_geometry"]["passes"]
         ],
+        "functional_bridge_steps": functional_bridge_steps,
+        "family_faithful_bridge_steps": family_faithful_bridge_steps,
     }
 
 

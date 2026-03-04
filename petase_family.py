@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import heapq
 import json
 import math
 import re
@@ -56,6 +57,7 @@ EC_WEIGHTS = {
     "3.1.1.74": 6,
     "3.1.1.101": 6,
 }
+NOVELTY_SHORTLIST_SIZE = 32
 
 
 def load_reference_records(path: Path) -> list[dict[str, Any]]:
@@ -230,20 +232,34 @@ def levenshtein(left: str, right: str) -> int:
     return previous[-1]
 
 
+def _get_cached_kmers(record: dict[str, Any]) -> set[str]:
+    cached = record.get("_cached_kmers")
+    if isinstance(cached, set):
+        return cached
+    kmers_value = kmers(record["sequence"], 3)
+    record["_cached_kmers"] = kmers_value
+    return kmers_value
+
+
 def assess_novelty(sequence: str, reference_records: list[dict[str, Any]]) -> dict[str, Any]:
     query_kmers = kmers(sequence, 3)
-    shortlist: list[tuple[float, dict[str, Any]]] = []
-    for record in reference_records:
-        ref_sequence = record["sequence"]
-        ref_kmers = kmers(ref_sequence, 3)
-        union = len(query_kmers | ref_kmers) or 1
-        jaccard = len(query_kmers & ref_kmers) / union
-        shortlist.append((jaccard, record))
+    query_len = len(query_kmers)
+    shortlist: list[tuple[float, int, dict[str, Any]]] = []
+    for index, record in enumerate(reference_records):
+        ref_kmers = _get_cached_kmers(record)
+        intersection_len = len(query_kmers & ref_kmers)
+        union = (query_len + len(ref_kmers) - intersection_len) or 1
+        jaccard = intersection_len / union
+        candidate = (jaccard, index, record)
+        if len(shortlist) < NOVELTY_SHORTLIST_SIZE:
+            heapq.heappush(shortlist, candidate)
+            continue
+        if jaccard > shortlist[0][0]:
+            heapq.heapreplace(shortlist, candidate)
 
-    shortlist.sort(key=lambda item: item[0], reverse=True)
     best_identity = 0.0
     best_match: dict[str, Any] | None = None
-    for jaccard, record in shortlist[:32]:
+    for jaccard, _, record in sorted(shortlist, reverse=True):
         identity = 1.0 - (levenshtein(sequence, record["sequence"]) / max(len(sequence), len(record["sequence"])))
         if identity > best_identity:
             best_identity = identity
@@ -269,6 +285,9 @@ def evaluate_candidate(
     reference_records: list[dict[str, Any]],
 ) -> dict[str, Any]:
     sequence = sequence.upper()
+    valid_amino_acids = bool(AA_PATTERN.fullmatch(sequence))
+    length_in_family_band = family_stats["length_min"] <= len(sequence) <= family_stats["length_max"]
+
     counts = Counter(sequence)
     entropy = 0.0 if not sequence else -sum(
         (count / len(sequence)) * math.log2(count / len(sequence))
@@ -277,26 +296,34 @@ def evaluate_candidate(
     dominant_fraction = 0.0 if not sequence else max(counts.values()) / len(sequence)
     serine_motifs = find_serine_motifs(sequence)
     catalytic_geometry = assess_catalytic_geometry(sequence, family_stats)
-    novelty = assess_novelty(sequence, reference_records)
+
+    passes_cheap_screens = (
+        valid_amino_acids
+        and length_in_family_band
+        and len(counts) >= 14
+        and entropy >= 3.2
+        and dominant_fraction <= 0.34
+    )
+
+    if passes_cheap_screens:
+        novelty = assess_novelty(sequence, reference_records)
+    else:
+        novelty = {"closest_edit_identity": 1.0, "passes_novelty_threshold": False, "closest_match": None}
 
     return {
         "sequence": sequence,
-        "valid_amino_acids": bool(AA_PATTERN.fullmatch(sequence)),
+        "valid_amino_acids": valid_amino_acids,
         "length": len(sequence),
         "unique_residues": len(counts),
         "entropy": round(entropy, 4),
         "dominant_residue_fraction": round(dominant_fraction, 4),
-        "length_in_family_band": family_stats["length_min"] <= len(sequence) <= family_stats["length_max"],
+        "length_in_family_band": length_in_family_band,
         "serine_motifs": serine_motifs,
         "has_family_serine_motif": any(motif in family_stats["top_serine_motifs"] for motif in serine_motifs),
         "catalytic_geometry": catalytic_geometry,
         "novelty": novelty,
         "passes_core_screen": (
-            bool(AA_PATTERN.fullmatch(sequence))
-            and family_stats["length_min"] <= len(sequence) <= family_stats["length_max"]
-            and len(counts) >= 14
-            and entropy >= 3.2
-            and dominant_fraction <= 0.34
+            passes_cheap_screens
             and bool(serine_motifs)
             and catalytic_geometry["passes"]
             and novelty["closest_edit_identity"] < 0.70

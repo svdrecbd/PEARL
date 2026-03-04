@@ -29,7 +29,10 @@ def main() -> None:
     reference_records = load_reference_records(Path(args.records_path))
     family_stats = compute_family_stats(reference_records)
     perfect_rows = load_perfect_wildtypes(Path(args.perfect_path), family_stats)
-    unicorn_rows = load_unicorns(Path(args.unicorn_audit_path), family_stats)
+    unicorn_rows = load_unicorns_from_paths(
+        [Path(path.strip()) for path in args.unicorn_audit_paths.split(",") if path.strip()],
+        family_stats,
+    )
 
     if len(perfect_rows) < args.perfect_count:
         raise RuntimeError(f"Expected at least {args.perfect_count} perfect wildtypes, found {len(perfect_rows)}")
@@ -42,7 +45,7 @@ def main() -> None:
         "output_path": args.output_path,
         "records_path": args.records_path,
         "perfect_path": args.perfect_path,
-        "unicorn_audit_path": args.unicorn_audit_path,
+        "unicorn_audit_paths": [path.strip() for path in args.unicorn_audit_paths.split(",") if path.strip()],
         "perfect_count": args.perfect_count,
         "unicorn_count": args.unicorn_count,
         "total_count": len(output_rows),
@@ -66,7 +69,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a tiny Kimi-native micro-SFT set from unicorns and perfect wildtypes")
     parser.add_argument("--records-path", required=True)
     parser.add_argument("--perfect-path", required=True)
-    parser.add_argument("--unicorn-audit-path", required=True)
+    parser.add_argument("--unicorn-audit-paths", required=True)
     parser.add_argument("--output-path", required=True)
     parser.add_argument("--summary-path")
     parser.add_argument("--perfect-count", type=int, default=3)
@@ -97,33 +100,35 @@ def load_perfect_wildtypes(path: Path, family_stats: dict[str, Any]) -> list[dic
     return output
 
 
-def load_unicorns(path: Path, family_stats: dict[str, Any]) -> list[dict[str, Any]]:
-    audit = json.loads(path.read_text(encoding="utf-8"))
+def load_unicorns_from_paths(paths: list[Path], family_stats: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for record in audit["records"]:
-        for candidate in record["candidates"]:
-            if int(candidate.get("motif_count") or 0) != 1:
-                continue
-            if not bool(candidate.get("geometry_passes")):
-                continue
-            if not bool(candidate.get("esm_gate_pass")):
-                continue
-            sequence = str(candidate.get("extracted_sequence") or "")
-            if not sequence:
-                continue
-            blueprint = best_triad_positions(sequence, family_stats)
-            if blueprint is None:
-                continue
-            prompt = append_tier1_prompt(str(record["prompt"]), blueprint)
-            rows.append(
-                {
-                    "label": "kimi_unicorn_tier1",
-                    "source_step": int(record["step"]),
-                    "prompt": prompt,
-                    "sequence": sequence,
-                    "esm_score": float(candidate.get("raw_esm_score") or 0.0),
-                }
-            )
+    for path in paths:
+        audit = json.loads(path.read_text(encoding="utf-8"))
+        for record in audit["records"]:
+            for candidate in record["candidates"]:
+                if int(candidate.get("motif_count") or 0) != 1:
+                    continue
+                if not bool(candidate.get("geometry_passes")):
+                    continue
+                if not bool(candidate.get("esm_gate_pass")):
+                    continue
+                sequence = str(candidate.get("extracted_sequence") or "")
+                if not sequence:
+                    continue
+                blueprint = best_triad_positions(sequence, family_stats)
+                if blueprint is None:
+                    continue
+                prompt = append_tier1_prompt(str(record["prompt"]), blueprint)
+                rows.append(
+                    {
+                        "label": "kimi_unicorn_tier1",
+                        "source_audit_path": str(path),
+                        "source_step": int(record["step"]),
+                        "prompt": prompt,
+                        "sequence": sequence,
+                        "esm_score": float(candidate.get("raw_esm_score") or 0.0),
+                    }
+                )
     rows.sort(key=lambda row: float(row["esm_score"]), reverse=True)
     return dedupe_rows(rows)
 

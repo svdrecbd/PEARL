@@ -42,6 +42,12 @@ SAMPLING_TEMPERATURE = float(os.environ.get("SAMPLING_TEMPERATURE", "0.4"))
 SAMPLING_TOP_P = float(os.environ.get("SAMPLING_TOP_P", "0.95"))
 SAMPLING_TOP_K = int(os.environ.get("SAMPLING_TOP_K", "50"))
 RL_LEARNING_RATE = float(os.environ.get("RL_LEARNING_RATE", "1e-4"))
+RL_LOSS_FN = os.environ.get("TINKER_RL_LOSS_FN", "importance_sampling")
+RL_REWARD_MODE = os.environ.get("TINKER_RL_REWARD_MODE", "dense_family")
+PPO_CLIP_LOW_THRESHOLD = float(os.environ.get("TINKER_PPO_CLIP_LOW_THRESHOLD", "0.9"))
+PPO_CLIP_HIGH_THRESHOLD = float(os.environ.get("TINKER_PPO_CLIP_HIGH_THRESHOLD", "1.1"))
+BRIDGE_TIER2_REWARD = float(os.environ.get("TINKER_BRIDGE_TIER2_REWARD", "1.0"))
+BRIDGE_TIER1_BONUS = float(os.environ.get("TINKER_BRIDGE_TIER1_BONUS", "5.0"))
 KMER_DIVERSITY_K = int(os.environ.get("KMER_DIVERSITY_K", "4"))
 MOTIF_SPAM_ALLOWED_COUNT = int(os.environ.get("MOTIF_SPAM_ALLOWED_COUNT", "1"))
 MOTIF_SPAM_PENALTY_FLOOR = float(os.environ.get("MOTIF_SPAM_PENALTY_FLOOR", "0.05"))
@@ -153,6 +159,8 @@ def main() -> None:
                 "second_stage_top_k": SECOND_STAGE_TOP_K,
                 "plddt_gate_threshold": PLDDT_GATE_THRESHOLD,
                 "rl_learning_rate": RL_LEARNING_RATE,
+                "rl_loss_fn": RL_LOSS_FN,
+                "rl_reward_mode": RL_REWARD_MODE,
                 "init_state_path": INIT_STATE_PATH,
                 "eval_only": EVAL_ONLY,
                 "prompt_variant": PROMPT_VARIANT,
@@ -277,8 +285,11 @@ def main() -> None:
                     "reward": reward,
                     "selection_metadata": selection_metadata,
                     "reward_components": {
+                        "reward_mode": reward_info["reward_mode"],
                         "esm_reward": raw_esm_score,
                         "esm_gate_pass": reward_info["esm_gate_pass"],
+                        "functional_bridge_passes": reward_info["functional_bridge_passes"],
+                        "family_faithful_bridge_passes": reward_info["family_faithful_bridge_passes"],
                         "family_reward": family_reward_info["family_reward"],
                         "rl_family_reward": reward_info["rl_family_reward"],
                         "dense_family_reward": reward_info["dense_family_reward"],
@@ -326,8 +337,11 @@ def main() -> None:
                     "reward": reward,
                     "selection_metadata": selection_metadata,
                     "reward_components": {
+                        "reward_mode": reward_info["reward_mode"],
                         "esm_reward": raw_esm_score,
                         "esm_gate_pass": reward_info["esm_gate_pass"],
+                        "functional_bridge_passes": reward_info["functional_bridge_passes"],
+                        "family_faithful_bridge_passes": reward_info["family_faithful_bridge_passes"],
                         "family_reward": family_reward_info["family_reward"],
                         "rl_family_reward": reward_info["rl_family_reward"],
                         "dense_family_reward": reward_info["dense_family_reward"],
@@ -365,16 +379,17 @@ def main() -> None:
             )
             continue
 
-        datum = build_importance_sampling_datum(
+        datum = build_policy_gradient_datum(
             prompt_input=prompt_input,
             sampled_tokens=sampled_sequence.tokens,
             sampled_logprobs=sampled_sequence.logprobs,
-            reward=reward / 100.0,
+            reward=scale_reward_for_loss(reward),
         )
 
         forward_backward_future = training_client.forward_backward(
             [datum],
-            loss_fn="importance_sampling",
+            loss_fn=RL_LOSS_FN,
+            loss_fn_config=build_loss_fn_config(),
         )
         optim_step_future = training_client.optim_step(adam_params)
         forward_backward_result = forward_backward_future.result()
@@ -389,8 +404,11 @@ def main() -> None:
                 "reward": reward,
                 "selection_metadata": selection_metadata,
                 "reward_components": {
+                    "reward_mode": reward_info["reward_mode"],
                     "esm_reward": raw_esm_score,
                     "esm_gate_pass": reward_info["esm_gate_pass"],
+                    "functional_bridge_passes": reward_info["functional_bridge_passes"],
+                    "family_faithful_bridge_passes": reward_info["family_faithful_bridge_passes"],
                     "family_reward": family_reward_info["family_reward"],
                     "rl_family_reward": reward_info["rl_family_reward"],
                     "dense_family_reward": reward_info["dense_family_reward"],
@@ -779,6 +797,15 @@ def build_candidate_audit_entry(candidate: dict[str, Any], is_selected: bool) ->
     family_evaluation = candidate["family_evaluation"]
     raw_esm_score = float(candidate["raw_esm_score"])
     catalytic_geometry = family_evaluation["catalytic_geometry"] if family_evaluation is not None else None
+    has_family_serine_motif = (
+        bool(family_evaluation["has_family_serine_motif"]) if family_evaluation is not None else False
+    )
+    geometry_passes = (
+        bool(family_evaluation["catalytic_geometry"]["passes"]) if family_evaluation is not None else False
+    )
+    esm_gate_pass = raw_esm_score >= PLDDT_GATE_THRESHOLD
+    functional_bridge_passes = bool(quality["motif_count"] == 1 and geometry_passes and esm_gate_pass)
+    family_faithful_bridge_passes = bool(functional_bridge_passes and has_family_serine_motif)
     return {
         "selected": is_selected,
         "sample_text": candidate["sampled_text"],
@@ -812,13 +839,11 @@ def build_candidate_audit_entry(candidate: dict[str, Any], is_selected: bool) ->
         "ser_his_strength": float(quality["ser_his_strength"]),
         "geometry_score": float(quality["geometry_score"]),
         "raw_esm_score": raw_esm_score,
-        "esm_gate_pass": raw_esm_score >= PLDDT_GATE_THRESHOLD,
-        "has_family_serine_motif": (
-            bool(family_evaluation["has_family_serine_motif"]) if family_evaluation is not None else False
-        ),
-        "geometry_passes": (
-            bool(family_evaluation["catalytic_geometry"]["passes"]) if family_evaluation is not None else False
-        ),
+        "esm_gate_pass": esm_gate_pass,
+        "has_family_serine_motif": has_family_serine_motif,
+        "geometry_passes": geometry_passes,
+        "functional_bridge_passes": functional_bridge_passes,
+        "family_faithful_bridge_passes": family_faithful_bridge_passes,
         "best_gap_error": (
             family_evaluation["catalytic_geometry"]["best_gap_error"] if family_evaluation is not None else None
         ),
@@ -1136,6 +1161,14 @@ def compute_training_reward(
     family_evaluation: dict[str, Any] | None,
 ) -> dict[str, Any]:
     esm_gate_pass = raw_esm_score >= PLDDT_GATE_THRESHOLD
+    geometry_passes = bool(
+        family_evaluation is not None and family_evaluation["catalytic_geometry"]["passes"]
+    )
+    has_family_serine_motif = bool(
+        family_evaluation is not None and family_evaluation["has_family_serine_motif"]
+    )
+    functional_bridge_passes = bool(quality["motif_count"] == 1 and geometry_passes and esm_gate_pass)
+    family_faithful_bridge_passes = bool(functional_bridge_passes and has_family_serine_motif)
     dense_reward_info = compute_dense_family_reward(quality=quality, family_evaluation=family_evaluation)
     dense_family_reward = dense_reward_info["dense_family_reward"]
     kmer_uniqueness_ratio = float(quality.get("kmer_uniqueness_ratio", 0.0))
@@ -1144,10 +1177,40 @@ def compute_training_reward(
         family_evaluation=family_evaluation,
     )
     rl_family_reward = round(dense_family_reward * template_penalty_info["template_penalty"], 2)
+    if RL_REWARD_MODE == "bridge_tiers":
+        if not quality["is_trainable"] or family_evaluation is None:
+            reward = 0.0
+        elif not functional_bridge_passes:
+            reward = 0.0
+        elif family_faithful_bridge_passes:
+            reward = BRIDGE_TIER2_REWARD + BRIDGE_TIER1_BONUS
+        else:
+            reward = BRIDGE_TIER2_REWARD
+        return {
+            "reward": reward,
+            "reward_mode": RL_REWARD_MODE,
+            "esm_gate_pass": esm_gate_pass,
+            "functional_bridge_passes": functional_bridge_passes,
+            "family_faithful_bridge_passes": family_faithful_bridge_passes,
+            "dense_family_reward": dense_family_reward,
+            "rl_family_reward": rl_family_reward,
+            "dense_reward_components": dense_reward_info["dense_reward_components"],
+            "template_penalty": template_penalty_info["template_penalty"],
+            "motif_spam_penalty": template_penalty_info["motif_spam_penalty"],
+            "tandem_repeat_penalty": template_penalty_info["tandem_repeat_penalty"],
+            "local_entropy_penalty": template_penalty_info["local_entropy_penalty"],
+            "kmer_uniqueness_ratio": kmer_uniqueness_ratio,
+            "motif_count": template_penalty_info["motif_count"],
+            "max_tandem_repeat_similarity": template_penalty_info["max_tandem_repeat_similarity"],
+            "min_local_window_entropy": template_penalty_info["min_local_window_entropy"],
+        }
     if not quality["is_trainable"] or family_evaluation is None or not esm_gate_pass:
         return {
             "reward": 0.0,
+            "reward_mode": RL_REWARD_MODE,
             "esm_gate_pass": esm_gate_pass,
+            "functional_bridge_passes": functional_bridge_passes,
+            "family_faithful_bridge_passes": family_faithful_bridge_passes,
             "dense_family_reward": dense_family_reward,
             "rl_family_reward": rl_family_reward,
             "dense_reward_components": dense_reward_info["dense_reward_components"],
@@ -1162,7 +1225,10 @@ def compute_training_reward(
         }
     return {
         "reward": rl_family_reward,
+        "reward_mode": RL_REWARD_MODE,
         "esm_gate_pass": esm_gate_pass,
+        "functional_bridge_passes": functional_bridge_passes,
+        "family_faithful_bridge_passes": family_faithful_bridge_passes,
         "dense_family_reward": dense_family_reward,
         "rl_family_reward": rl_family_reward,
         "dense_reward_components": dense_reward_info["dense_reward_components"],
@@ -1379,7 +1445,7 @@ def compute_max_tandem_repeat_similarity(sequence: str) -> float:
                 if right_start + block_size > len(sequence):
                     break
                 right = sequence[right_start : right_start + block_size]
-                matches = sum(left_char == right_char for left_char, right_char in zip(left, right))
+                matches = sum([left_char == right_char for left_char, right_char in zip(left, right)])
                 best_similarity = max(best_similarity, matches / block_size)
     return best_similarity
 
@@ -1415,7 +1481,7 @@ def compute_local_entropy_penalty(min_local_window_entropy: float) -> float:
     )
 
 
-def build_importance_sampling_datum(
+def build_policy_gradient_datum(
     prompt_input: types.ModelInput,
     sampled_tokens: list[int],
     sampled_logprobs: list[float],
@@ -1456,6 +1522,21 @@ def build_importance_sampling_datum(
             "advantages": padded_advantages,
         },
     )
+
+
+def scale_reward_for_loss(reward: float) -> float:
+    if RL_REWARD_MODE == "bridge_tiers":
+        return reward
+    return reward / 100.0
+
+
+def build_loss_fn_config() -> dict[str, float] | None:
+    if RL_LOSS_FN == "ppo":
+        return {
+            "clip_low_threshold": PPO_CLIP_LOW_THRESHOLD,
+            "clip_high_threshold": PPO_CLIP_HIGH_THRESHOLD,
+        }
+    return None
 
 
 if __name__ == "__main__":
