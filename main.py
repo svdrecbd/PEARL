@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -12,8 +13,26 @@ import numpy as np
 import tinker
 from tinker import types
 
-from local_proxy import extract_amino_acid_sequence, get_esm2_plddt_score, inspect_raw_sequence_text
-from petase_family import compute_family_reward, compute_family_stats, evaluate_candidate, load_reference_records
+from local_proxy import (
+    extract_amino_acid_sequence,
+    get_esm2_plddt_score,
+    inspect_raw_sequence_text,
+    prewarm_esm2_model,
+)
+from petase_family import (
+    NOVELTY_IDENTITY_THRESHOLD,
+    compute_family_reward,
+    compute_family_stats,
+    evaluate_candidate,
+    load_reference_records,
+)
+
+
+def parse_optional_int_env(name: str) -> int | None:
+    raw_value = os.environ.get(name)
+    if raw_value is None or raw_value.strip() == "":
+        return None
+    return int(raw_value)
 
 
 REQUESTED_MODEL_NAME = "Qwen/Qwen3-8B"
@@ -29,6 +48,7 @@ PROMPTS_PATH = os.environ.get("PROMPTS_PATH")
 REFERENCE_RECORDS_PATH = os.environ.get("REFERENCE_RECORDS_PATH")
 INIT_STATE_PATH = os.environ.get("TINKER_INIT_STATE_PATH")
 EVAL_ONLY = os.environ.get("TINKER_EVAL_ONLY", "0") == "1"
+RESUME_PROGRESS = os.environ.get("TINKER_RESUME_PROGRESS", "0") == "1"
 PROMPT_COUNT = int(os.environ.get("DRY_RUN_PROMPT_COUNT", "10"))
 MAX_TOKENS = int(os.environ.get("TINKER_MAX_TOKENS", "320"))
 CANDIDATE_SAMPLE_COUNT = int(os.environ.get("TINKER_CANDIDATE_SAMPLE_COUNT", "8"))
@@ -41,6 +61,7 @@ PLDDT_GATE_THRESHOLD = float(os.environ.get("TINKER_PLDDT_GATE_THRESHOLD", "85.0
 SAMPLING_TEMPERATURE = float(os.environ.get("SAMPLING_TEMPERATURE", "0.4"))
 SAMPLING_TOP_P = float(os.environ.get("SAMPLING_TOP_P", "0.95"))
 SAMPLING_TOP_K = int(os.environ.get("SAMPLING_TOP_K", "50"))
+SAMPLING_SEED_BASE = parse_optional_int_env("TINKER_SAMPLING_SEED")
 RL_LEARNING_RATE = float(os.environ.get("RL_LEARNING_RATE", "1e-4"))
 RL_LOSS_FN = os.environ.get("TINKER_RL_LOSS_FN", "importance_sampling")
 RL_REWARD_MODE = os.environ.get("TINKER_RL_REWARD_MODE", "dense_family")
@@ -76,6 +97,11 @@ PROMPT_MOTIF_HINT_COUNT = int(os.environ.get("PROMPT_MOTIF_HINT_COUNT", "4"))
 CONTROL_TARGET_TAG = os.environ.get("CONTROL_TARGET_TAG", "").strip()
 CONTROL_BLUEPRINT_TAG = os.environ.get("CONTROL_BLUEPRINT_TAG", "").strip()
 CONTROL_BLUEPRINT_RATIOS = os.environ.get("CONTROL_BLUEPRINT_RATIOS", "").strip()
+TIMING_ENABLED = os.environ.get("TINKER_TIMING", "0") == "1"
+PREWARM_ESM2 = os.environ.get("TINKER_PREWARM_ESM2", "1") == "1"
+SAMPLER_CHECKPOINT_MAP_PATH = Path(
+    os.environ.get("TINKER_SAMPLER_CHECKPOINT_MAP_PATH", ".tinker_sampler_checkpoint_map.json")
+)
 MIN_VALID_SEQUENCE_LENGTH = 120
 MAX_VALID_SEQUENCE_LENGTH = 360
 MIN_SEQUENCE_ENTROPY = 3.4
@@ -92,6 +118,40 @@ UNIQUE_RESIDUE_DEFICIT_WEIGHT = 6.0
 DOMINANT_RESIDUE_EXCESS_WEIGHT = 180.0
 MOTIF_STRENGTH_DISCOUNT_WEIGHT = 12.0
 GEOMETRY_SCORE_DISCOUNT_WEIGHT = 20.0
+MAX_NORMALIZED_SCORE = 1.0
+MAX_PERCENT_SCORE = 100.0
+QUALITY_SCORE_LENGTH_TARGET = 200
+QUALITY_SCORE_AA_RATIO_WEIGHT = 100.0
+QUALITY_SCORE_ENTROPY_WEIGHT = 10.0
+QUALITY_SCORE_UNIQUE_RESIDUES_WEIGHT = 2.0
+QUALITY_SCORE_DOMINANT_RESIDUE_WEIGHT = 50.0
+QUALITY_SCORE_INVALID_SEQUENCE_PENALTY = 250.0
+MERGE_SCORE_VALID_AMINO_ACIDS_BONUS = 40.0
+MERGE_SCORE_LENGTH_BAND_BONUS = 45.0
+MERGE_SCORE_FAMILY_MOTIF_BONUS = 90.0
+MERGE_SCORE_GEOMETRY_BONUS = 140.0
+MERGE_SCORE_NOVELTY_BONUS = 35.0
+MERGE_SCORE_PER_SERINE_MOTIF_BONUS = 5.0
+MERGE_SCORE_SERINE_MOTIF_BONUS_CAP = 4
+MERGE_SCORE_GAP_ALIGNMENT_BONUS_CAP = 25.0
+MERGE_SCORE_STRONG_NOVELTY_THRESHOLD = 0.9
+MERGE_SCORE_STRONG_NOVELTY_PENALTY = 60.0
+MERGE_SCORE_SOFT_NOVELTY_PENALTY_SCALE = 100.0
+MERGE_SCORE_DYAD_WEIGHT = 50.0
+MERGE_SCORE_SER_ASP_WEIGHT = 35.0
+MERGE_SCORE_ASPARTATE_HIT_BONUS = 12.0
+MERGE_SCORE_SER_HIS_STRENGTH_THRESHOLD = 0.45
+MERGE_SCORE_SER_ASP_WEAK_THRESHOLD = 0.15
+MERGE_SCORE_SER_HIS_MISALIGNMENT_PENALTY = 35.0
+SECOND_STAGE_ESM_SCORE_NORMALIZER = 100.0
+MOTIF_STRENGTH_NON_FAMILY_BASE = 0.45
+MOTIF_STRENGTH_REPEAT_DECAY_WEIGHT = 0.75
+GEOMETRY_SCORE_WINDOW_HIT_WEIGHT = 0.05
+GEOMETRY_SCORE_SER_ASP_WEIGHT = 0.4
+GEOMETRY_SCORE_SER_HIS_WEIGHT = 0.1
+GEOMETRY_SCORE_TRIAD_WEIGHT = 0.45
+DYAD_SCORE_SER_ASP_WEIGHT = 0.75
+DYAD_SCORE_SER_HIS_WEIGHT = 0.25
 BASELINE_SEQUENCE_PROMPT_TEMPLATE = """<protein_design>
 Request: {request}
 Constraint: output exactly one sequence in uppercase amino acid letters ACDEFGHIKLMNPQRSTVWY
@@ -135,18 +195,92 @@ Format: SEQUENCE=<sequence>
 SEQUENCE="""
 
 
+def emit_timing_event(
+    *,
+    phase: str,
+    status: str,
+    started_at: float | None = None,
+    step: int | None = None,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    if not TIMING_ENABLED:
+        return
+
+    payload: dict[str, Any] = {
+        "timing": True,
+        "phase": phase,
+        "status": status,
+    }
+    if step is not None:
+        payload["step"] = step
+    if started_at is not None:
+        payload["elapsed_seconds"] = round(time.perf_counter() - started_at, 4)
+    if extra:
+        payload.update(extra)
+    print(json.dumps(payload), flush=True)
+
+
 def main() -> None:
+    startup_started_at = time.perf_counter()
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="service_client_init", status="start")
     service_client = tinker.ServiceClient()
+    emit_timing_event(phase="service_client_init", status="end", started_at=phase_started_at)
+
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="resolve_base_model", status="start")
     base_model, supported_models = resolve_base_model(service_client)
-    training_client = create_training_client(service_client=service_client, base_model=base_model)
-    tokenizer = training_client.get_tokenizer()
+    emit_timing_event(
+        phase="resolve_base_model",
+        status="end",
+        started_at=phase_started_at,
+        extra={"supported_model_count": len(supported_models)},
+    )
+    runtime = initialize_runtime(
+        service_client=service_client,
+        base_model=base_model,
+    )
+    training_client = runtime["training_client"]
+    sampling_client = runtime["sampling_client"]
+    tokenizer = runtime["tokenizer"]
+
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="load_prompts", status="start")
     prompts = load_prompts()
+    emit_timing_event(phase="load_prompts", status="end", started_at=phase_started_at, extra={"prompt_count": len(prompts)})
+
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="resolve_reference_records_path", status="start")
     reference_records_path = resolve_reference_records_path()
+    emit_timing_event(phase="resolve_reference_records_path", status="end", started_at=phase_started_at)
     reference_records: list[dict[str, Any]] = []
     family_stats: dict[str, Any] | None = None
     if reference_records_path is not None:
+        phase_started_at = time.perf_counter()
+        emit_timing_event(phase="load_reference_records", status="start")
         reference_records = load_reference_records(reference_records_path)
+        emit_timing_event(
+            phase="load_reference_records",
+            status="end",
+            started_at=phase_started_at,
+            extra={"reference_record_count": len(reference_records)},
+        )
+
+        phase_started_at = time.perf_counter()
+        emit_timing_event(phase="compute_family_stats", status="start")
         family_stats = compute_family_stats(reference_records)
+        emit_timing_event(phase="compute_family_stats", status="end", started_at=phase_started_at)
+
+    if PREWARM_ESM2 and SECOND_STAGE_TOP_K > 0:
+        phase_started_at = time.perf_counter()
+        emit_timing_event(phase="prewarm_esm2_model", status="start")
+        esm2_info = prewarm_esm2_model()
+        emit_timing_event(
+            phase="prewarm_esm2_model",
+            status="end",
+            started_at=phase_started_at,
+            extra=esm2_info,
+        )
     adam_params = types.AdamParams(learning_rate=RL_LEARNING_RATE, beta1=0.9, beta2=0.95, eps=1e-8)
     print(
         json.dumps(
@@ -169,10 +303,19 @@ def main() -> None:
         flush=True,
     )
 
-    step_records: list[dict[str, object]] = []
-    candidate_audit_records: list[dict[str, object]] = []
     report_path = Path(REPORT_PATH) if REPORT_PATH else Path(f"{CHECKPOINT_NAME}_report.json")
     candidate_audit_path = Path(CANDIDATE_AUDIT_PATH) if CANDIDATE_AUDIT_PATH else None
+    (
+        step_records,
+        candidate_audit_records,
+        resume_start_step,
+    ) = maybe_load_eval_resume_state(
+        report_path=report_path,
+        candidate_audit_path=candidate_audit_path,
+        prompts=prompts,
+    )
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="persist_progress_initial", status="start")
     persist_progress(
         report_path=report_path,
         candidate_audit_path=candidate_audit_path,
@@ -186,16 +329,29 @@ def main() -> None:
         step_records=step_records,
         candidate_audit_records=candidate_audit_records,
     )
-    for step, prompt in enumerate(prompts):
+    emit_timing_event(phase="persist_progress_initial", status="end", started_at=phase_started_at)
+    emit_timing_event(phase="startup_total", status="end", started_at=startup_started_at)
+    sampling_client_needs_refresh = training_client is not None and sampling_client is None
+    for step, prompt in enumerate(prompts[resume_start_step:], start=resume_start_step):
         sequence_prompt = build_sequence_prompt(prompt, family_stats)
+        sampling_seed = None if SAMPLING_SEED_BASE is None else SAMPLING_SEED_BASE + step
         sampling_params = types.SamplingParams(
             max_tokens=resolve_max_tokens(prompt),
+            seed=sampling_seed,
             temperature=SAMPLING_TEMPERATURE,
             top_p=SAMPLING_TOP_P,
             top_k=SAMPLING_TOP_K,
             stop=["\n"],
         )
-        sampling_client = training_client.save_weights_and_get_sampling_client()
+        if training_client is not None:
+            sampling_client = prepare_sampling_client(
+                training_client=training_client,
+                sampling_client=sampling_client,
+                refresh=sampling_client_needs_refresh,
+                step=step,
+            )
+            sampling_client_needs_refresh = False
+        assert sampling_client is not None
         (
             sampled_text,
             extracted_sequence,
@@ -207,6 +363,7 @@ def main() -> None:
             candidate_audit,
             attempts,
         ) = sample_valid_sequence(
+            step=step,
             tokenizer=tokenizer,
             sampling_client=sampling_client,
             sampling_params=sampling_params,
@@ -214,9 +371,12 @@ def main() -> None:
             reference_records=reference_records,
             family_stats=family_stats,
         )
+        phase_started_at = time.perf_counter()
+        emit_timing_event(phase="encode_prompt_input", status="start", step=step)
         prompt_input = types.ModelInput.from_ints(
             tokenizer.encode(sequence_prompt, add_special_tokens=False)
         )
+        emit_timing_event(phase="encode_prompt_input", status="end", started_at=phase_started_at, step=step)
         family_reward_info = compute_family_reward(family_evaluation) if family_evaluation is not None else {
             "family_reward": 0.0,
             "family_reward_components": {},
@@ -446,9 +606,11 @@ def main() -> None:
             step_records=step_records,
             candidate_audit_records=candidate_audit_records,
         )
+        sampling_client_needs_refresh = True
 
     checkpoint_path = INIT_STATE_PATH
     if not EVAL_ONLY:
+        assert training_client is not None
         save_result = training_client.save_state(CHECKPOINT_NAME).result()
         checkpoint_path = save_result.path
     report = persist_progress(
@@ -485,6 +647,308 @@ def create_training_client(
     if INIT_STATE_PATH:
         return service_client.create_training_client_from_state(path=INIT_STATE_PATH)
     return service_client.create_lora_training_client(base_model=base_model, rank=8)
+
+
+def initialize_runtime(
+    *,
+    service_client: tinker.ServiceClient,
+    base_model: str,
+) -> dict[str, tinker.TrainingClient | tinker.SamplingClient | object | None]:
+    if EVAL_ONLY:
+        sampling_client = create_eval_sampling_client(
+            service_client=service_client,
+            base_model=base_model,
+        )
+        if sampling_client is not None:
+            tokenizer = get_sampling_tokenizer(sampling_client=sampling_client)
+            return {
+                "training_client": None,
+                "sampling_client": sampling_client,
+                "tokenizer": tokenizer,
+            }
+
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="create_training_client", status="start")
+    training_client = create_training_client(service_client=service_client, base_model=base_model)
+    emit_timing_event(phase="create_training_client", status="end", started_at=phase_started_at)
+    tokenizer = get_training_tokenizer(training_client=training_client)
+    return {
+        "training_client": training_client,
+        "sampling_client": None,
+        "tokenizer": tokenizer,
+    }
+
+
+def create_eval_sampling_client(
+    *,
+    service_client: tinker.ServiceClient,
+    base_model: str,
+) -> tinker.SamplingClient | None:
+    sampling_target = resolve_eval_sampling_target(
+        service_client=service_client,
+        base_model=base_model,
+    )
+    if sampling_target is None:
+        return None
+
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="create_eval_sampling_client", status="start")
+    sampling_client = service_client.create_sampling_client(
+        model_path=sampling_target["model_path"],
+        base_model=sampling_target["base_model"],
+    )
+    emit_timing_event(
+        phase="create_eval_sampling_client",
+        status="end",
+        started_at=phase_started_at,
+        extra={"source": sampling_target["source"]},
+    )
+    return sampling_client
+
+
+def resolve_eval_sampling_target(
+    *,
+    service_client: tinker.ServiceClient,
+    base_model: str,
+) -> dict[str, str | None] | None:
+    if not INIT_STATE_PATH:
+        emit_timing_event(
+            phase="resolve_eval_sampling_target",
+            status="end",
+            extra={"source": "base_model"},
+        )
+        return {
+            "model_path": None,
+            "base_model": base_model,
+            "source": "base_model",
+        }
+
+    parsed_path = types.ParsedCheckpointTinkerPath.from_tinker_path(INIT_STATE_PATH)
+    if parsed_path.checkpoint_type == "sampler":
+        emit_timing_event(
+            phase="resolve_eval_sampling_target",
+            status="end",
+            extra={"source": "sampler_checkpoint"},
+        )
+        return {
+            "model_path": INIT_STATE_PATH,
+            "base_model": None,
+            "source": "sampler_checkpoint",
+        }
+
+    mapped_sampler_path = get_mapped_sampler_checkpoint_path(
+        service_client=service_client,
+        training_checkpoint_path=INIT_STATE_PATH,
+    )
+    if mapped_sampler_path is not None:
+        emit_timing_event(
+            phase="resolve_eval_sampling_target",
+            status="end",
+            extra={"source": "sampler_checkpoint_map"},
+        )
+        return {
+            "model_path": mapped_sampler_path,
+            "base_model": None,
+            "source": "sampler_checkpoint_map",
+        }
+
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="resolve_eval_sampling_target", status="start")
+    expected_sampler_path = INIT_STATE_PATH.replace("/weights/", "/sampler_weights/", 1)
+    rest_client = service_client.create_rest_client()
+    checkpoints = rest_client.list_checkpoints(parsed_path.training_run_id).result().checkpoints
+    matching_sampler_checkpoint = next(
+        (
+            checkpoint
+            for checkpoint in checkpoints
+            if checkpoint.checkpoint_type == "sampler" and checkpoint.tinker_path == expected_sampler_path
+        ),
+        None,
+    )
+    if matching_sampler_checkpoint is None:
+        created_sampler_path = create_matching_sampler_checkpoint(
+            service_client=service_client,
+            base_model=base_model,
+            training_checkpoint_path=INIT_STATE_PATH,
+            expected_sampler_path=expected_sampler_path,
+        )
+        persist_sampler_checkpoint_mapping(
+            training_checkpoint_path=INIT_STATE_PATH,
+            sampler_checkpoint_path=created_sampler_path,
+        )
+        emit_timing_event(
+            phase="resolve_eval_sampling_target",
+            status="end",
+            started_at=phase_started_at,
+            extra={"source": "created_sampler_checkpoint", "found_sampler_checkpoint": True},
+        )
+        return {
+            "model_path": created_sampler_path,
+            "base_model": None,
+            "source": "created_sampler_checkpoint",
+        }
+
+    emit_timing_event(
+        phase="resolve_eval_sampling_target",
+        status="end",
+        started_at=phase_started_at,
+        extra={"source": "matching_sampler_checkpoint", "found_sampler_checkpoint": True},
+    )
+    return {
+        "model_path": matching_sampler_checkpoint.tinker_path,
+        "base_model": None,
+        "source": "matching_sampler_checkpoint",
+    }
+
+
+def get_mapped_sampler_checkpoint_path(
+    *,
+    service_client: tinker.ServiceClient,
+    training_checkpoint_path: str,
+) -> str | None:
+    checkpoint_map = load_sampler_checkpoint_map()
+    sampler_checkpoint_path = checkpoint_map.get(training_checkpoint_path)
+    if sampler_checkpoint_path is None:
+        return None
+    if sampler_checkpoint_exists(
+        service_client=service_client,
+        sampler_checkpoint_path=sampler_checkpoint_path,
+    ):
+        return sampler_checkpoint_path
+    return None
+
+
+def load_sampler_checkpoint_map() -> dict[str, str]:
+    if not SAMPLER_CHECKPOINT_MAP_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(SAMPLER_CHECKPOINT_MAP_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {
+        str(training_path): str(sampler_path)
+        for training_path, sampler_path in payload.items()
+        if isinstance(training_path, str) and isinstance(sampler_path, str)
+    }
+
+
+def persist_sampler_checkpoint_mapping(
+    *,
+    training_checkpoint_path: str,
+    sampler_checkpoint_path: str,
+) -> None:
+    checkpoint_map = load_sampler_checkpoint_map()
+    checkpoint_map[training_checkpoint_path] = sampler_checkpoint_path
+    atomic_write_json(SAMPLER_CHECKPOINT_MAP_PATH, checkpoint_map)
+
+
+def sampler_checkpoint_exists(
+    *,
+    service_client: tinker.ServiceClient,
+    sampler_checkpoint_path: str,
+) -> bool:
+    parsed_path = types.ParsedCheckpointTinkerPath.from_tinker_path(sampler_checkpoint_path)
+    if parsed_path.checkpoint_type != "sampler":
+        return False
+    rest_client = service_client.create_rest_client()
+    checkpoints = rest_client.list_checkpoints(parsed_path.training_run_id).result().checkpoints
+    return any(
+        checkpoint.checkpoint_type == "sampler" and checkpoint.tinker_path == sampler_checkpoint_path
+        for checkpoint in checkpoints
+    )
+
+
+def create_matching_sampler_checkpoint(
+    *,
+    service_client: tinker.ServiceClient,
+    base_model: str,
+    training_checkpoint_path: str,
+    expected_sampler_path: str,
+) -> str:
+    parsed_path = types.ParsedCheckpointTinkerPath.from_tinker_path(training_checkpoint_path)
+    sampler_checkpoint_name = parsed_path.checkpoint_id.split("/", 1)[1]
+    phase_started_at = time.perf_counter()
+    emit_timing_event(
+        phase="create_matching_sampler_checkpoint",
+        status="start",
+        extra={"expected_sampler_path": expected_sampler_path},
+    )
+    training_client = create_training_client(service_client=service_client, base_model=base_model)
+    save_result = training_client.save_weights_for_sampler(sampler_checkpoint_name).result()
+    emit_timing_event(
+        phase="create_matching_sampler_checkpoint",
+        status="end",
+        started_at=phase_started_at,
+        extra={"sampler_checkpoint_path": save_result.path},
+    )
+    return save_result.path
+
+
+def get_sampling_tokenizer(
+    *,
+    sampling_client: tinker.SamplingClient,
+) -> object:
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="get_tokenizer", status="start")
+    tokenizer = sampling_client.get_tokenizer()
+    emit_timing_event(phase="get_tokenizer", status="end", started_at=phase_started_at)
+    return tokenizer
+
+
+def get_training_tokenizer(
+    *,
+    training_client: tinker.TrainingClient,
+) -> object:
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="get_tokenizer", status="start")
+    tokenizer = training_client.get_tokenizer()
+    emit_timing_event(phase="get_tokenizer", status="end", started_at=phase_started_at)
+    return tokenizer
+
+
+def prepare_sampling_client(
+    *,
+    training_client: tinker.TrainingClient,
+    sampling_client: tinker.SamplingClient | None,
+    refresh: bool,
+    step: int,
+) -> tinker.SamplingClient:
+    phase_started_at = time.perf_counter()
+    emit_timing_event(
+        phase="prepare_sampling_client",
+        status="start",
+        step=step,
+        extra={"refresh": refresh},
+    )
+    if not refresh and sampling_client is not None:
+        emit_timing_event(
+            phase="prepare_sampling_client",
+            status="end",
+            started_at=phase_started_at,
+            step=step,
+            extra={"refresh": False, "reused": True},
+        )
+        return sampling_client
+
+    refresh_started_at = time.perf_counter()
+    emit_timing_event(phase="save_weights_and_get_sampling_client", status="start", step=step)
+    refreshed_sampling_client = training_client.save_weights_and_get_sampling_client()
+    emit_timing_event(
+        phase="save_weights_and_get_sampling_client",
+        status="end",
+        started_at=refresh_started_at,
+        step=step,
+    )
+    emit_timing_event(
+        phase="prepare_sampling_client",
+        status="end",
+        started_at=phase_started_at,
+        step=step,
+        extra={"refresh": True, "reused": False},
+    )
+    return refreshed_sampling_client
 
 
 def resolve_base_model(service_client: tinker.ServiceClient) -> tuple[str, list[str]]:
@@ -596,12 +1060,16 @@ def persist_progress(
                 "init_state_path": INIT_STATE_PATH,
                 "eval_only": EVAL_ONLY,
                 "prompt_variant": PROMPT_VARIANT,
-                "candidate_sample_count": CANDIDATE_SAMPLE_COUNT,
-                "second_stage_top_k": SECOND_STAGE_TOP_K,
-                "plddt_gate_threshold": PLDDT_GATE_THRESHOLD,
-                "records": candidate_audit_records,
-            },
-        )
+        "candidate_sample_count": CANDIDATE_SAMPLE_COUNT,
+        "second_stage_top_k": SECOND_STAGE_TOP_K,
+        "plddt_gate_threshold": PLDDT_GATE_THRESHOLD,
+        "second_stage_esm_weight": SECOND_STAGE_ESM_WEIGHT,
+        "second_stage_motif_weight": SECOND_STAGE_MOTIF_WEIGHT,
+        "second_stage_geometry_weight": SECOND_STAGE_GEOMETRY_WEIGHT,
+        "second_stage_template_weight": SECOND_STAGE_TEMPLATE_WEIGHT,
+        "records": candidate_audit_records,
+    },
+)
     return report
 
 
@@ -635,19 +1103,208 @@ def build_report_payload(
         "candidate_sample_count": CANDIDATE_SAMPLE_COUNT,
         "second_stage_top_k": SECOND_STAGE_TOP_K,
         "plddt_gate_threshold": PLDDT_GATE_THRESHOLD,
+        "second_stage_esm_weight": SECOND_STAGE_ESM_WEIGHT,
+        "second_stage_motif_weight": SECOND_STAGE_MOTIF_WEIGHT,
+        "second_stage_geometry_weight": SECOND_STAGE_GEOMETRY_WEIGHT,
+        "second_stage_template_weight": SECOND_STAGE_TEMPLATE_WEIGHT,
         "average_reward": average_reward,
         "records": step_records,
     }
 
 
+def maybe_load_eval_resume_state(
+    *,
+    report_path: Path,
+    candidate_audit_path: Path | None,
+    prompts: list[str],
+) -> tuple[list[dict[str, object]], list[dict[str, object]], int]:
+    if not RESUME_PROGRESS:
+        return [], [], 0
+    if not EVAL_ONLY:
+        raise RuntimeError("TINKER_RESUME_PROGRESS is only supported for eval-only runs")
+    if not report_path.exists():
+        return [], [], 0
+
+    report_payload = load_json_object(report_path)
+    if report_payload is None:
+        raise RuntimeError(f"Could not parse resume report: {report_path}")
+    validate_resume_report_payload(report_payload=report_payload, prompts=prompts, report_path=report_path)
+    step_records = extract_contiguous_step_records(
+        raw_records=report_payload.get("records"),
+        prompt_count=len(prompts),
+    )
+
+    candidate_audit_records: list[dict[str, object]] = []
+    if candidate_audit_path is not None and candidate_audit_path.exists():
+        candidate_audit_payload = load_json_object(candidate_audit_path)
+        if candidate_audit_payload is not None:
+            candidate_audit_records = extract_contiguous_step_records(
+                raw_records=candidate_audit_payload.get("records"),
+                prompt_count=len(prompts),
+            )
+    if candidate_audit_records:
+        candidate_audit_records = candidate_audit_records[: len(step_records)]
+
+    print(
+        json.dumps(
+            {
+                "resume_progress": True,
+                "resumed_step_count": len(step_records),
+                "prompt_count": len(prompts),
+                "report_path": str(report_path),
+            }
+        ),
+        flush=True,
+    )
+    return step_records, candidate_audit_records, len(step_records)
+
+
+def load_json_object(path: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
+
+
+def extract_contiguous_step_records(*, raw_records: Any, prompt_count: int) -> list[dict[str, object]]:
+    if not isinstance(raw_records, list):
+        return []
+    by_step: dict[int, dict[str, object]] = {}
+    for record in raw_records:
+        if not isinstance(record, dict):
+            continue
+        step_value = record.get("step")
+        try:
+            step = int(step_value)
+        except (TypeError, ValueError):
+            continue
+        if step < 0 or step >= prompt_count:
+            continue
+        by_step[step] = record
+
+    contiguous: list[dict[str, object]] = []
+    for step in range(prompt_count):
+        record = by_step.get(step)
+        if record is None:
+            break
+        contiguous.append(record)
+    return contiguous
+
+
+def validate_resume_report_payload(
+    *,
+    report_payload: dict[str, Any],
+    prompts: list[str],
+    report_path: Path,
+) -> None:
+    expected_prompt_count = len(prompts)
+    observed_prompt_count = report_payload.get("prompt_count")
+    if int(observed_prompt_count or -1) != expected_prompt_count:
+        raise RuntimeError(
+            f"Resume report prompt_count mismatch for {report_path}: "
+            f"expected {expected_prompt_count}, observed {observed_prompt_count}"
+        )
+
+    observed_eval_only = bool(report_payload.get("eval_only"))
+    if observed_eval_only != EVAL_ONLY:
+        raise RuntimeError(
+            f"Resume report eval_only mismatch for {report_path}: expected {EVAL_ONLY}, observed {observed_eval_only}"
+        )
+
+    observed_init_state_path = report_payload.get("init_state_path")
+    if observed_init_state_path is not None and str(observed_init_state_path) != str(INIT_STATE_PATH):
+        raise RuntimeError(
+            f"Resume report init_state_path mismatch for {report_path}: "
+            f"expected {INIT_STATE_PATH}, observed {observed_init_state_path}"
+        )
+
+    observed_prompt_variant = report_payload.get("prompt_variant")
+    if observed_prompt_variant is not None and str(observed_prompt_variant) != PROMPT_VARIANT:
+        raise RuntimeError(
+            f"Resume report prompt_variant mismatch for {report_path}: "
+            f"expected {PROMPT_VARIANT}, observed {observed_prompt_variant}"
+        )
+
+    observed_candidate_count = report_payload.get("candidate_sample_count")
+    if observed_candidate_count is not None and int(observed_candidate_count) != CANDIDATE_SAMPLE_COUNT:
+        raise RuntimeError(
+            f"Resume report candidate_sample_count mismatch for {report_path}: "
+            f"expected {CANDIDATE_SAMPLE_COUNT}, observed {observed_candidate_count}"
+        )
+
+    observed_top_k = report_payload.get("second_stage_top_k")
+    if observed_top_k is not None and int(observed_top_k) != SECOND_STAGE_TOP_K:
+        raise RuntimeError(
+            f"Resume report second_stage_top_k mismatch for {report_path}: "
+            f"expected {SECOND_STAGE_TOP_K}, observed {observed_top_k}"
+        )
+
+    observed_plddt = report_payload.get("plddt_gate_threshold")
+    if observed_plddt is not None and not math.isclose(float(observed_plddt), PLDDT_GATE_THRESHOLD, abs_tol=1e-9):
+        raise RuntimeError(
+            f"Resume report plddt_gate_threshold mismatch for {report_path}: "
+            f"expected {PLDDT_GATE_THRESHOLD}, observed {observed_plddt}"
+        )
+
+    validate_optional_weight(
+        report_path=report_path,
+        payload=report_payload,
+        field="second_stage_esm_weight",
+        expected=SECOND_STAGE_ESM_WEIGHT,
+    )
+    validate_optional_weight(
+        report_path=report_path,
+        payload=report_payload,
+        field="second_stage_motif_weight",
+        expected=SECOND_STAGE_MOTIF_WEIGHT,
+    )
+    validate_optional_weight(
+        report_path=report_path,
+        payload=report_payload,
+        field="second_stage_geometry_weight",
+        expected=SECOND_STAGE_GEOMETRY_WEIGHT,
+    )
+    validate_optional_weight(
+        report_path=report_path,
+        payload=report_payload,
+        field="second_stage_template_weight",
+        expected=SECOND_STAGE_TEMPLATE_WEIGHT,
+    )
+
+    observed_prompts_path = report_payload.get("prompts_path")
+    if observed_prompts_path and PROMPTS_PATH:
+        expected_path = str(Path(PROMPTS_PATH).expanduser().resolve())
+        observed_path = str(Path(str(observed_prompts_path)).expanduser().resolve())
+        if observed_path != expected_path:
+            raise RuntimeError(
+                f"Resume report prompts_path mismatch for {report_path}: "
+                f"expected {expected_path}, observed {observed_path}"
+            )
+
+
+def validate_optional_weight(*, report_path: Path, payload: dict[str, Any], field: str, expected: float) -> None:
+    observed = payload.get(field)
+    if observed is None:
+        return
+    if not math.isclose(float(observed), expected, abs_tol=1e-9):
+        raise RuntimeError(
+            f"Resume report {field} mismatch for {report_path}: expected {expected}, observed {observed}"
+        )
+
+
 def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    tmp_path = path.with_suffix(f"{path.suffix}.tmp")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(f"{path.suffix}.tmp.{os.getpid()}.{time.time_ns()}")
     tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     tmp_path.replace(path)
 
 
 def sample_valid_sequence(
     *,
+    step: int | None,
     tokenizer: object,
     sampling_client: tinker.SamplingClient,
     sampling_params: types.SamplingParams,
@@ -666,15 +1323,30 @@ def sample_valid_sequence(
     int,
 ]:
     candidates: list[dict[str, Any]] = []
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="sample_prepare_prompt_input", status="start", step=step)
     prompt_input = types.ModelInput.from_ints(
         tokenizer.encode(sequence_prompt, add_special_tokens=False)
     )
+    emit_timing_event(phase="sample_prepare_prompt_input", status="end", started_at=phase_started_at, step=step)
+
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="sample_remote_sequences", status="start", step=step)
     sample_result = sampling_client.sample(
         prompt=prompt_input,
         num_samples=CANDIDATE_SAMPLE_COUNT,
         sampling_params=sampling_params,
     ).result()
+    emit_timing_event(
+        phase="sample_remote_sequences",
+        status="end",
+        started_at=phase_started_at,
+        step=step,
+        extra={"sampled_sequence_count": len(sample_result.sequences)},
+    )
 
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="evaluate_stage1_candidates", status="start", step=step)
     for sampled_sequence in sample_result.sequences:
         if sampled_sequence.logprobs is None:
             raise RuntimeError("Tinker sampling response did not include token logprobs")
@@ -707,13 +1379,23 @@ def sample_valid_sequence(
                 "in_stage2_pool": False,
             }
         )
+    emit_timing_event(
+        phase="evaluate_stage1_candidates",
+        status="end",
+        started_at=phase_started_at,
+        step=step,
+        extra={"candidate_count": len(candidates)},
+    )
 
     if not candidates:
         raise RuntimeError("Tinker sampling response did not include any sequences")
 
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="rank_stage1_candidates", status="start", step=step)
     sorted_stage1 = sorted(candidates, key=lambda candidate: candidate["stage1_score"], reverse=True)
     for rank, candidate in enumerate(sorted_stage1, start=1):
         candidate["stage1_rank"] = rank
+    emit_timing_event(phase="rank_stage1_candidates", status="end", started_at=phase_started_at, step=step)
 
     stage2_candidates = [
         candidate
@@ -727,6 +1409,13 @@ def sample_valid_sequence(
     for candidate in stage2_candidates:
         candidate["in_stage2_pool"] = True
 
+    phase_started_at = time.perf_counter()
+    emit_timing_event(
+        phase="score_stage2_esm",
+        status="start",
+        step=step,
+        extra={"stage2_candidate_count": len(stage2_candidates)},
+    )
     for candidate in stage2_candidates:
         raw_esm_score = (
             get_esm2_plddt_score(candidate["extracted_sequence"])
@@ -742,7 +1431,10 @@ def sample_valid_sequence(
             geometry_score=float(candidate["quality"]["geometry_score"]),
             template_penalty=float(candidate["quality"]["template_penalty"]),
         )
+    emit_timing_event(phase="score_stage2_esm", status="end", started_at=phase_started_at, step=step)
 
+    phase_started_at = time.perf_counter()
+    emit_timing_event(phase="select_final_candidate", status="start", step=step)
     sorted_stage2 = sorted(
         stage2_candidates,
         key=lambda candidate: (
@@ -779,6 +1471,7 @@ def sample_valid_sequence(
         build_candidate_audit_entry(candidate, selected is candidate)
         for candidate in sorted_stage1
     ]
+    emit_timing_event(phase="select_final_candidate", status="end", started_at=phase_started_at, step=step)
     return (
         selected["sampled_text"],
         selected["extracted_sequence"],
@@ -797,15 +1490,11 @@ def build_candidate_audit_entry(candidate: dict[str, Any], is_selected: bool) ->
     family_evaluation = candidate["family_evaluation"]
     raw_esm_score = float(candidate["raw_esm_score"])
     catalytic_geometry = family_evaluation["catalytic_geometry"] if family_evaluation is not None else None
-    has_family_serine_motif = (
-        bool(family_evaluation["has_family_serine_motif"]) if family_evaluation is not None else False
+    bridge_flags = compute_bridge_flags(
+        quality=quality,
+        family_evaluation=family_evaluation,
+        raw_esm_score=raw_esm_score,
     )
-    geometry_passes = (
-        bool(family_evaluation["catalytic_geometry"]["passes"]) if family_evaluation is not None else False
-    )
-    esm_gate_pass = raw_esm_score >= PLDDT_GATE_THRESHOLD
-    functional_bridge_passes = bool(quality["motif_count"] == 1 and geometry_passes and esm_gate_pass)
-    family_faithful_bridge_passes = bool(functional_bridge_passes and has_family_serine_motif)
     return {
         "selected": is_selected,
         "sample_text": candidate["sampled_text"],
@@ -839,11 +1528,7 @@ def build_candidate_audit_entry(candidate: dict[str, Any], is_selected: bool) ->
         "ser_his_strength": float(quality["ser_his_strength"]),
         "geometry_score": float(quality["geometry_score"]),
         "raw_esm_score": raw_esm_score,
-        "esm_gate_pass": esm_gate_pass,
-        "has_family_serine_motif": has_family_serine_motif,
-        "geometry_passes": geometry_passes,
-        "functional_bridge_passes": functional_bridge_passes,
-        "family_faithful_bridge_passes": family_faithful_bridge_passes,
+        **bridge_flags,
         "best_gap_error": (
             family_evaluation["catalytic_geometry"]["best_gap_error"] if family_evaluation is not None else None
         ),
@@ -971,22 +1656,22 @@ def assess_sequence_quality(
         and entropy >= SOFT_ENTROPY_FLOOR
         and dominant_fraction <= SOFT_MAX_DOMINANT_RESIDUE_FRACTION
     )
-    soft_score = 100.0
+    soft_score = MAX_PERCENT_SCORE
     soft_score -= max(0.0, MIN_SEQUENCE_ENTROPY - entropy) * ENTROPY_DEFICIT_WEIGHT
     soft_score -= max(0, MIN_UNIQUE_RESIDUES - len(counts)) * UNIQUE_RESIDUE_DEFICIT_WEIGHT
     soft_score -= max(0.0, dominant_fraction - MAX_DOMINANT_RESIDUE_FRACTION) * DOMINANT_RESIDUE_EXCESS_WEIGHT
-    soft_score = max(0.0, min(100.0, soft_score))
+    soft_score = max(0.0, min(MAX_PERCENT_SCORE, soft_score))
     is_valid = hard_gate_pass and soft_floor_pass and soft_score >= SOFT_TRAINABILITY_BASE_THRESHOLD
     quality_score = (
         len(sequence)
-        + aa_only_ratio * 100.0
-        + entropy * 10.0
-        + len(counts) * 2.0
-        - dominant_fraction * 50.0
-        - abs(len(sequence) - 200)
+        + aa_only_ratio * QUALITY_SCORE_AA_RATIO_WEIGHT
+        + entropy * QUALITY_SCORE_ENTROPY_WEIGHT
+        + len(counts) * QUALITY_SCORE_UNIQUE_RESIDUES_WEIGHT
+        - dominant_fraction * QUALITY_SCORE_DOMINANT_RESIDUE_WEIGHT
+        - abs(len(sequence) - QUALITY_SCORE_LENGTH_TARGET)
     )
     if not (hard_gate_pass and soft_floor_pass):
-        quality_score -= 250.0
+        quality_score -= QUALITY_SCORE_INVALID_SEQUENCE_PENALTY
     return {
         "is_valid": is_valid,
         "hard_gate_pass": hard_gate_pass,
@@ -1030,28 +1715,28 @@ def merge_candidate_quality(
 
     if family_evaluation is not None:
         if family_evaluation["valid_amino_acids"]:
-            combined_score += 40.0
+            combined_score += MERGE_SCORE_VALID_AMINO_ACIDS_BONUS
         if family_evaluation["length_in_family_band"]:
-            combined_score += 45.0
+            combined_score += MERGE_SCORE_LENGTH_BAND_BONUS
         if family_evaluation["has_family_serine_motif"]:
-            combined_score += 90.0
+            combined_score += MERGE_SCORE_FAMILY_MOTIF_BONUS
         if family_evaluation["catalytic_geometry"]["passes"]:
-            combined_score += 140.0
+            combined_score += MERGE_SCORE_GEOMETRY_BONUS
         if family_evaluation["novelty"]["passes_novelty_threshold"]:
-            combined_score += 35.0
+            combined_score += MERGE_SCORE_NOVELTY_BONUS
 
         serine_motif_count = len(family_evaluation["serine_motifs"])
-        combined_score += min(serine_motif_count, 4) * 5.0
+        combined_score += min(serine_motif_count, MERGE_SCORE_SERINE_MOTIF_BONUS_CAP) * MERGE_SCORE_PER_SERINE_MOTIF_BONUS
 
         best_gap_error = family_evaluation["catalytic_geometry"]["best_gap_error"]
         if isinstance(best_gap_error, int):
-            combined_score += max(0.0, 25.0 - float(best_gap_error))
+            combined_score += max(0.0, MERGE_SCORE_GAP_ALIGNMENT_BONUS_CAP - float(best_gap_error))
 
         closest_identity = float(family_evaluation["novelty"]["closest_edit_identity"])
-        if closest_identity >= 0.9:
-            combined_score -= 60.0
-        elif closest_identity >= 0.7:
-            combined_score -= (closest_identity - 0.7) * 100.0
+        if closest_identity >= MERGE_SCORE_STRONG_NOVELTY_THRESHOLD:
+            combined_score -= MERGE_SCORE_STRONG_NOVELTY_PENALTY
+        elif closest_identity >= NOVELTY_IDENTITY_THRESHOLD:
+            combined_score -= (closest_identity - NOVELTY_IDENTITY_THRESHOLD) * MERGE_SCORE_SOFT_NOVELTY_PENALTY_SCALE
 
         motif_strength = compute_motif_strength(family_evaluation)
         motif_count = len(family_evaluation["serine_motifs"])
@@ -1063,12 +1748,15 @@ def merge_candidate_quality(
             quality=quality,
             family_evaluation=family_evaluation,
         )["template_penalty"]
-        combined_score += 50.0 * dyad_strength
-        combined_score += 35.0 * ser_asp_strength
+        combined_score += MERGE_SCORE_DYAD_WEIGHT * dyad_strength
+        combined_score += MERGE_SCORE_SER_ASP_WEIGHT * ser_asp_strength
         if family_evaluation["catalytic_geometry"]["aspartate_hits"]:
-            combined_score += 12.0
-        if ser_his_strength > 0.45 and ser_asp_strength < 0.15:
-            combined_score -= 35.0
+            combined_score += MERGE_SCORE_ASPARTATE_HIT_BONUS
+        if (
+            ser_his_strength > MERGE_SCORE_SER_HIS_STRENGTH_THRESHOLD
+            and ser_asp_strength < MERGE_SCORE_SER_ASP_WEAK_THRESHOLD
+        ):
+            combined_score -= MERGE_SCORE_SER_HIS_MISALIGNMENT_PENALTY
         combined_score -= TEMPLATE_PENALTY_SCORE_WEIGHT * (1.0 - template_penalty)
         adjusted_soft_threshold = max(
             SOFT_TRAINABILITY_FLOOR,
@@ -1144,7 +1832,7 @@ def compute_second_stage_score(
     geometry_score: float,
     template_penalty: float,
 ) -> float:
-    normalized_esm_score = max(0.0, min(1.0, raw_esm_score / 100.0))
+    normalized_esm_score = max(0.0, min(MAX_NORMALIZED_SCORE, raw_esm_score / SECOND_STAGE_ESM_SCORE_NORMALIZER))
     return round(
         (SECOND_STAGE_ESM_WEIGHT * normalized_esm_score)
         + (SECOND_STAGE_MOTIF_WEIGHT * motif_strength)
@@ -1160,15 +1848,11 @@ def compute_training_reward(
     quality: dict[str, float | int | bool],
     family_evaluation: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    esm_gate_pass = raw_esm_score >= PLDDT_GATE_THRESHOLD
-    geometry_passes = bool(
-        family_evaluation is not None and family_evaluation["catalytic_geometry"]["passes"]
+    bridge_flags = compute_bridge_flags(
+        quality=quality,
+        family_evaluation=family_evaluation,
+        raw_esm_score=raw_esm_score,
     )
-    has_family_serine_motif = bool(
-        family_evaluation is not None and family_evaluation["has_family_serine_motif"]
-    )
-    functional_bridge_passes = bool(quality["motif_count"] == 1 and geometry_passes and esm_gate_pass)
-    family_faithful_bridge_passes = bool(functional_bridge_passes and has_family_serine_motif)
     dense_reward_info = compute_dense_family_reward(quality=quality, family_evaluation=family_evaluation)
     dense_family_reward = dense_reward_info["dense_family_reward"]
     kmer_uniqueness_ratio = float(quality.get("kmer_uniqueness_ratio", 0.0))
@@ -1180,55 +1864,56 @@ def compute_training_reward(
     if RL_REWARD_MODE == "bridge_tiers":
         if not quality["is_trainable"] or family_evaluation is None:
             reward = 0.0
-        elif not functional_bridge_passes:
+        elif not bridge_flags["functional_bridge_passes"]:
             reward = 0.0
-        elif family_faithful_bridge_passes:
+        elif bridge_flags["family_faithful_bridge_passes"]:
             reward = BRIDGE_TIER2_REWARD + BRIDGE_TIER1_BONUS
         else:
             reward = BRIDGE_TIER2_REWARD
-        return {
-            "reward": reward,
-            "reward_mode": RL_REWARD_MODE,
-            "esm_gate_pass": esm_gate_pass,
-            "functional_bridge_passes": functional_bridge_passes,
-            "family_faithful_bridge_passes": family_faithful_bridge_passes,
-            "dense_family_reward": dense_family_reward,
-            "rl_family_reward": rl_family_reward,
-            "dense_reward_components": dense_reward_info["dense_reward_components"],
-            "template_penalty": template_penalty_info["template_penalty"],
-            "motif_spam_penalty": template_penalty_info["motif_spam_penalty"],
-            "tandem_repeat_penalty": template_penalty_info["tandem_repeat_penalty"],
-            "local_entropy_penalty": template_penalty_info["local_entropy_penalty"],
-            "kmer_uniqueness_ratio": kmer_uniqueness_ratio,
-            "motif_count": template_penalty_info["motif_count"],
-            "max_tandem_repeat_similarity": template_penalty_info["max_tandem_repeat_similarity"],
-            "min_local_window_entropy": template_penalty_info["min_local_window_entropy"],
-        }
-    if not quality["is_trainable"] or family_evaluation is None or not esm_gate_pass:
-        return {
-            "reward": 0.0,
-            "reward_mode": RL_REWARD_MODE,
-            "esm_gate_pass": esm_gate_pass,
-            "functional_bridge_passes": functional_bridge_passes,
-            "family_faithful_bridge_passes": family_faithful_bridge_passes,
-            "dense_family_reward": dense_family_reward,
-            "rl_family_reward": rl_family_reward,
-            "dense_reward_components": dense_reward_info["dense_reward_components"],
-            "template_penalty": template_penalty_info["template_penalty"],
-            "motif_spam_penalty": template_penalty_info["motif_spam_penalty"],
-            "tandem_repeat_penalty": template_penalty_info["tandem_repeat_penalty"],
-            "local_entropy_penalty": template_penalty_info["local_entropy_penalty"],
-            "kmer_uniqueness_ratio": kmer_uniqueness_ratio,
-            "motif_count": template_penalty_info["motif_count"],
-            "max_tandem_repeat_similarity": template_penalty_info["max_tandem_repeat_similarity"],
-            "min_local_window_entropy": template_penalty_info["min_local_window_entropy"],
-        }
+        return build_reward_metadata(
+            reward=reward,
+            bridge_flags=bridge_flags,
+            dense_reward_info=dense_reward_info,
+            dense_family_reward=dense_family_reward,
+            rl_family_reward=rl_family_reward,
+            template_penalty_info=template_penalty_info,
+            kmer_uniqueness_ratio=kmer_uniqueness_ratio,
+        )
+    if not quality["is_trainable"] or family_evaluation is None or not bridge_flags["esm_gate_pass"]:
+        return build_reward_metadata(
+            reward=0.0,
+            bridge_flags=bridge_flags,
+            dense_reward_info=dense_reward_info,
+            dense_family_reward=dense_family_reward,
+            rl_family_reward=rl_family_reward,
+            template_penalty_info=template_penalty_info,
+            kmer_uniqueness_ratio=kmer_uniqueness_ratio,
+        )
+    return build_reward_metadata(
+        reward=rl_family_reward,
+        bridge_flags=bridge_flags,
+        dense_reward_info=dense_reward_info,
+        dense_family_reward=dense_family_reward,
+        rl_family_reward=rl_family_reward,
+        template_penalty_info=template_penalty_info,
+        kmer_uniqueness_ratio=kmer_uniqueness_ratio,
+    )
+
+
+def build_reward_metadata(
+    *,
+    reward: float,
+    bridge_flags: dict[str, bool],
+    dense_reward_info: dict[str, Any],
+    dense_family_reward: float,
+    rl_family_reward: float,
+    template_penalty_info: dict[str, Any],
+    kmer_uniqueness_ratio: float,
+) -> dict[str, Any]:
     return {
-        "reward": rl_family_reward,
+        "reward": reward,
         "reward_mode": RL_REWARD_MODE,
-        "esm_gate_pass": esm_gate_pass,
-        "functional_bridge_passes": functional_bridge_passes,
-        "family_faithful_bridge_passes": family_faithful_bridge_passes,
+        **bridge_flags,
         "dense_family_reward": dense_family_reward,
         "rl_family_reward": rl_family_reward,
         "dense_reward_components": dense_reward_info["dense_reward_components"],
@@ -1243,13 +1928,37 @@ def compute_training_reward(
     }
 
 
+def compute_bridge_flags(
+    *,
+    quality: dict[str, float | int | bool],
+    family_evaluation: dict[str, Any] | None,
+    raw_esm_score: float,
+) -> dict[str, bool]:
+    has_family_serine_motif = bool(
+        family_evaluation is not None and family_evaluation["has_family_serine_motif"]
+    )
+    geometry_passes = bool(
+        family_evaluation is not None and family_evaluation["catalytic_geometry"]["passes"]
+    )
+    esm_gate_pass = raw_esm_score >= PLDDT_GATE_THRESHOLD
+    functional_bridge_passes = bool(quality["motif_count"] == 1 and geometry_passes and esm_gate_pass)
+    family_faithful_bridge_passes = bool(functional_bridge_passes and has_family_serine_motif)
+    return {
+        "esm_gate_pass": esm_gate_pass,
+        "has_family_serine_motif": has_family_serine_motif,
+        "geometry_passes": geometry_passes,
+        "functional_bridge_passes": functional_bridge_passes,
+        "family_faithful_bridge_passes": family_faithful_bridge_passes,
+    }
+
+
 def compute_motif_strength(family_evaluation: dict[str, Any]) -> float:
     motif_count = len(family_evaluation["serine_motifs"])
     if motif_count == 0:
         return 0.0
 
-    base_strength = 1.0 if family_evaluation["has_family_serine_motif"] else 0.45
-    spam_factor = 1.0 / (1.0 + (0.75 * max(0, motif_count - 1)))
+    base_strength = 1.0 if family_evaluation["has_family_serine_motif"] else MOTIF_STRENGTH_NON_FAMILY_BASE
+    spam_factor = 1.0 / (1.0 + (MOTIF_STRENGTH_REPEAT_DECAY_WEIGHT * max(0, motif_count - 1)))
     return base_strength * spam_factor
 
 
@@ -1264,11 +1973,11 @@ def compute_geometry_score(family_evaluation: dict[str, Any]) -> float:
     ser_his_strength = compute_ser_his_strength(family_evaluation)
     triad_strength = compute_triad_strength(family_evaluation)
     return min(
-        1.0,
-        (0.05 * window_score)
-        + (0.4 * ser_asp_strength)
-        + (0.1 * ser_his_strength)
-        + (0.45 * triad_strength),
+        MAX_NORMALIZED_SCORE,
+        (GEOMETRY_SCORE_WINDOW_HIT_WEIGHT * window_score)
+        + (GEOMETRY_SCORE_SER_ASP_WEIGHT * ser_asp_strength)
+        + (GEOMETRY_SCORE_SER_HIS_WEIGHT * ser_his_strength)
+        + (GEOMETRY_SCORE_TRIAD_WEIGHT * triad_strength),
     )
 
 
@@ -1291,7 +2000,10 @@ def compute_ser_his_strength(family_evaluation: dict[str, Any]) -> float:
 def compute_dyad_strength(family_evaluation: dict[str, Any]) -> float:
     ser_asp_strength = compute_ser_asp_strength(family_evaluation)
     ser_his_strength = compute_ser_his_strength(family_evaluation)
-    return min(1.0, (0.75 * ser_asp_strength) + (0.25 * ser_his_strength))
+    return min(
+        MAX_NORMALIZED_SCORE,
+        (DYAD_SCORE_SER_ASP_WEIGHT * ser_asp_strength) + (DYAD_SCORE_SER_HIS_WEIGHT * ser_his_strength),
+    )
 
 
 def compute_triad_strength(family_evaluation: dict[str, Any]) -> float:
@@ -1348,7 +2060,7 @@ def compute_dense_family_reward(
         + DENSE_TRIAD_REWARD_WEIGHT
     )
     dense_family_reward = round(
-        100.0
+        MAX_PERCENT_SCORE
         * max(
             0.0,
             (
@@ -1527,7 +2239,7 @@ def build_policy_gradient_datum(
 def scale_reward_for_loss(reward: float) -> float:
     if RL_REWARD_MODE == "bridge_tiers":
         return reward
-    return reward / 100.0
+    return reward / MAX_PERCENT_SCORE
 
 
 def build_loss_fn_config() -> dict[str, float] | None:

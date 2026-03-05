@@ -15,7 +15,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from local_proxy import ESM2_MODEL_NAME, get_esm2_plddt_score
-from petase_family import assess_catalytic_geometry, compute_family_stats, find_serine_motifs, load_reference_records
+from petase_family import (
+    ASP_HIS_TARGET_GAP,
+    SER_ASP_TARGET_GAP,
+    assess_catalytic_geometry,
+    compute_family_stats,
+    find_serine_motifs,
+    load_reference_records,
+)
 
 
 TIER1_TAG = "[Target: Single-Active-Site, High-Stability, Perfect-Triad]"
@@ -28,7 +35,11 @@ def main() -> None:
     audit = json.loads(Path(args.audit_path).read_text(encoding="utf-8"))
     reference_records = load_reference_records(Path(args.records_path))
     family_stats = compute_family_stats(reference_records)
-    hits = load_kimi_native_hits(audit)
+    hits = load_kimi_native_hits(
+        audit,
+        family_stats=family_stats,
+        selected_only=args.selected_only,
+    )
 
     proposal_model = ProposalModel(device_name=args.proposal_device)
     output_rows: list[dict[str, Any]] = []
@@ -113,17 +124,33 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-residues-per-position", type=int, default=3)
     parser.add_argument("--beam-size", type=int, default=6)
     parser.add_argument("--proposal-device", default="cpu")
+    parser.add_argument(
+        "--selected-only",
+        action="store_true",
+        default=True,
+        help="Only consider selected candidates from each prompt step (default: true).",
+    )
+    parser.add_argument(
+        "--include-unselected",
+        action="store_false",
+        dest="selected_only",
+        help="Include all candidates from each prompt step.",
+    )
     return parser.parse_args()
 
 
-def load_kimi_native_hits(audit: dict[str, Any]) -> list[dict[str, Any]]:
+def load_kimi_native_hits(
+    audit: dict[str, Any],
+    *,
+    family_stats: dict[str, Any],
+    selected_only: bool,
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for record in audit["records"]:
         blueprint = parse_blueprint(str(record.get("sequence_prompt") or ""))
-        if blueprint is None:
-            continue
-        blueprint_tag = format_blueprint(*blueprint)
         for candidate in record["candidates"]:
+            if selected_only and not bool(candidate.get("selected")):
+                continue
             if int(candidate.get("motif_count") or 0) != 1:
                 continue
             if not bool(candidate.get("geometry_passes")):
@@ -131,6 +158,10 @@ def load_kimi_native_hits(audit: dict[str, Any]) -> list[dict[str, Any]]:
             sequence = str(candidate.get("extracted_sequence") or "")
             if not sequence:
                 continue
+            effective_blueprint = blueprint or infer_blueprint(
+                sequence_length=len(sequence),
+                family_stats=family_stats,
+            )
             rows.append(
                 {
                     "model_name": "moonshotai/Kimi-K2.5",
@@ -139,8 +170,8 @@ def load_kimi_native_hits(audit: dict[str, Any]) -> list[dict[str, Any]]:
                     "sequence": sequence,
                     "raw_esm_score": float(candidate.get("raw_esm_score") or 0.0),
                     "best_gap_error": candidate.get("best_gap_error"),
-                    "blueprint": blueprint,
-                    "blueprint_tag": blueprint_tag,
+                    "blueprint": effective_blueprint,
+                    "blueprint_tag": format_blueprint(*effective_blueprint),
                 }
             )
     rows.sort(key=lambda row: row["raw_esm_score"], reverse=True)
@@ -286,8 +317,26 @@ def parse_blueprint(sequence_prompt: str) -> tuple[int, int, int] | None:
     return tuple(int(group) for group in match.groups())
 
 
+def infer_blueprint(sequence_length: int, family_stats: dict[str, Any]) -> tuple[int, int, int]:
+    ser_min, ser_max = family_stats["serine_position_range"]
+    asp_min, asp_max = family_stats["aspartate_position_range"]
+    his_min, his_max = family_stats["histidine_position_range"]
+    ser = clamp_position(round(sequence_length * ((ser_min + ser_max) / 2.0)), sequence_length)
+    asp = clamp_position(round(sequence_length * ((asp_min + asp_max) / 2.0)), sequence_length)
+    his = clamp_position(round(sequence_length * ((his_min + his_max) / 2.0)), sequence_length)
+    if asp <= ser:
+        asp = clamp_position(ser + SER_ASP_TARGET_GAP, sequence_length)
+    if his <= asp:
+        his = clamp_position(asp + ASP_HIS_TARGET_GAP, sequence_length)
+    return ser, asp, his
+
+
 def format_blueprint(serine_position: int, aspartate_position: int, histidine_position: int) -> str:
     return f"[Blueprint: S_motif@{serine_position}, D@{aspartate_position}, H@{histidine_position}]"
+
+
+def clamp_position(position: int, sequence_length: int) -> int:
+    return max(1, min(sequence_length, position))
 
 
 def dedupe_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

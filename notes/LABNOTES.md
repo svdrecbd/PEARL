@@ -441,7 +441,6 @@ Result:
 Artifacts:
 
 - [probe_mlx_esm_backend.py](/Users/svdr/tinker/scripts/probe_mlx_esm_backend.py)
-- local notes in [FORLATERUSE.md](/Users/svdr/tinker/FORLATERUSE.md)
 
 ## Current State
 
@@ -807,3 +806,280 @@ The most accurate one-line summary is:
 
 The current bottleneck is not whether Kimi can ever hit the right manifold.
 The bottleneck is whether we can make the search / optimization loop reach that manifold reliably and cheaply enough to iterate.
+
+## March 4, 2026 Engineering Update
+
+This section records the engineering cleanup and throughput investigation done after the March 3 snapshot.
+
+### Repo / code hygiene
+
+Before more experiments, the repo was cleaned up enough to reduce operational confusion:
+
+- `LABNOTES.md` moved under `notes/`
+- scratch timing scripts moved under `benchmarks/`
+- stray local report artifacts moved under `reports/legacy/`
+- hot-path code had a cleanup pass:
+  - named constants replaced scattered magic numbers
+  - duplicated reward / bridge bookkeeping was factored into shared helpers
+  - local proxy parsing was simplified
+
+This did not change the scientific state, but it made the runtime path easier to inspect and modify.
+
+### Local evaluator optimizations
+
+The local PETase-family evaluator got several real optimizations:
+
+- cached reference k-mers in memory instead of rebuilding them on every candidate evaluation
+- removed wasteful set-union allocation in Jaccard scoring
+- switched novelty shortlist selection from full sort to a bounded top-k path
+- skipped full novelty scoring for obvious cheap rejects
+- kept the tandem-repeat micro-optimization, but confirmed it is minor
+
+Interpretation:
+
+- these changes were worth keeping
+- they reduced local stage-1 cost materially
+- they did not solve the full prompt-level throughput problem by themselves
+
+### Prompt-0 timing instrumentation
+
+`main.py` was instrumented with explicit timing markers around:
+
+- service client startup
+- base model resolution
+- training client creation
+- tokenizer loading
+- prompt loading
+- reference loading / family stats
+- sampler preparation
+- remote sampling
+- stage-1 local evaluation
+- stage-2 ESM scoring
+
+The first full measured one-prompt eval-only benchmark at `256` candidates showed:
+
+- startup total: `34.8s`
+- `create_training_client`: `32.2s`
+- `save_weights_and_get_sampling_client`: `6.2s`
+- remote sampling: `32.7s`
+- stage-1 local evaluation: `11.9s`
+- stage-2 ESM scoring: `22.6s`
+- total wall clock: `112.8s`
+
+Main conclusion:
+
+- the dominant bottleneck was no longer the old Python novelty path
+- the real cost center was remote Tinker startup / sampling, with local ESM second and local stage-1 third
+
+### Reuse / prewarm pass
+
+Two immediate runtime changes were added:
+
+- explicit ESM prewarm so model-load cost is visible at startup
+- sampling-client reuse across prompts when weights have not changed
+
+On a `2`-prompt, `64`-candidate eval-only timing run:
+
+- step `1` reused the sampling client with effectively `0s` client-prep cost
+- startup included explicit `ESM` prewarm
+- this cleaned up repeated per-step overhead, but the main remaining cost was still remote sampling
+
+Conclusion:
+
+- reuse is worth keeping
+- prewarm is worth keeping
+- neither changes the fundamental fact that remote generation dominates end-to-end time once local scoring is no longer pathological
+
+### Tinker SDK investigation
+
+The SDK was read directly to answer whether the training startup cost was avoidable.
+
+Important findings:
+
+- `ServiceClient()` creates a fresh Tinker session with heartbeat
+- `create_training_client_from_state(...)` is expensive by design:
+  - fetch weights info
+  - create a new LoRA training run
+  - load the checkpoint into that run
+- `save_weights_and_get_sampling_client()` is also expensive by design, but it is still the natural training-loop path
+- there is no clean public API to reattach to an old training client across separate program runs
+- there is a clean public direct sampling path for sampler checkpoints:
+  - `create_sampling_client(model_path=...)`
+
+That created a clear split:
+
+- eval-only should avoid the training client whenever possible
+- actual training runs still need the existing training-client path
+
+### Eval-only sampler resolution
+
+An eval-only fast path was then added:
+
+- if `INIT_STATE_PATH` is already a sampler checkpoint, use it directly
+- if a known derived sampler checkpoint exists locally, use it directly
+- if the input is only a training checkpoint, resolve or create a matching sampler checkpoint once, then reuse it on future evals
+
+Important SDK caveat discovered during this work:
+
+- Tinker does not let `create_sampling_client(model_path=...)` load a normal `weights` checkpoint
+- it requires a `sampler_weights` checkpoint
+- also, saving sampler weights from a loaded training checkpoint creates a new sampler checkpoint under a new training run id, not under the original run id
+
+That means naive string replacement from:
+
+- `/weights/...`
+
+to:
+
+- `/sampler_weights/...`
+
+is not enough.
+
+To close that loop, a local mapping file was introduced:
+
+- `.tinker_sampler_checkpoint_map.json`
+
+This stores:
+
+- source training checkpoint path
+- resolved derived sampler checkpoint path
+
+and future eval-only runs validate and reuse that sampler path directly.
+
+### Concrete result
+
+For the current reference policy:
+
+- source training checkpoint:
+  - `tinker://7a5aeb3f-0652-52d1-849d-9916dfb43c7c:train:0/weights/kimi25-micro-sft-top9-plus-doping29-cont-lr5e7-ep1`
+- derived sampler checkpoint:
+  - `tinker://29d6d1c5-cf40-5404-9af1-3755d95bd6ed:train:0/sampler_weights/kimi25-micro-sft-top9-plus-doping29-cont-lr5e7-ep1`
+
+Once that mapping existed, a follow-up eval-only benchmark using the mapped sampler path showed:
+
+- startup total: `3.6s`
+- no training-client creation
+- no sampler-refresh step
+- total wall clock on a small `1`-prompt, `8`-candidate run: `31.8s`
+
+Interpretation:
+
+- the eval-only loose end is now actually closed
+- future eval / ablation / detached mining runs should reuse sampler checkpoints rather than repeatedly paying the training-client startup tax
+
+### Current operational recommendation
+
+At this point the engineering recommendation is:
+
+- for eval-only:
+  - use resolved sampler checkpoints and keep the local sampler mapping
+- for real training:
+  - keep `save_weights_and_get_sampling_client()` as the prompt-loop path
+- do not spend more time trying to replace the training-loop sampler refresh with `save_weights_for_sampler(...) + create_sampling_client(...)` unless there is a specific need to verify it experimentally
+
+Reason:
+
+- for training mode, both approaches still pay the save-for-sampler cost
+- the named-checkpoint path likely adds extra session creation overhead rather than removing it
+- the high-value win was in eval-only reuse, and that win has now been captured
+
+## March 5, 2026 Robustness Cycle Update (Repair17)
+
+This section captures the full `repair16 -> repair17` durability cycle and the final outcome.
+
+### Script and workflow changes
+
+1. Robustness summary ingestion hardening:
+   - [run_robustness_suite.py](/Users/svdr/tinker/scripts/run_robustness_suite.py) now resolves existing ablation runs by metadata (`prompt_count`, `seed`, `init_state_path`, `model`, `variant`) instead of relying only on exact run-name directory matches.
+   - It now tolerates equivalent temperature naming tokens (`t08` vs `t0p8`) when mapping completed runs.
+   - This removed the manual-summary fallback needed in the previous cycle.
+2. Repair-pool export cleanup:
+   - [build_repair_pool_dataset.py](/Users/svdr/tinker/scripts/build_repair_pool_dataset.py) now supports `--output-audit-path`.
+   - It can emit a merged `candidate_audit.json` directly from selected repair-pool rows, making repair waves reproducible from one command.
+3. Existing native-repair script remained in active use:
+   - [build_kimi_native_repair_dataset.py](/Users/svdr/tinker/scripts/build_kimi_native_repair_dataset.py)
+
+### Repair17 cycle artifacts
+
+Repair pool build (selected candidates only, deduped):
+
+- output pool:
+  - [/Users/svdr/tinker/reports/robustness/pearl-repair17-cycle-r1/repair_pool_selected.jsonl](/Users/svdr/tinker/reports/robustness/pearl-repair17-cycle-r1/repair_pool_selected.jsonl)
+- merged audit for repair script input:
+  - [/Users/svdr/tinker/reports/robustness/pearl-repair17-cycle-r1/repair_pool_selected_audit.json](/Users/svdr/tinker/reports/robustness/pearl-repair17-cycle-r1/repair_pool_selected_audit.json)
+- summary:
+  - [/Users/svdr/tinker/reports/robustness/pearl-repair17-cycle-r1/repair_pool_selected_summary.json](/Users/svdr/tinker/reports/robustness/pearl-repair17-cycle-r1/repair_pool_selected_summary.json)
+
+Pool composition:
+
+- `37` total rows
+- `5` `tier2_hit`
+- `32` `geometry_dominant_near_miss`
+- sourced from `12` prior repair15/repair16 robustness audits
+
+### Repair wave outcome
+
+Bounded repair wave (`max_hits=16`, `rounds=1`, `radius=2`, `top_residues_per_position=2`, `beam_size=3`):
+
+- survivors:
+  - [/Users/svdr/tinker/reports/robustness/pearl-repair17-cycle-r1/repair_survivors_wave1.jsonl](/Users/svdr/tinker/reports/robustness/pearl-repair17-cycle-r1/repair_survivors_wave1.jsonl)
+- best attempts:
+  - [/Users/svdr/tinker/reports/robustness/pearl-repair17-cycle-r1/repair_best_attempts_wave1.jsonl](/Users/svdr/tinker/reports/robustness/pearl-repair17-cycle-r1/repair_best_attempts_wave1.jsonl)
+- summary:
+  - [/Users/svdr/tinker/reports/robustness/pearl-repair17-cycle-r1/repair_summary_wave1.json](/Users/svdr/tinker/reports/robustness/pearl-repair17-cycle-r1/repair_summary_wave1.json)
+
+Result:
+
+- `evaluated_variant_count = 186`
+- `survivor_count = 15`
+
+### Repair17 warm-start
+
+Trained a one-epoch micro-SFT continuation from repair16 using the `15` repaired survivors.
+
+- checkpoint:
+  - `tinker://a3a29303-c696-574b-adbc-a9180c43aaa4:train:0/weights/pearl-micro-sft-repair17-from-repair16-wave1-lr5e7-ep1`
+- summary:
+  - [/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-repair17-from-repair16-wave1-lr5e7-ep1/summary.json](/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-repair17-from-repair16-wave1-lr5e7-ep1/summary.json)
+
+### Repair17 durability check (`12` prompts, `t=0.8`, seeds `41/53/67`)
+
+Run outputs:
+
+- [/Users/svdr/tinker/reports/ablations/pearl-repair17-robustness-p12-t08-r1-p12-t0p8-s41/summary.json](/Users/svdr/tinker/reports/ablations/pearl-repair17-robustness-p12-t08-r1-p12-t0p8-s41/summary.json)
+- [/Users/svdr/tinker/reports/ablations/pearl-repair17-robustness-p12-t08-r1-p12-t0p8-s53/summary.json](/Users/svdr/tinker/reports/ablations/pearl-repair17-robustness-p12-t08-r1-p12-t0p8-s53/summary.json)
+- [/Users/svdr/tinker/reports/ablations/pearl-repair17-robustness-p12-t08-r1-p12-t0p8-s67/summary.json](/Users/svdr/tinker/reports/ablations/pearl-repair17-robustness-p12-t08-r1-p12-t0p8-s67/summary.json)
+
+Robustness suite summary:
+
+- [/Users/svdr/tinker/reports/robustness/pearl-repair17-robustness-p12-t08-r1/robustness_summary.json](/Users/svdr/tinker/reports/robustness/pearl-repair17-robustness-p12-t08-r1/robustness_summary.json)
+
+Final vector and gate:
+
+- `tier2_hits_by_seed = [0, 1, 0]`
+- `prompt_coverage_by_seed = [0, 1, 0]`
+- `bridge_hits_per_prompt.mean = 0.027778`
+- `prompts_with_any_tier2_across_seeds = 1`
+- durability gate: `FAILED`
+
+Failed gate conditions:
+
+- `seed_support`
+- `prompt_coverage`
+- `basin_pressure_vs_baseline`
+
+### Comparison vs repair16
+
+Repair17 did not increase durable bridge production:
+
+- bridge vector remained `repair16: [0,1,0] -> repair17: [0,1,0]`
+- bridge mean unchanged (`0.027778`)
+- basin mix shifted:
+  - stability-dominant mean worsened (`0.25 -> 0.277778`)
+  - geometry-dominant mean improved (`0.25 -> 0.222222`)
+
+Interpretation:
+
+- this was a sideways move on the core target
+- the branch remains in **search/repair mode**
+- it is still not freeze-worthy as the canonical reference policy

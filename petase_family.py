@@ -15,6 +15,15 @@ SER_ASP_TARGET_GAP = 55
 ASP_HIS_TARGET_GAP = 13
 SER_HIS_TARGET_GAP = SER_ASP_TARGET_GAP + ASP_HIS_TARGET_GAP
 SER_BASED_DYAD_MAX_ERROR = 25
+CATALYTIC_GEOMETRY_PASS_MAX_ERROR = 20
+CATALYTIC_GEOMETRY_MAX_REPORTED_HITS = 8
+FAMILY_STATS_LOW_QUANTILE = 0.05
+FAMILY_STATS_MEDIAN_QUANTILE = 0.5
+FAMILY_STATS_HIGH_QUANTILE = 0.95
+TOP_SERINE_MOTIF_COUNT = 12
+DEFAULT_SERINE_POSITION_RANGE = (0.45, 0.75)
+DEFAULT_ASPARTATE_POSITION_RANGE = (0.72, 0.92)
+DEFAULT_HISTIDINE_POSITION_RANGE = (0.82, 0.98)
 
 TERM_WEIGHTS = {
     "petase": 8,
@@ -57,7 +66,27 @@ EC_WEIGHTS = {
     "3.1.1.74": 6,
     "3.1.1.101": 6,
 }
+NOVELTY_KMER_SIZE = 3
 NOVELTY_SHORTLIST_SIZE = 32
+NOVELTY_IDENTITY_THRESHOLD = 0.70
+STRONG_NOVELTY_IDENTITY_THRESHOLD = 0.90
+CHEAP_SCREEN_MIN_UNIQUE_RESIDUES = 14
+CHEAP_SCREEN_MIN_ENTROPY = 3.2
+CHEAP_SCREEN_MAX_DOMINANT_RESIDUE_FRACTION = 0.34
+FAMILY_REWARD_VALID_AMINO_ACIDS = 5.0
+FAMILY_REWARD_LENGTH_IN_BAND = 10.0
+FAMILY_REWARD_ANY_SERINE_MOTIF = 10.0
+FAMILY_REWARD_FAMILY_SERINE_MOTIF = 20.0
+FAMILY_REWARD_SERINE_WINDOW_HIT = 10.0
+FAMILY_REWARD_ASPARTATE_WINDOW_HIT = 10.0
+FAMILY_REWARD_HISTIDINE_WINDOW_HIT = 10.0
+FAMILY_REWARD_SER_ASP_DYAD = 12.0
+FAMILY_REWARD_SER_HIS_DYAD = 10.0
+FAMILY_REWARD_GAP_ALIGNMENT_CAP = 20.0
+FAMILY_REWARD_CATALYTIC_GEOMETRY = 15.0
+FAMILY_REWARD_STRONG_NOVELTY_PENALTY = -30.0
+FAMILY_REWARD_SOFT_NOVELTY_PENALTY = -15.0
+FAMILY_REWARD_MAX_SCORE = 100.0
 
 
 def load_reference_records(path: Path) -> list[dict[str, Any]]:
@@ -113,23 +142,23 @@ def compute_family_stats(records: list[dict[str, Any]]) -> dict[str, Any]:
                 aspartate_positions.append(site_positions[1])
                 histidine_positions.append(site_positions[2])
 
-    top_motifs = [motif for motif, _ in top_serine_motifs.most_common(12)]
+    top_motifs = [motif for motif, _ in top_serine_motifs.most_common(TOP_SERINE_MOTIF_COUNT)]
     return {
-        "length_min": percentile(lengths, 0.05),
-        "length_median": percentile(lengths, 0.5),
-        "length_max": percentile(lengths, 0.95),
+        "length_min": percentile(lengths, FAMILY_STATS_LOW_QUANTILE),
+        "length_median": percentile(lengths, FAMILY_STATS_MEDIAN_QUANTILE),
+        "length_max": percentile(lengths, FAMILY_STATS_HIGH_QUANTILE),
         "top_serine_motifs": top_motifs,
         "serine_position_range": (
-            percentile_float(serine_positions, 0.05, 0.45),
-            percentile_float(serine_positions, 0.95, 0.75),
+            percentile_float(serine_positions, FAMILY_STATS_LOW_QUANTILE, DEFAULT_SERINE_POSITION_RANGE[0]),
+            percentile_float(serine_positions, FAMILY_STATS_HIGH_QUANTILE, DEFAULT_SERINE_POSITION_RANGE[1]),
         ),
         "aspartate_position_range": (
-            percentile_float(aspartate_positions, 0.05, 0.72),
-            percentile_float(aspartate_positions, 0.95, 0.92),
+            percentile_float(aspartate_positions, FAMILY_STATS_LOW_QUANTILE, DEFAULT_ASPARTATE_POSITION_RANGE[0]),
+            percentile_float(aspartate_positions, FAMILY_STATS_HIGH_QUANTILE, DEFAULT_ASPARTATE_POSITION_RANGE[1]),
         ),
         "histidine_position_range": (
-            percentile_float(histidine_positions, 0.05, 0.82),
-            percentile_float(histidine_positions, 0.95, 0.98),
+            percentile_float(histidine_positions, FAMILY_STATS_LOW_QUANTILE, DEFAULT_HISTIDINE_POSITION_RANGE[0]),
+            percentile_float(histidine_positions, FAMILY_STATS_HIGH_QUANTILE, DEFAULT_HISTIDINE_POSITION_RANGE[1]),
         ),
     }
 
@@ -181,16 +210,16 @@ def assess_catalytic_geometry(sequence: str, family_stats: dict[str, Any]) -> di
                     best_gap_error = gap_error
 
     return {
-        "serine_hits": serine_hits[:8],
-        "aspartate_hits": aspartate_hits[:8],
-        "histidine_hits": histidine_hits[:8],
+        "serine_hits": serine_hits[:CATALYTIC_GEOMETRY_MAX_REPORTED_HITS],
+        "aspartate_hits": aspartate_hits[:CATALYTIC_GEOMETRY_MAX_REPORTED_HITS],
+        "histidine_hits": histidine_hits[:CATALYTIC_GEOMETRY_MAX_REPORTED_HITS],
         "ser_asp_gap_error": ser_asp_gap_error,
         "asp_his_gap_error": asp_his_gap_error,
         "ser_his_gap_error": ser_his_gap_error,
         "ser_asp_dyad_passes": ser_asp_gap_error is not None and ser_asp_gap_error <= SER_BASED_DYAD_MAX_ERROR,
         "ser_his_dyad_passes": ser_his_gap_error is not None and ser_his_gap_error <= SER_BASED_DYAD_MAX_ERROR,
         "best_gap_error": best_gap_error,
-        "passes": best_gap_error is not None and best_gap_error <= 20,
+        "passes": best_gap_error is not None and best_gap_error <= CATALYTIC_GEOMETRY_PASS_MAX_ERROR,
     }
 
 
@@ -236,13 +265,13 @@ def _get_cached_kmers(record: dict[str, Any]) -> set[str]:
     cached = record.get("_cached_kmers")
     if isinstance(cached, set):
         return cached
-    kmers_value = kmers(record["sequence"], 3)
+    kmers_value = kmers(record["sequence"], NOVELTY_KMER_SIZE)
     record["_cached_kmers"] = kmers_value
     return kmers_value
 
 
 def assess_novelty(sequence: str, reference_records: list[dict[str, Any]]) -> dict[str, Any]:
-    query_kmers = kmers(sequence, 3)
+    query_kmers = kmers(sequence, NOVELTY_KMER_SIZE)
     query_len = len(query_kmers)
     shortlist: list[tuple[float, int, dict[str, Any]]] = []
     for index, record in enumerate(reference_records):
@@ -273,7 +302,7 @@ def assess_novelty(sequence: str, reference_records: list[dict[str, Any]]) -> di
 
     return {
         "closest_edit_identity": round(best_identity, 4),
-        "passes_novelty_threshold": best_identity < 0.70,
+        "passes_novelty_threshold": best_identity < NOVELTY_IDENTITY_THRESHOLD,
         "closest_match": best_match,
     }
 
@@ -300,9 +329,9 @@ def evaluate_candidate(
     passes_cheap_screens = (
         valid_amino_acids
         and length_in_family_band
-        and len(counts) >= 14
-        and entropy >= 3.2
-        and dominant_fraction <= 0.34
+        and len(counts) >= CHEAP_SCREEN_MIN_UNIQUE_RESIDUES
+        and entropy >= CHEAP_SCREEN_MIN_ENTROPY
+        and dominant_fraction <= CHEAP_SCREEN_MAX_DOMINANT_RESIDUE_FRACTION
     )
 
     if passes_cheap_screens:
@@ -326,7 +355,7 @@ def evaluate_candidate(
             passes_cheap_screens
             and bool(serine_motifs)
             and catalytic_geometry["passes"]
-            and novelty["closest_edit_identity"] < 0.70
+            and novelty["closest_edit_identity"] < NOVELTY_IDENTITY_THRESHOLD
         ),
     }
 
@@ -340,39 +369,45 @@ def compute_family_reward(family_evaluation: dict[str, Any] | None) -> dict[str,
 
     components: dict[str, float] = {}
     if family_evaluation["valid_amino_acids"]:
-        components["valid_amino_acids"] = 5.0
+        components["valid_amino_acids"] = FAMILY_REWARD_VALID_AMINO_ACIDS
     if family_evaluation["length_in_family_band"]:
-        components["length_in_family_band"] = 10.0
+        components["length_in_family_band"] = FAMILY_REWARD_LENGTH_IN_BAND
     if family_evaluation["serine_motifs"]:
-        components["any_serine_motif"] = 10.0
+        components["any_serine_motif"] = FAMILY_REWARD_ANY_SERINE_MOTIF
     if family_evaluation["has_family_serine_motif"]:
-        components["family_serine_motif"] = 20.0
+        components["family_serine_motif"] = FAMILY_REWARD_FAMILY_SERINE_MOTIF
 
     catalytic_geometry = family_evaluation["catalytic_geometry"]
     if catalytic_geometry["serine_hits"]:
-        components["serine_window_hit"] = 10.0
+        components["serine_window_hit"] = FAMILY_REWARD_SERINE_WINDOW_HIT
     if catalytic_geometry["aspartate_hits"]:
-        components["aspartate_window_hit"] = 10.0
+        components["aspartate_window_hit"] = FAMILY_REWARD_ASPARTATE_WINDOW_HIT
     if catalytic_geometry["histidine_hits"]:
-        components["histidine_window_hit"] = 10.0
+        components["histidine_window_hit"] = FAMILY_REWARD_HISTIDINE_WINDOW_HIT
     if catalytic_geometry["ser_asp_dyad_passes"]:
-        components["ser_asp_dyad"] = 12.0
+        components["ser_asp_dyad"] = FAMILY_REWARD_SER_ASP_DYAD
     if catalytic_geometry["ser_his_dyad_passes"]:
-        components["ser_his_dyad"] = 10.0
+        components["ser_his_dyad"] = FAMILY_REWARD_SER_HIS_DYAD
 
     best_gap_error = catalytic_geometry["best_gap_error"]
     if isinstance(best_gap_error, int):
-        components["gap_alignment"] = max(0.0, 20.0 - min(float(best_gap_error), 20.0))
+        components["gap_alignment"] = max(
+            0.0,
+            FAMILY_REWARD_GAP_ALIGNMENT_CAP - min(float(best_gap_error), FAMILY_REWARD_GAP_ALIGNMENT_CAP),
+        )
     if catalytic_geometry["passes"]:
-        components["catalytic_geometry"] = 15.0
+        components["catalytic_geometry"] = FAMILY_REWARD_CATALYTIC_GEOMETRY
 
     closest_identity = float(family_evaluation["novelty"]["closest_edit_identity"])
-    if closest_identity >= 0.9:
-        components["novelty_penalty"] = -30.0
-    elif closest_identity >= 0.7:
-        components["novelty_penalty"] = -15.0 * ((closest_identity - 0.7) / 0.2)
+    if closest_identity >= STRONG_NOVELTY_IDENTITY_THRESHOLD:
+        components["novelty_penalty"] = FAMILY_REWARD_STRONG_NOVELTY_PENALTY
+    elif closest_identity >= NOVELTY_IDENTITY_THRESHOLD:
+        components["novelty_penalty"] = FAMILY_REWARD_SOFT_NOVELTY_PENALTY * (
+            (closest_identity - NOVELTY_IDENTITY_THRESHOLD)
+            / (STRONG_NOVELTY_IDENTITY_THRESHOLD - NOVELTY_IDENTITY_THRESHOLD)
+        )
 
-    family_reward = max(0.0, min(100.0, sum(components.values())))
+    family_reward = max(0.0, min(FAMILY_REWARD_MAX_SCORE, sum(components.values())))
     return {
         "family_reward": round(family_reward, 2),
         "family_reward_components": {key: round(value, 2) for key, value in components.items()},

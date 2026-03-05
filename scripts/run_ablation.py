@@ -43,9 +43,15 @@ def main() -> None:
         "python_executable": python_executable,
         "init_state_path": args.init_state_path,
         "eval_only": args.eval_only,
+        "resume": args.resume,
         "prompt_count": args.prompt_count,
         "candidate_sample_count": args.candidate_sample_count,
+        "second_stage_esm_weight": args.second_stage_esm_weight,
+        "second_stage_motif_weight": args.second_stage_motif_weight,
+        "second_stage_geometry_weight": args.second_stage_geometry_weight,
+        "second_stage_template_weight": args.second_stage_template_weight,
         "seed": args.seed,
+        "sampling_seed_base": args.seed,
         "source_prompts_path": args.prompts_path,
         "reference_records_path": args.reference_records_path,
         "subset_path": str(subset_path),
@@ -71,12 +77,16 @@ def main() -> None:
             "TINKER_SECOND_STAGE_ESM_WEIGHT": str(args.second_stage_esm_weight),
             "TINKER_SECOND_STAGE_MOTIF_WEIGHT": str(args.second_stage_motif_weight),
             "TINKER_SECOND_STAGE_GEOMETRY_WEIGHT": str(args.second_stage_geometry_weight),
+            "TINKER_SECOND_STAGE_TEMPLATE_WEIGHT": str(args.second_stage_template_weight),
+            "TINKER_SAMPLING_SEED": str(args.seed),
         }
     )
     if args.init_state_path:
         env["TINKER_INIT_STATE_PATH"] = args.init_state_path
     if args.eval_only:
         env["TINKER_EVAL_ONLY"] = "1"
+    if args.resume:
+        env["TINKER_RESUME_PROGRESS"] = "1"
     if candidate_audit_path is not None:
         env["CANDIDATE_AUDIT_PATH"] = str(candidate_audit_path)
 
@@ -93,6 +103,10 @@ def main() -> None:
     summary["candidate_sample_count"] = args.candidate_sample_count
     summary["second_stage_top_k"] = args.second_stage_top_k
     summary["plddt_gate_threshold"] = args.plddt_gate_threshold
+    summary["second_stage_esm_weight"] = args.second_stage_esm_weight
+    summary["second_stage_motif_weight"] = args.second_stage_motif_weight
+    summary["second_stage_geometry_weight"] = args.second_stage_geometry_weight
+    summary["second_stage_template_weight"] = args.second_stage_template_weight
     summary["seed"] = args.seed
     summary["subset_path"] = str(subset_path)
     summary["report_path"] = str(report_path)
@@ -118,11 +132,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--candidate-sample-count", type=int, default=12)
     parser.add_argument("--second-stage-top-k", type=int, default=4)
     parser.add_argument("--plddt-gate-threshold", type=float, default=85.0)
-    parser.add_argument("--second-stage-esm-weight", type=float, default=0.2)
-    parser.add_argument("--second-stage-motif-weight", type=float, default=0.2)
-    parser.add_argument("--second-stage-geometry-weight", type=float, default=0.6)
+    parser.add_argument(
+        "--second-stage-esm-weight",
+        type=float,
+        default=float(os.environ.get("TINKER_SECOND_STAGE_ESM_WEIGHT", "0.2")),
+    )
+    parser.add_argument(
+        "--second-stage-motif-weight",
+        type=float,
+        default=float(os.environ.get("TINKER_SECOND_STAGE_MOTIF_WEIGHT", "0.2")),
+    )
+    parser.add_argument(
+        "--second-stage-geometry-weight",
+        type=float,
+        default=float(os.environ.get("TINKER_SECOND_STAGE_GEOMETRY_WEIGHT", "0.6")),
+    )
+    parser.add_argument(
+        "--second-stage-template-weight",
+        type=float,
+        default=float(os.environ.get("TINKER_SECOND_STAGE_TEMPLATE_WEIGHT", "0.15")),
+    )
     parser.add_argument("--init-state-path")
     parser.add_argument("--eval-only", action="store_true")
+    parser.add_argument("--resume", action="store_true")
     parser.add_argument("--capture-candidate-audit", action="store_true")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--preserve-order", action="store_true")
@@ -209,6 +241,26 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
             and bool(record["family_evaluation"]["has_family_serine_motif"])
         )
     ]
+    stability_dominant_steps = [
+        record["step"]
+        for record in records
+        if (
+            record["family_evaluation"] is not None
+            and int(record["sequence_quality"]["motif_count"]) == 1
+            and bool(record["reward_components"].get("esm_gate_pass"))
+            and not bool(record["family_evaluation"]["catalytic_geometry"]["passes"])
+        )
+    ]
+    geometry_dominant_steps = [
+        record["step"]
+        for record in records
+        if (
+            record["family_evaluation"] is not None
+            and int(record["sequence_quality"]["motif_count"]) == 1
+            and bool(record["family_evaluation"]["catalytic_geometry"]["passes"])
+            and not bool(record["reward_components"].get("esm_gate_pass"))
+        )
+    ]
 
     return {
         "checkpoint_path": report["checkpoint_path"],
@@ -239,6 +291,8 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
         ),
         "functional_bridge_rate": safe_rate(len(functional_bridge_steps), len(records)),
         "family_faithful_bridge_rate": safe_rate(len(family_faithful_bridge_steps), len(records)),
+        "stability_dominant_rate": safe_rate(len(stability_dominant_steps), len(records)),
+        "geometry_dominant_rate": safe_rate(len(geometry_dominant_steps), len(records)),
         "core_screen_rate": safe_rate(
             sum(bool(evaluation["passes_core_screen"]) for evaluation in family_evaluations),
             len(records),
@@ -262,6 +316,8 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
             for record in records
             if record["family_evaluation"] is not None and record["family_evaluation"]["catalytic_geometry"]["passes"]
         ],
+        "stability_dominant_steps": stability_dominant_steps,
+        "geometry_dominant_steps": geometry_dominant_steps,
         "functional_bridge_steps": functional_bridge_steps,
         "family_faithful_bridge_steps": family_faithful_bridge_steps,
     }

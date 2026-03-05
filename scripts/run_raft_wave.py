@@ -15,9 +15,12 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+MAX_SAFE_PARALLEL_JOBS = 4
+
 
 def main() -> None:
     args = parse_args()
+    validate_args(args)
     python_executable = resolve_python_executable()
     launcher = ROOT / "scripts" / "launch_detached_job.py"
     run_ablation = ROOT / "scripts" / "run_ablation.py"
@@ -144,7 +147,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default=str(ROOT / "reports" / "raft"))
     parser.add_argument("--model", default="moonshotai/Kimi-K2.5")
     parser.add_argument("--total-prompt-count", type=int, default=200)
-    parser.add_argument("--shard-count", type=int, default=8)
+    parser.add_argument("--shard-count", type=int, default=MAX_SAFE_PARALLEL_JOBS)
     parser.add_argument("--candidate-sample-count", type=int, default=256)
     parser.add_argument("--second-stage-top-k", type=int, default=16)
     parser.add_argument("--plddt-gate-threshold", type=float, default=85.0)
@@ -153,6 +156,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=37)
     parser.add_argument("--api-key")
     return parser.parse_args()
+
+
+def validate_args(args: argparse.Namespace) -> None:
+    if args.shard_count <= 0:
+        raise SystemExit("--shard-count must be positive")
+    if args.shard_count > MAX_SAFE_PARALLEL_JOBS:
+        raise SystemExit(
+            f"--shard-count={args.shard_count} exceeds the safety cap of {MAX_SAFE_PARALLEL_JOBS}. "
+            "Split into multiple waves instead."
+        )
 
 
 def build_env_overrides(args: argparse.Namespace) -> list[str]:

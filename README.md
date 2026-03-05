@@ -25,6 +25,10 @@ These rare candidates are referred to in the codebase and experiments as **unico
 
 This public repository is code-first.
 
+Sponsor-facing overview: [PROJECTBRIEF.md](/Users/svdr/tinker/PROJECTBRIEF.md).
+
+Detailed experiment notes live in [notes/LABNOTES.md](/Users/svdr/tinker/notes/LABNOTES.md).
+
 Large generated assets are intentionally excluded from version control:
 
 - downloaded UniProt-derived datasets

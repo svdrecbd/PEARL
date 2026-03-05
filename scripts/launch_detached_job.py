@@ -55,6 +55,8 @@ def main() -> None:
     metadata = {
         "job_name": args.job_name,
         "pid": process.pid,
+        "process_group_id": os.getpgid(process.pid),
+        "session_id": os.getsid(process.pid),
         "cwd": args.cwd,
         "command": command,
         "log_path": str(log_path) if log_path is not None else None,
@@ -123,8 +125,24 @@ def process_is_alive(pid: int) -> bool:
     except ProcessLookupError:
         return False
     except PermissionError:
-        return True
-    return True
+        return not process_is_zombie(pid)
+    return not process_is_zombie(pid)
+
+
+def process_is_zombie(pid: int) -> bool:
+    try:
+        completed = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(pid)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    state = completed.stdout.strip()
+    if not state:
+        return False
+    return "Z" in state
 
 
 if __name__ == "__main__":

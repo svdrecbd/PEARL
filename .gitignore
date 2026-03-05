@@ -14,12 +14,12 @@ __pycache__/
 .env.*
 
 # Local notes and scratch artifacts
-FORLATERUSE.md
+notes/FORLATERUSE.md
+.tinker_sampler_checkpoint_map.json
 
 # Generated experiment outputs
 reports/
 data/
-dry_run_lora_v1_report.json
 *.log
 *.tmp
 

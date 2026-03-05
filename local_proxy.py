@@ -11,15 +11,35 @@ from transformers import AutoModelForMaskedLM, AutoTokenizer, logging as transfo
 
 transformers_logging.set_verbosity_error()
 
-AA_PATTERN = re.compile(r"[ACDEFGHIKLMNPQRSTVWY]{20,}")
+MIN_EXTRACTABLE_SEQUENCE_LENGTH = 20
+AA_PATTERN = re.compile(rf"[ACDEFGHIKLMNPQRSTVWY]{{{MIN_EXTRACTABLE_SEQUENCE_LENGTH},}}")
 AMINO_ACIDS = set("ACDEFGHIKLMNPQRSTVWY")
 SEQUENCE_PREFIX = "SEQUENCE="
 ESM2_MODEL_NAME = os.environ.get("ESM2_MODEL_NAME", "facebook/esm2_t6_8M_UR50D")
 ESM2_BATCH_SIZE = max(1, int(os.environ.get("ESM2_BATCH_SIZE", "64")))
-MIN_SEQUENCE_LENGTH = max(20, int(os.environ.get("ESM2_MIN_SEQUENCE_LENGTH", "30")))
+MIN_SEQUENCE_LENGTH = max(MIN_EXTRACTABLE_SEQUENCE_LENGTH, int(os.environ.get("ESM2_MIN_SEQUENCE_LENGTH", "30")))
 ESM2_BACKEND = os.environ.get("ESM2_BACKEND", "torch").strip().lower() or "torch"
 ESM2_DEVICE = os.environ.get("ESM2_DEVICE", "").strip().lower()
 ESM2_SCORE_CACHE_SIZE = max(1, int(os.environ.get("ESM2_SCORE_CACHE_SIZE", "8192")))
+PSEUDO_PLDDT_CENTER_OFFSET = 2.5
+PSEUDO_PLDDT_LOGIT_SCALE = 4.0
+PSEUDO_PLDDT_LOGIT_CLAMP = 60.0
+PSEUDO_PLDDT_MAX_SCORE = 100.0
+
+
+def _inspection_result(
+    *,
+    sequence: str = "",
+    error: str | None,
+    formatting_xml_tag: bool = False,
+    invalid_alphabet: bool = False,
+) -> dict[str, object]:
+    return {
+        "sequence": sequence,
+        "error": error,
+        "formatting_xml_tag": formatting_xml_tag,
+        "invalid_alphabet": invalid_alphabet,
+    }
 
 
 def extract_amino_acid_sequence(text: str) -> str:
@@ -29,53 +49,23 @@ def extract_amino_acid_sequence(text: str) -> str:
 def inspect_raw_sequence_text(text: str) -> dict[str, object]:
     stripped = text.strip()
     if not stripped:
-        return {
-            "sequence": "",
-            "error": "empty_output",
-            "formatting_xml_tag": False,
-            "invalid_alphabet": False,
-        }
+        return _inspection_result(error="empty_output")
 
     if "<" in stripped or ">" in stripped:
-        return {
-            "sequence": "",
-            "error": "formatting_xml_tag",
-            "formatting_xml_tag": True,
-            "invalid_alphabet": False,
-        }
+        return _inspection_result(error="formatting_xml_tag", formatting_xml_tag=True)
 
     compact = "".join(stripped.split()).upper()
     if not compact:
-        return {
-            "sequence": "",
-            "error": "empty_output",
-            "formatting_xml_tag": False,
-            "invalid_alphabet": False,
-        }
+        return _inspection_result(error="empty_output")
 
     candidate = compact.split(SEQUENCE_PREFIX, 1)[1] if SEQUENCE_PREFIX in compact else compact
     if not candidate:
-        return {
-            "sequence": "",
-            "error": "empty_output",
-            "formatting_xml_tag": False,
-            "invalid_alphabet": False,
-        }
+        return _inspection_result(error="empty_output")
 
     if any(char not in AMINO_ACIDS for char in candidate):
-        return {
-            "sequence": "",
-            "error": "invalid_alphabet",
-            "formatting_xml_tag": False,
-            "invalid_alphabet": True,
-        }
+        return _inspection_result(error="invalid_alphabet", invalid_alphabet=True)
 
-    return {
-        "sequence": candidate,
-        "error": None,
-        "formatting_xml_tag": False,
-        "invalid_alphabet": False,
-    }
+    return _inspection_result(sequence=candidate, error=None)
 
 
 def get_esm2_plddt_score(sequence: str) -> float:
@@ -83,6 +73,25 @@ def get_esm2_plddt_score(sequence: str) -> float:
     if len(candidate) < MIN_SEQUENCE_LENGTH:
         return 0.0
     return _score_normalized_sequence(candidate)
+
+
+def prewarm_esm2_model() -> dict[str, str | bool]:
+    backend = _resolve_backend()
+    if backend != "torch":
+        return {
+            "warmed": False,
+            "backend": backend,
+            "device": "",
+            "model_name": ESM2_MODEL_NAME,
+        }
+
+    _, _, device = _get_esm2()
+    return {
+        "warmed": True,
+        "backend": backend,
+        "device": str(device),
+        "model_name": ESM2_MODEL_NAME,
+    }
 
 
 @lru_cache(maxsize=ESM2_SCORE_CACHE_SIZE)
@@ -150,8 +159,9 @@ def _get_device() -> torch.device:
 
 def _pseudo_plddt_from_log_prob(mean_log_prob: float) -> float:
     # Convert ESM-2 pseudo-log-likelihood to a bounded 0-100 proxy score.
-    centered = max(-60.0, min(60.0, 4.0 * (mean_log_prob + 2.5)))
-    return 100.0 / (1.0 + math.exp(-centered))
+    centered_logit = PSEUDO_PLDDT_LOGIT_SCALE * (mean_log_prob + PSEUDO_PLDDT_CENTER_OFFSET)
+    centered_logit = max(-PSEUDO_PLDDT_LOGIT_CLAMP, min(PSEUDO_PLDDT_LOGIT_CLAMP, centered_logit))
+    return PSEUDO_PLDDT_MAX_SCORE / (1.0 + math.exp(-centered_logit))
 
 
 def _resolve_backend() -> str:
