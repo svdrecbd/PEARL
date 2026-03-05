@@ -139,6 +139,30 @@ A sponsor should not back this if they require:
 2. deterministic month-one production rates
 3. zero scientific risk
 
+## Sponsor Readiness Gate
+
+This gate separates informal interest from a hard sponsorship ask.
+
+### Minimum gate for a hard ask
+
+1. `p12` fixed-suite durability floor: `tier2_hits_by_seed >= [1,1,1]` on locked seeds.
+2. `p24` fixed-suite support: at least `2/3` seeds with non-zero Tier-2 (target state is `[1,1,1]`).
+3. Basin pressure discipline: stability-dominant and geometry-dominant rates do not worsen versus locked baseline.
+4. Structural sanity on shortlist: top `10-20` Tier-2 candidates pass a stronger structure-level triage.
+5. Reproducibility check: rerun with identical config shows comparable seed vectors and coverage.
+
+### Outreach policy
+
+- Soft outreach can happen before the gate is fully passed, framed as high-risk computational R&D.
+- Hard sponsorship asks should only happen after all minimum gate conditions are met.
+
+### Current status against gate
+
+- `p12`: not yet at `[1,1,1]` on the active branch.
+- `p24`: latest completed vector is `[0,0,1]` (below threshold).
+- `p48`: current cycle still in progress.
+- Decision: remain in robustness/search mode; do not claim durable production yet.
+
 ## Sponsor Ask
 
 Requested support:
