@@ -74,6 +74,8 @@ def main() -> None:
                     "source_prompt": hit["prompt"],
                     "source_blueprint": hit["blueprint_tag"],
                     "source_parent_sequence": hit["sequence"],
+                    "source_parent_run": hit.get("source_run"),
+                    "source_parent_audit_path": hit.get("source_audit_path"),
                     "source_parent_esm_score": hit["raw_esm_score"],
                     "source_parent_best_gap_error": hit["best_gap_error"],
                     "source_mutation_count": survivor["mutation_count"],
@@ -147,6 +149,9 @@ def load_kimi_native_hits(
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for record in audit["records"]:
+        selection_metadata = record.get("selection_metadata") or {}
+        source_run = str(record.get("source_run") or selection_metadata.get("source_run") or "").strip()
+        source_audit_path = str(record.get("source_audit_path") or "").strip()
         blueprint = parse_blueprint(str(record.get("sequence_prompt") or ""))
         for candidate in record["candidates"]:
             if selected_only and not bool(candidate.get("selected")):
@@ -168,6 +173,8 @@ def load_kimi_native_hits(
                     "step": int(record["step"]),
                     "prompt": str(record["prompt"]),
                     "sequence": sequence,
+                    "source_run": source_run or None,
+                    "source_audit_path": source_audit_path or None,
                     "raw_esm_score": float(candidate.get("raw_esm_score") or 0.0),
                     "best_gap_error": candidate.get("best_gap_error"),
                     "blueprint": effective_blueprint,

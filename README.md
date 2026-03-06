@@ -6,7 +6,7 @@ This repository explores computational sequence design for PETase-family protein
 
 ## Start Here
 
-- Sponsor-facing summary: [`PROJECTBRIEF.md`](PROJECTBRIEF.md)
+- Sponsor-facing summary: [`WHITEPAPER.md`](WHITEPAPER.md)
 - Full experimental history and decisions: [`notes/LABNOTES.md`](notes/LABNOTES.md)
 
 ## Current State (March 2026)
@@ -34,7 +34,10 @@ This repository explores computational sequence design for PETase-family protein
 - `local_proxy.py`: ESM-2 pseudo-pLDDT scorer (torch backend)
 - `scripts/run_ablation.py`: reproducible single-run launcher over prompt subsets
 - `scripts/run_robustness_suite.py`: frozen `12/24/48` suite + durability gate summary
+- `scripts/run_backward_lane.py`: precompute miss-bank + repair-pool + retrain-readiness while other shards are still running
 - `scripts/check_retrain_readiness.py`: automatic retrain-go/no-go checks on mined pools
+- `scripts/check_repair_survivor_readiness.py`: retrain-go/no-go checks after adding repair survivors to a base run pool
+- `scripts/build_diversity_capped_repair_pool.py`: caps repair pools by source run + sequence identity cluster before repair generation
 - `scripts/run_raft_wave.py`: detached mining waves with a safety cap on parallel workers
 - `scripts/launch_detached_job.py`: robust detached process launcher with metadata/logs
 

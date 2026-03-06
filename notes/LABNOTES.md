@@ -1083,3 +1083,94 @@ Interpretation:
 - this was a sideways move on the core target
 - the branch remains in **search/repair mode**
 - it is still not freeze-worthy as the canonical reference policy
+
+## March 5, 2026 Wave3 Diversity + Repair20 Update
+
+This section records the readiness hardening pass and the resulting `repair20` warm-start.
+
+### What changed in code/workflow
+
+1. Diversity-capped repair pool builder:
+   - added [build_diversity_capped_repair_pool.py](/Users/svdr/tinker/scripts/build_diversity_capped_repair_pool.py)
+   - supports caps by source run and identity cluster to avoid gradient domination by near-duplicates.
+2. Repair lineage propagation:
+   - updated [build_kimi_native_repair_dataset.py](/Users/svdr/tinker/scripts/build_kimi_native_repair_dataset.py)
+   - survivors now carry parent-source lineage fields (`source_parent_run`, `source_parent_audit_path`).
+3. Readiness attribution fix:
+   - added [check_repair_survivor_readiness.py](/Users/svdr/tinker/scripts/check_repair_survivor_readiness.py)
+   - source-share can now be computed from embedded lineage (or parent pool mapping) instead of collapsing survivors into one synthetic source.
+
+### Wave3 repair pool and repair run
+
+Built a multirun pool from `12` repair18 robustness audits:
+
+- merged pool:
+  - [/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_pool_multirun.jsonl](/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_pool_multirun.jsonl)
+- merged summary:
+  - [/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_pool_multirun_summary.json](/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_pool_multirun_summary.json)
+
+Pool composition:
+
+- `59` total (`8` tier2 + `51` geometry-dominant)
+
+Diversity capping output:
+
+- capped pool:
+  - [/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_pool_diversity_capped.jsonl](/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_pool_diversity_capped.jsonl)
+- capped audit:
+  - [/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_pool_diversity_capped_audit.json](/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_pool_diversity_capped_audit.json)
+- selected after capping: `34`
+
+Repair wave output:
+
+- summary:
+  - [/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_summary_wave3_diversity.json](/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_summary_wave3_diversity.json)
+- survivors:
+  - [/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_survivors_wave3_diversity.jsonl](/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_survivors_wave3_diversity.jsonl)
+- lineage-enriched survivors:
+  - [/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_survivors_wave3_diversity_lineage.jsonl](/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_survivors_wave3_diversity_lineage.jsonl)
+
+Wave3 repair result:
+
+- `evaluated_variant_count = 1370`
+- `survivor_count = 32`
+
+### Retrain readiness (lineage-aware)
+
+Readiness artifacts:
+
+- [/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_wave3_diversity_readiness_lineage_embedded.json](/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18-p12p24p48-wave3/repair_wave3_diversity_readiness_lineage_embedded.json)
+
+Gate result:
+
+- `ready_for_retrain = true`
+- checks: `7 / 7 passed`
+
+Key counts:
+
+- `deduped_tier2_count = 40`
+- `deduped_tier1_proxy_count = 34`
+- `cluster_count = 8`
+- `largest_cluster_share = 0.125`
+- `max_source_share = 0.25`
+- `train_tier2_count = 32`
+- `train_tier1_proxy_count = 26`
+
+### Repair20 warm-start
+
+Started one-epoch micro-SFT from repair18 using the `32` lineage-enriched wave3 survivors.
+
+- summary:
+  - [/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-repair20-from-wave3-lineage-lr5e7-ep1/summary.json](/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-repair20-from-wave3-lineage-lr5e7-ep1/summary.json)
+- full report:
+  - [/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-repair20-from-wave3-lineage-lr5e7-ep1/report.json](/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-repair20-from-wave3-lineage-lr5e7-ep1/report.json)
+
+Checkpoint produced:
+
+- `tinker://6c7881f9-0330-5a3b-8acf-f2a44a7cbf70:train:0/weights/pearl-micro-sft-repair20-from-wave3-lineage-lr5e7-ep1`
+
+Interpretation:
+
+- readiness hardline is now actually met (not just near-miss),
+- lineage/source-share accounting is fixed,
+- branch is ready for post-retrain durability confirmation (`12 -> 24 -> 48`, fixed seeds).
