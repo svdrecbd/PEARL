@@ -6,6 +6,7 @@ import hashlib
 import json
 import random
 import re
+import zlib
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -253,6 +254,8 @@ def run_ingest(
         "json_parse_fail": 0,
         "salvaged": 0,
         "salvage_failed": 0,
+        "source_read_errors": 0,
+        "source_read_error_files": [],
         "source_files": [str(path) for path in raw_files],
         "generated_at_utc": utc_iso(),
     }
@@ -260,49 +263,79 @@ def run_ingest(
     with jsonl_writer(records_path) as records_writer, jsonl_writer(rejects_path) as rejects_writer:
         for file_path in raw_files:
             source_file_label = source_file_label_for_path(file_path)
-            for line_number, raw_line in enumerate(iter_lines(file_path), start=1):
-                if line_limit is not None and int(stats["lines_seen"]) >= line_limit:
-                    break
-                stats["lines_seen"] = int(stats["lines_seen"]) + 1
-                parsed, parse_ok, salvaged, error_label = parse_or_salvage(raw_line)
-                if parsed is None:
-                    stats["json_parse_fail"] = int(stats["json_parse_fail"]) + 1
-                    stats["salvage_failed"] = int(stats["salvage_failed"]) + 1
-                    reject_record = {
-                        "schema_version": schema_version,
+            line_number = 0
+            try:
+                for line_number, raw_line in enumerate(iter_lines(file_path), start=1):
+                    if line_limit is not None and int(stats["lines_seen"]) >= line_limit:
+                        break
+                    stats["lines_seen"] = int(stats["lines_seen"]) + 1
+                    parsed, parse_ok, salvaged, error_label = parse_or_salvage(raw_line)
+                    if parsed is None:
+                        stats["json_parse_fail"] = int(stats["json_parse_fail"]) + 1
+                        stats["salvage_failed"] = int(stats["salvage_failed"]) + 1
+                        reject_record = {
+                            "schema_version": schema_version,
+                            "run_name": guess_run_name(file_path, {}),
+                            "source_file": source_file_label,
+                            "source_line": line_number,
+                            "reject_reasons": ["json_parse_error", "salvage_failed"],
+                            "parse_ok": False,
+                            "salvaged": False,
+                            "ingested_at_utc": utc_iso(),
+                            "error": error_label,
+                            "raw_line": raw_line.rstrip("\n"),
+                        }
+                        rejects_writer(reject_record)
+                        stats["rejects_written"] = int(stats["rejects_written"]) + 1
+                        continue
+
+                    if parse_ok:
+                        stats["json_parse_success"] = int(stats["json_parse_success"]) + 1
+                    else:
+                        stats["json_parse_fail"] = int(stats["json_parse_fail"]) + 1
+                    if salvaged:
+                        stats["salvaged"] = int(stats["salvaged"]) + 1
+
+                    record = build_ingest_record(
+                        parsed=parsed,
+                        file_path=file_path,
+                        source_file_label=source_file_label,
+                        source_line=line_number,
+                        parse_ok=parse_ok,
+                        salvaged=salvaged,
+                        schema_version=schema_version,
+                        ruleset_version=ruleset_version,
+                    )
+                    records_writer(record)
+                    stats["records_written"] = int(stats["records_written"]) + 1
+            except (EOFError, OSError, UnicodeDecodeError, zlib.error) as exc:
+                stats["source_read_errors"] = int(stats["source_read_errors"]) + 1
+                read_error_files = stats.get("source_read_error_files")
+                if not isinstance(read_error_files, list):
+                    read_error_files = []
+                    stats["source_read_error_files"] = read_error_files
+                read_error_files.append(
+                    {
                         "run_name": guess_run_name(file_path, {}),
                         "source_file": source_file_label,
-                        "source_line": line_number,
-                        "reject_reasons": ["json_parse_error", "salvage_failed"],
-                        "parse_ok": False,
-                        "salvaged": False,
-                        "ingested_at_utc": utc_iso(),
-                        "error": error_label,
-                        "raw_line": raw_line.rstrip("\n"),
+                        "source_line": max(1, line_number),
+                        "error": f"{type(exc).__name__}: {exc}",
                     }
-                    rejects_writer(reject_record)
-                    stats["rejects_written"] = int(stats["rejects_written"]) + 1
-                    continue
-
-                if parse_ok:
-                    stats["json_parse_success"] = int(stats["json_parse_success"]) + 1
-                else:
-                    stats["json_parse_fail"] = int(stats["json_parse_fail"]) + 1
-                if salvaged:
-                    stats["salvaged"] = int(stats["salvaged"]) + 1
-
-                record = build_ingest_record(
-                    parsed=parsed,
-                    file_path=file_path,
-                    source_file_label=source_file_label,
-                    source_line=line_number,
-                    parse_ok=parse_ok,
-                    salvaged=salvaged,
-                    schema_version=schema_version,
-                    ruleset_version=ruleset_version,
                 )
-                records_writer(record)
-                stats["records_written"] = int(stats["records_written"]) + 1
+                reject_record = {
+                    "schema_version": schema_version,
+                    "run_name": guess_run_name(file_path, {}),
+                    "source_file": source_file_label,
+                    "source_line": max(1, line_number),
+                    "reject_reasons": ["json_parse_error", "salvage_failed"],
+                    "parse_ok": False,
+                    "salvaged": False,
+                    "ingested_at_utc": utc_iso(),
+                    "error": f"source_read_error: {type(exc).__name__}: {exc}",
+                    "raw_line": "",
+                }
+                rejects_writer(reject_record)
+                stats["rejects_written"] = int(stats["rejects_written"]) + 1
             if line_limit is not None and int(stats["lines_seen"]) >= line_limit:
                 break
 

@@ -1318,3 +1318,102 @@ python /Users/svdr/tinker/scripts/prefilter_local.py all \
 ```
 
 This produces staged outputs plus `summary.json` and scheduler-ready handoff JSONLs for HPC.
+
+### Prefilter execution snapshot (March 8, 2026)
+
+The full local prefilter pipeline was executed against the assembled raw-generation corpus:
+
+- command:
+  - `python /Users/svdr/tinker/scripts/prefilter_local.py all --inputs /Users/svdr/tinker/reports/raw_generation --out-root /Users/svdr/tinker/reports/prefilter/topoff_1m_run`
+- output root:
+  - [/Users/svdr/tinker/reports/prefilter/topoff_1m_run](/Users/svdr/tinker/reports/prefilter/topoff_1m_run)
+- summary artifact:
+  - [/Users/svdr/tinker/reports/prefilter/topoff_1m_run/summary.json](/Users/svdr/tinker/reports/prefilter/topoff_1m_run/summary.json)
+- handoff manifest:
+  - [/Users/svdr/tinker/reports/prefilter/topoff_1m_run/handoff/manifest.json](/Users/svdr/tinker/reports/prefilter/topoff_1m_run/handoff/manifest.json)
+
+Observed stage counts:
+
+- ingest:
+  - `raw_file_count = 92`
+  - `lines_seen = 1,010,348`
+  - `records_written = 1,010,346`
+  - `json_parse_success = 1,010,213`
+  - `json_parse_fail = 135`
+  - `salvaged = 133`
+  - `source_read_errors = 30` (truncated/corrupt gzip read failures)
+- hard-filter:
+  - `pass_count = 947,551`
+  - `reject_count = 62,795`
+- exact dedup:
+  - `unique_count = 763,343`
+  - `dup_count = 184,208`
+- near dedup:
+  - `selected_count = 761,987`
+  - `cluster_members_count = 1,356`
+- priority:
+  - `tier_a_count = 761,029`
+  - `tier_b_count = 958`
+  - `tier_c_count = 0`
+- handoff:
+  - `hpc_ready_A = 761,029`
+  - `hpc_ready_B = 958`
+  - `hpc_explore_C_sample = 0`
+
+Operational note:
+
+- `prefilter_local.py` ingest was hardened to tolerate compressed-stream failures (`EOFError`, `zlib.error`, decode errors) on a per-file basis, record them in ingest stats/rejects, and continue rather than aborting the full run.
+
+### HPC handoff sharding + transfer package snapshot (March 8, 2026)
+
+To make SGE-array submission deterministic, the handoff outputs were split into fixed-size shards and bundled with integrity metadata.
+
+- sharded package root:
+  - [/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538](/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538)
+- transfer bundle:
+  - [/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538_bundle.tar.gz](/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538_bundle.tar.gz)
+- bundle checksum:
+  - [/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538_bundle.tar.gz.sha256](/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538_bundle.tar.gz.sha256)
+- shard manifest + checksums:
+  - [/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538/meta/shard_manifest.json](/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538/meta/shard_manifest.json)
+  - [/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538/meta/SHA256SUMS.txt](/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538/meta/SHA256SUMS.txt)
+  - [/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538/meta/SHA256_VERIFY.txt](/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538/meta/SHA256_VERIFY.txt)
+- SGE hint file:
+  - [/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538/meta/sge_array_hint.env](/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538/meta/sge_array_hint.env)
+
+Sharding policy and counts:
+
+- `A`: `10,000` records per shard -> `77` shards (`761,029` total lines)
+- `B`: `1,000` records per shard -> `1` shard (`958` total lines)
+- recommended array range for `A`: `1-77`
+
+### Sequence-shard HPC scorer path added (March 8, 2026)
+
+The prior SGE templates were prompt-driven (`run_ablation.py`) and did not directly consume `hpc_ready_A/B` sequence records.  
+To support prefilter handoff scoring directly on Wynton, a sequence-shard evaluator path was added.
+
+- sequence scorer:
+  - [/Users/svdr/tinker/scripts/run_sequence_shard_eval.py](/Users/svdr/tinker/scripts/run_sequence_shard_eval.py)
+- SGE array submit template:
+  - [/Users/svdr/tinker/hpc/submit_prefilter_eval_array.sge.sh](/Users/svdr/tinker/hpc/submit_prefilter_eval_array.sge.sh)
+- docs:
+  - [/Users/svdr/tinker/hpc/README.md](/Users/svdr/tinker/hpc/README.md)
+
+Capabilities:
+
+1. Reads one `hpc_ready_*.jsonl` shard,
+2. runs ESM proxy + PETase family/geometry evaluation per sequence,
+3. writes:
+   - `scored_candidates.jsonl`
+   - `functional_bridges.jsonl`
+   - `rejects.jsonl`
+   - `summary.json`
+
+Smoke validation on real shard data:
+
+- command used:
+  - `ESM2_DEVICE=cpu python /Users/svdr/tinker/scripts/run_sequence_shard_eval.py --input-jsonl /Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538/shards/A/hpc_ready_A_shard_0001.jsonl --output-dir /Users/svdr/tinker/reports/hpc_sequence_eval_smoke --reference-records-path /Users/svdr/tinker/data/petase_family_expanded/petase_records.jsonl --name smoke-a0001 --limit 3`
+- result:
+  - evaluated `3/3` records
+  - output artifacts written under:
+    - [/Users/svdr/tinker/reports/hpc_sequence_eval_smoke/smoke-a0001](/Users/svdr/tinker/reports/hpc_sequence_eval_smoke/smoke-a0001)

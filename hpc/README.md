@@ -7,6 +7,7 @@ These are starter templates for running PEARL workloads on Wynton with Apptainer
 - `Apptainer.def`: container build recipe (NVIDIA PyTorch base image)
 - `submit_ablation.sge.sh`: single-run evaluation/ablation job
 - `submit_raft_array.sge.sh`: array-job pattern for shard-based RAFT-style mining
+- `submit_prefilter_eval_array.sge.sh`: array-job pattern for scoring prefiltered sequence shards (`hpc_ready_A/B`)
 
 ## Design assumptions
 
@@ -47,8 +48,35 @@ qsub \
   hpc/submit_raft_array.sge.sh
 ```
 
+## Submit prefilter sequence-shard array (example)
+
+Use this for the local-prefilter handoff shards (`hpc_ready_A_shard_*.jsonl`) where each row already contains a candidate sequence.
+
+```bash
+mkdir -p logs/sge
+qsub \
+  -t 1-77 \
+  -v SHARDS_DIR=/wynton/home/$USER/tinker/transfers/topoff_1m_run_20260307-232538/shards/A \
+  -v SHARD_GLOB='hpc_ready_A_shard_*.jsonl' \
+  -v WAVE_NAME=topoff1m-a \
+  -v REFERENCE_RECORDS_PATH=/wynton/home/$USER/tinker/data/petase_family_expanded/petase_records.jsonl \
+  hpc/submit_prefilter_eval_array.sge.sh
+```
+
+Optional smoke-run cap:
+
+```bash
+qsub \
+  -t 1-2 \
+  -v SHARDS_DIR=/wynton/home/$USER/tinker/transfers/topoff_1m_run_20260307-232538/shards/A \
+  -v SHARD_GLOB='hpc_ready_A_shard_*.jsonl' \
+  -v WAVE_NAME=topoff1m-a-smoke \
+  -v LINE_LIMIT=250 \
+  hpc/submit_prefilter_eval_array.sge.sh
+```
+
 ## Notes
 
-1. Create prompt shards before launching the array job.
+1. Create the correct shard type before launching array jobs (`prompt` shards for RAFT arrays, `hpc_ready_*` sequence shards for prefilter-eval arrays).
 2. Ensure `logs/sge` exists before submit (`#$ -o` uses that path).
 3. If your cluster uses additional GPU selectors, add them to `#$ -l ...`.
