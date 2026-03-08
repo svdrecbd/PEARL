@@ -1,0 +1,36 @@
+Bootstrap: docker
+From: nvcr.io/nvidia/pytorch:23.10-py3
+
+%labels
+    Maintainer svdr
+    Description PEARL runtime for Wynton GPU jobs
+
+%environment
+    export PYTHONDONTWRITEBYTECODE=1
+    export PYTHONUNBUFFERED=1
+    export TOKENIZERS_PARALLELISM=false
+    export HF_HUB_DISABLE_TELEMETRY=1
+
+%post
+    set -eux
+
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git \
+        rsync
+    rm -rf /var/lib/apt/lists/*
+
+    python -m pip install --upgrade pip setuptools wheel
+
+    # Torch comes from the NVIDIA base image.
+    # Keep this list aligned with repository requirements except torch.
+    python -m pip install \
+        tinker==0.14.0 \
+        transformers==5.2.0 \
+        numpy==2.4.2 \
+        safetensors==0.7.0 \
+        sentencepiece==0.2.1
+
+%runscript
+    exec python "$@"

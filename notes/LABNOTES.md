@@ -1174,3 +1174,132 @@ Interpretation:
 - readiness hardline is now actually met (not just near-miss),
 - lineage/source-share accounting is fixed,
 - branch is ready for post-retrain durability confirmation (`12 -> 24 -> 48`, fixed seeds).
+
+## March 7-8, 2026 Pivot Update: Wynton + Budget Burn + Local Prefilter
+
+This section captures the major operational pivot away from local full-eval loops and into:
+
+1. budget-capped raw generation now,
+2. heavy scoring/optimization on Wynton GPU later,
+3. new local prefiltering so HPC time is not wasted on obvious junk.
+
+### Strategic pivot and budget policy
+
+- Wynton HPC was designated as the target runtime for heavy ESM/geometry and training loops.
+- Local machine was repurposed for high-volume Tinker raw generation and preprocessing only.
+- Spend policy changed to:
+  - burn approximately `USD 1,000` for raw candidate stockpile,
+  - allow controlled overrun to hit practical round-number data targets,
+  - keep the majority of remaining grant for cluster-side LoRA/RAFT work.
+
+Planning artifact:
+
+- [/Users/svdr/tinker/notes/WYNTON_PIVOT_CHECKLIST.md](/Users/svdr/tinker/notes/WYNTON_PIVOT_CHECKLIST.md)
+
+### Raw-generation campaign summary
+
+Main cohorts launched:
+
+1. `kimi25-raw-10x100-20260307-002408-r01..r10`
+2. `kimi25-raw-plus10x50-20260307-012712-r11..r20`
+3. top-off cohort for 1M push:
+   - `kimi25-topoff1m-20260308-010724-r01..r20`
+   - per-run cap `USD 21`, `samples_per_request=64`, `compress=false`
+
+As of `2026-03-08T05:01:36Z`:
+
+- top-off cohort (`20` runs):
+  - spend: `USD 281.177182`
+  - raw candidates: `229,696`
+  - output tokens: `61,721,314`
+  - requests: `3,589`
+  - runner health snapshot: `20 active`, `0 stalled`, `0 capped`
+- all raw-generation progress files combined (`44` runs):
+  - spend: `USD 1,292.923572`
+  - raw candidates: `1,053,033`
+  - output tokens: `283,933,432`
+
+### Data-integrity incident and recovery
+
+A corruption/recovery pass was run on the initial 20-run campaign outputs.
+
+Artifact:
+
+- [/Users/svdr/tinker/reports/raw_generation/recovery_audit_20260307/damage_report.json](/Users/svdr/tinker/reports/raw_generation/recovery_audit_20260307/damage_report.json)
+
+Reported totals (`generated_at_utc = 2026-03-07T17:17:37Z`):
+
+- `expected_candidates = 498,944`
+- `recovered_candidates = 494,190`
+- `damage_candidates = 4,754`
+- `recovery_rate = 0.99047188`
+- `aggregate_json_parse_or_schema_errors_seen = 30`
+
+Interpretation:
+
+- the majority of data survived,
+- corruption pressure was real enough to justify hardened supervision and salvage-aware ingest.
+
+### Supervision hardening for long local runs
+
+The watchdog path was hardened to reduce bad restarts and preserve run semantics:
+
+- [/Users/svdr/tinker/reports/raw_generation/watchdog_supervisor.py](/Users/svdr/tinker/reports/raw_generation/watchdog_supervisor.py)
+
+Key operational hardening points:
+
+1. run-pattern override via `WATCHDOG_RUN_PATTERNS`.
+2. dynamic stale thresholds tied to observed request latency (`STALE_LATENCY_MULTIPLIER`) with minimum floors.
+3. restart command preserves key run config flags (`compress`, max-* limits, budget flags).
+4. avoids unnecessary restart behavior when runs are already complete/capped.
+5. integrated with local `caffeinate` use during overnight generation.
+
+### Local prefilter suite implemented (pre-HPC triage)
+
+To avoid burning Wynton cycles on obvious failures, a local staged prefilter pipeline was implemented:
+
+- core pipeline:
+  - [/Users/svdr/tinker/scripts/prefilter_local.py](/Users/svdr/tinker/scripts/prefilter_local.py)
+- rules config:
+  - [/Users/svdr/tinker/configs/prefilter/local_prefilter_v1.yaml](/Users/svdr/tinker/configs/prefilter/local_prefilter_v1.yaml)
+- run-to-run uniqueness comparator:
+  - [/Users/svdr/tinker/scripts/snapshot_prefilter_uniqueness.py](/Users/svdr/tinker/scripts/snapshot_prefilter_uniqueness.py)
+- fixture + regression smoke:
+  - [/Users/svdr/tinker/benchmarks/prefilter_smoke_fixture/raw_samples_fixture.jsonl](/Users/svdr/tinker/benchmarks/prefilter_smoke_fixture/raw_samples_fixture.jsonl)
+  - [/Users/svdr/tinker/scripts/check_prefilter_smoke.py](/Users/svdr/tinker/scripts/check_prefilter_smoke.py)
+
+Pipeline stages:
+
+1. `ingest` (parse + salvage),
+2. `canonicalize`,
+3. `hard-filter`,
+4. `exact-dedup`,
+5. `near-dedup`,
+6. `priority`,
+7. `handoff`.
+
+Validation status:
+
+- `check_prefilter_smoke.py` passed.
+- production sanity run on `5,000` real records passed end-to-end:
+  - hard-filter pass/reject: `4520 / 480`
+  - exact dedup unique/dup: `3766 / 754`
+  - near-dedup selected/members: `3762 / 4`
+  - handoff ready counts: `A=3757`, `B=5`
+
+Important nuance:
+
+- with no novelty reference set, priority naturally collapses toward mostly `A` tier.
+- meaningful `A/B/C` stratification requires providing historical reference inputs to `--reference-jsonl`.
+
+### Trigger command at 1M milestone
+
+When the raw-generation target is reached and writes are stable/paused, run:
+
+```bash
+python /Users/svdr/tinker/scripts/prefilter_local.py all \
+  --inputs /Users/svdr/tinker/reports/raw_generation \
+  --out-root /Users/svdr/tinker/reports/prefilter/topoff_1m_run
+```
+
+This produces staged outputs plus `summary.json` and scheduler-ready handoff JSONLs for HPC.
