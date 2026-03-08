@@ -10,6 +10,21 @@ This document is meant to do three jobs:
 
 This is a living document. It should be updated whenever we change the search regime, reward/eval definition, or operational workflow.
 
+## Latest Canonical Status (as of March 8, 2026)
+
+- canonical reference policy:
+  - `tinker://7a5aeb3f-0652-52d1-849d-9916dfb43c7c:train:0/weights/kimi25-micro-sft-top9-plus-doping29-cont-lr5e7-ep1`
+- newest unconfirmed branch:
+  - `tinker://6c7881f9-0330-5a3b-8acf-f2a44a7cbf70:train:0/weights/pearl-micro-sft-repair20-from-wave3-lineage-lr5e7-ep1`
+- current phase:
+  - raw-generation stockpile + local prefilter + Wynton-side heavy scoring / retrain
+- next required gate:
+  - repair20 durability confirmation at `12 -> 24 -> 48` prompts with fixed seeds
+- currently ruled-out paths:
+  - resumed PPO
+  - broad SFT mixing without strict lineage/diversity controls
+  - AlphaFold-scale downstream triage
+
 ## Project Goal
 
 Generate PETase/cutinase-like protein candidates that satisfy all of the following:
@@ -442,9 +457,9 @@ Artifacts:
 
 - [probe_mlx_esm_backend.py](/Users/svdr/tinker/scripts/probe_mlx_esm_backend.py)
 
-## Current State
+## State Snapshot (after Phase 8, before March 3, 2026)
 
-Best current checkpoint for bridge preservation:
+Best checkpoint for bridge preservation at this snapshot:
 
 - `tinker://e2872501-ad4f-5d06-bbab-9b8255839cc1:train:0/weights/kimi25-micro-sft-top9-unicorn-only-lr1e6-ep2`
 
@@ -452,7 +467,7 @@ But:
 
 - the `48`-prompt eval said it is not robust enough for RL yet
 
-So the project is currently **not RL-ready**.
+So the project was **not RL-ready** at this snapshot.
 
 However:
 
@@ -709,7 +724,7 @@ Practical implication:
 
 This matters for interpreting the project timeline and engineering decisions. Several choices that might be simpler off-platform are currently not available because the grant has to be spent inside Tinker.
 
-## Current Status Snapshot
+## Status Snapshot (March 3, 2026)
 
 As of March 3, 2026:
 
@@ -773,7 +788,7 @@ Decision:
 - PPO is not the current path forward
 - do not resume it without a fundamentally different reward regime or much denser success rate
 
-## RAFT / Expert Iteration Status
+## RAFT / Expert Iteration Snapshot (March 3, 2026)
 
 RAFT remains the correct conceptual direction, but the first implementation pass exposed a throughput problem.
 
@@ -967,7 +982,7 @@ Interpretation:
 - the eval-only loose end is now actually closed
 - future eval / ablation / detached mining runs should reuse sampler checkpoints rather than repeatedly paying the training-client startup tax
 
-### Current operational recommendation
+### Operational Recommendation Snapshot (March 4, 2026)
 
 At this point the engineering recommendation is:
 
