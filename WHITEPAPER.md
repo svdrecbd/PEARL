@@ -2,16 +2,29 @@
 
 **Project:** Protein Engineering Adapter via Reinforcement Learning (PEARL)  
 **Scope:** Computational PETase-family sequence design from inception to wet-lab handoff readiness  
-**Status Date:** March 5, 2026  
+**Status Date:** March 9, 2026  
 **Repository:** `/Users/svdr/tinker`
 
 ## Abstract
 
-PEARL is a computational protein design program focused on generating PETase/cutinase-like sequences that satisfy a strict intersection: single catalytic motif, geometry plausibility, and high sequence-level foldability proxy (`ESM >= 85`).  
+PEARL is a computational protein design program focused on generating PETase/cutinase-like sequences that satisfy a strict intersection: single catalytic motif, geometry plausibility, and high sequence-level foldability proxy (`ESM >= 85`).
 
-The central result to date is not full durability, but feasibility: the target manifold exists and can be reached. The remaining bottleneck is reproducibility across seeds and prompt suites. The project has matured from exploratory generation to a gated engineering workflow with explicit go/no-go criteria, reproducible robustness benchmarks, retrain readiness checks, and repair-focused data curation.
+The central result to date is not full durability, but feasibility: the target manifold exists and can be reached. The remaining bottleneck is reproducibility across seeds and prompt suites. The project has matured from exploratory generation to a gated engineering workflow with explicit go/no-go criteria, reproducible robustness benchmarks, retrain readiness checks, and now a stockpile-to-HPC triage pipeline.
 
 This white paper documents what has been built, what has been proven, what remains unresolved, and what milestones are required before external wet-lab verification.
+
+## Canonical Status Snapshot (March 8, 2026)
+
+- Canonical reference policy:  
+  `tinker://7a5aeb3f-0652-52d1-849d-9916dfb43c7c:train:0/weights/kimi25-micro-sft-top9-plus-doping29-cont-lr5e7-ep1`
+- Newest unconfirmed branch:  
+  `tinker://6c7881f9-0330-5a3b-8acf-f2a44a7cbf70:train:0/weights/pearl-micro-sft-repair20-from-wave3-lineage-lr5e7-ep1`
+- Current phase: raw-generation stockpile + local prefilter + Wynton-side heavy scoring/retrain
+- Next required gate: Repair20 durability confirmation at `12 -> 24 -> 48` prompts with fixed seeds
+- Currently ruled-out paths:
+  - resumed PPO
+  - broad SFT mixing without strict lineage/diversity controls
+  - AlphaFold-scale downstream triage
 
 ## 1. Problem Definition
 
@@ -54,14 +67,15 @@ In PEARL terms, this is the **bridge**. Most generated candidates fall into one 
 
 ### 2.4 Current engineering posture
 
-The project now runs as a gated loop:
+The project is currently in a two-layer gated posture:
 
-1. mine candidates
-2. classify failure basins
-3. curate repair pools
-4. run bounded repair
-5. retrain only when readiness gates pass
-6. re-evaluate on fixed robustness suites
+1. budget-capped local raw generation and stockpiling
+2. deterministic local prefiltering and dedup triage
+3. Wynton-side heavy ESM/geometry scoring on handoff shards
+4. bounded retrain updates only after explicit readiness/durability gates
+5. fixed robustness suites (`12/24/48`, fixed seeds) for branch confirmation
+
+The repair/readiness loop remains scientifically central, but the operating center of gravity has shifted to data stockpiling and HPC-side heavy evaluation.
 
 ## 3. System Architecture
 
@@ -72,6 +86,7 @@ The project now runs as a gated loop:
 - `local_proxy.py`: ESM proxy scoring
 - `scripts/run_ablation.py`: single-run reproducible eval/ablation
 - `scripts/run_robustness_suite.py`: fixed-suite durability aggregation and gate
+- `scripts/run_sequence_shard_eval.py`: sequence-shard scoring path for prefilter handoff records
 
 ### 3.2 Data and control components
 
@@ -80,10 +95,21 @@ The project now runs as a gated loop:
 - `scripts/check_retrain_readiness.py`: retrain go/no-go
 - `scripts/check_repair_survivor_readiness.py`: lineage-aware readiness after repair survivors
 - `scripts/launch_detached_job.py` + `scripts/stop_detached_job.py`: detached process control
+- `scripts/prefilter_local.py`: staged local pre-HPC triage (`ingest -> canonicalize -> hard-filter -> dedup -> priority -> handoff`)
+- `configs/prefilter/local_prefilter_v1.yaml`: prefilter ruleset and thresholds
+- `scripts/snapshot_prefilter_uniqueness.py`: uniqueness drift snapshots across batches
+- `scripts/check_prefilter_smoke.py`: fixture-based schema/regression validation
 
 ### 3.3 Added in this cycle
 
 - `scripts/build_intersection_repair_pool.py`: explicit intersection-oriented pool curation (geometry-edge + stability-edge + Tier-2 carryover)
+- `hpc/submit_prefilter_eval_array.sge.sh`: Wynton array-job template for sequence-shard scoring
+- `hpc/submit_raft_array.sge.sh` and `hpc/submit_ablation.sge.sh`: scheduler templates for cluster execution
+
+### 3.4 Long-run operations hardening
+
+- watchdog supervision was hardened for long raw-generation runs (dynamic stale thresholds, restart guardrails, and completion-aware restart suppression)
+- local prefilter ingest now tolerates compressed-stream read failures and records them instead of aborting entire runs
 
 ## 4. Evidence and Current State
 
@@ -93,6 +119,7 @@ The project now runs as a gated loop:
 - End-to-end engineering infrastructure is stable and reproducible.
 - Readiness gating can pass on curated pools:
   - Wave3 lineage-aware readiness achieved `7/7` checks.
+- A production-scale local stockpile/prefilter pipeline is operational and reproducible.
 
 ### 4.2 What is not yet proven
 
@@ -101,13 +128,23 @@ The project now runs as a gated loop:
 
 ### 4.3 Latest completed robustness result
 
-`pearl-repair20-robustness-p12-t08-r1`:
+`pearl-repair17-robustness-p12-t08-r1`:
 
-- `tier2_hits_by_seed = [0,0,0]`
+- `tier2_hits_by_seed = [0,1,0]`
 - durability gate: failed
 - failed conditions: `seed_support`, `prompt_coverage`, `basin_pressure_vs_baseline`
 
-Postmortem showed a basin shift toward stability-dominant outputs and away from geometry-dominant outputs, with no Tier-2 emergence.
+Interpretation: this was a sideways move (bridge signal remained sparse and non-durable).
+
+### 4.4 Current operational status (post-March 8 pivot)
+
+- Repair20 branch exists as an unconfirmed successor checkpoint.
+- Repair20 durability confirmation is pending; it is not yet a completed robustness result.
+- Raw-generation and local prefilter execution completed with scheduler-ready handoff outputs:
+  - `hpc_ready_A = 761,029`
+  - `hpc_ready_B = 958`
+- Handoff shards and transfer package were built for Wynton execution.
+- Sequence-shard HPC scorer path was added and smoke-validated on real shard records.
 
 ## 5. Why This Is Still Viable
 
@@ -126,7 +163,7 @@ This section is intentionally conservative. It defines required evidence stages 
 
 ### Stage A: Computational durability recovery
 
-**Goal:** restore non-zero bridge production with seed support.
+**Goal:** complete Repair20 durability confirmation with seed support and baseline-locked basin metrics.
 
 Exit criteria:
 
@@ -279,9 +316,9 @@ The figures below are designed to be buildable in `pgfplots`/TikZ or generated e
 
 - **Type:** side-by-side bar panel
 - **Metrics:** stable-only, geometry-only, Tier-2 rates
-- **Purpose:** demonstrate how a negative run still produces actionable guidance
-- **Data source:** `reports/analysis/postmortems/pearl-repair20-p12-vs-repair19-postmortem.json`
-- **Caption draft:** "Repair20 failure mode: basin shift without bridge emergence."
+- **Purpose:** demonstrate how branch-level failures are interpreted without over-claiming incomplete gates
+- **Data source:** latest completed robustness summary + pending-gate branch status artifacts
+- **Caption draft:** "Repair17 sideways durability result and Repair20 pending confirmation gate."
 
 ### Figure 12: Milestone-Linked Budget Envelope
 
@@ -297,13 +334,22 @@ The figures below are designed to be buildable in `pgfplots`/TikZ or generated e
 - continued model-platform access for generation/retrain cycles
 - milestone review checkpoints tied to gate results
 
-### 9.2 What sponsors should expect
+### 9.2 Platform constraint context
+
+- Current development is under a `USD 5,000` Thinking Machines credit grant.
+- Core generation/training is constrained to Tinker.
+- Operational consequence:
+  - local machine work emphasizes preprocessing, filtering, and orchestration
+  - heavy scoring and longer loops are shifted to Wynton HPC
+  - spending decisions are explicitly gate-linked and budget-capped
+
+### 9.3 What sponsors should expect
 
 - transparent pass/fail reporting
 - explicit uncertainty statements
 - reusable tooling and process assets even before wet-lab confirmation
 
-### 9.3 What sponsors should not expect
+### 9.4 What sponsors should not expect
 
 - immediate guaranteed wet-lab-positive candidates
 - deterministic success in each run
@@ -324,9 +370,20 @@ Not allowed yet:
 
 ## Appendix A: Key Artifacts
 
-- Robustness failure/postmortem (repair20):  
-  `/Users/svdr/tinker/reports/robustness/pearl-repair20-robustness-p12-t08-r1/robustness_summary.json`  
-  `/Users/svdr/tinker/reports/analysis/postmortems/pearl-repair20-p12-vs-repair19-postmortem.md`
+- Canonical status references:  
+  `tinker://7a5aeb3f-0652-52d1-849d-9916dfb43c7c:train:0/weights/kimi25-micro-sft-top9-plus-doping29-cont-lr5e7-ep1`  
+  `tinker://6c7881f9-0330-5a3b-8acf-f2a44a7cbf70:train:0/weights/pearl-micro-sft-repair20-from-wave3-lineage-lr5e7-ep1`
+
+- Latest completed durability run (repair17):  
+  `/Users/svdr/tinker/reports/robustness/pearl-repair17-robustness-p12-t08-r1/robustness_summary.json`
+
+- Current stockpile/prefilter/handoff artifacts:  
+  `/Users/svdr/tinker/reports/prefilter/topoff_1m_run/summary.json`  
+  `/Users/svdr/tinker/reports/prefilter/topoff_1m_run/handoff/manifest.json`  
+  `/Users/svdr/tinker/reports/hpc_transfer/topoff_1m_run_20260307-232538/meta/shard_manifest.json`
+
+- Sequence-shard scorer smoke output:  
+  `/Users/svdr/tinker/reports/hpc_sequence_eval_smoke/smoke-a0001/summary.json`
 
 - Intersection pool build (current cycle):  
   `/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18to20-intersection-cycle1/intersection_pool_raw_summary.json`  
