@@ -4,7 +4,8 @@ These are starter templates for running PEARL workloads on Wynton with Apptainer
 
 ## Files
 
-- `Apptainer.def`: container build recipe (NVIDIA PyTorch base image)
+- `Apptainer.def`: full PEARL container build recipe for Tinker-backed runs
+- `Apptainer.prefilter_eval.def`: eval-only container for local shard scoring without `tinker`
 - `submit_ablation.sge.sh`: single-run evaluation/ablation job
 - `submit_raft_array.sge.sh`: array-job pattern for shard-based RAFT-style mining
 - `submit_prefilter_eval_array.sge.sh`: array-job pattern for scoring prefiltered sequence shards (`hpc_ready_A/B`)
@@ -20,6 +21,12 @@ These are starter templates for running PEARL workloads on Wynton with Apptainer
 
 ```bash
 apptainer build pearl_env.sif hpc/Apptainer.def
+```
+
+For prefilter sequence-shard scoring only, use the lighter eval image:
+
+```bash
+apptainer build pearl_eval_env.sif hpc/Apptainer.prefilter_eval.def
 ```
 
 ## Submit ablation (example)
@@ -51,6 +58,10 @@ qsub \
 ## Submit prefilter sequence-shard array (example)
 
 Use this for the local-prefilter handoff shards (`hpc_ready_A_shard_*.jsonl`) where each row already contains a candidate sequence.
+
+If the full `Apptainer.def` cannot build because `tinker` requires a newer Python than the base image provides, use `Apptainer.prefilter_eval.def` and set `SIF_PATH` to that eval-only image. The shard scorer does not import `tinker`.
+
+If Apptainer is unavailable or the image build is blocked, `submit_prefilter_eval_array.sge.sh` also supports direct execution via a prebuilt Python environment by setting `PYTHON_BIN=/abs/path/to/python`.
 
 ```bash
 mkdir -p logs/sge
