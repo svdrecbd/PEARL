@@ -1417,3 +1417,151 @@ Smoke validation on real shard data:
   - evaluated `3/3` records
   - output artifacts written under:
     - [/Users/svdr/tinker/reports/hpc_sequence_eval_smoke/smoke-a0001](/Users/svdr/tinker/reports/hpc_sequence_eval_smoke/smoke-a0001)
+
+## March 20-21, 2026 Wynton bring-up outcome: validated production path
+
+The Wynton execution path moved from planning into real scheduler/runtime validation.
+
+### Initial failure mode characterization
+
+Cluster bring-up exposed a real distinction between queue availability and runtime health.
+
+- `qb3-idgpu*` nodes were schedulable, but not reliable for this workload:
+  - malformed `SGE_GPU` values were observed in some jobs (`SGE_GPU=to`)
+  - even with `CUDA_VISIBLE_DEVICES` unset, PyTorch reported `cuda_available=false` or CUDA/NVML initialization errors
+  - this was reproduced with both:
+    - `torch 2.10.0+cu128`
+    - `torch 2.5.1+cu121`
+
+Minimal repro artifacts added:
+
+- [/Users/svdr/tinker/hpc/submit_cuda_smoke.sge.sh](/Users/svdr/tinker/hpc/submit_cuda_smoke.sge.sh)
+- [/Users/svdr/tinker/scripts/check_torch_cuda_env.py](/Users/svdr/tinker/scripts/check_torch_cuda_env.py)
+
+Operational implication:
+
+- `qb3-idgpu*` should not be treated as the default production target for PEARL shard scoring.
+
+### Healthy pool discovery
+
+Two healthy pools were confirmed with the minimal CUDA smoke:
+
+1. `qb3-atgpu*`
+   - example success: `qb3-atgpu31`
+   - GPU class: `NVIDIA A40`
+2. `qb3-iogpu*`
+   - example success: `qb3-iogpu4`
+   - GPU class: `NVIDIA A100-SXM4-40GB`
+
+The validated runtime on healthy pools became:
+
+- Python env: `~/venvs/pearl-eval-cu121`
+- PyTorch: `2.5.1+cu121`
+- direct Python execution
+- `SET_CUDA_VISIBLE_DEVICES=0`
+- `ESM2_DEVICE=auto`
+
+### Submit template hardening from real cluster behavior
+
+The sequence-shard submit template was hardened accordingly:
+
+- [/Users/svdr/tinker/hpc/submit_prefilter_eval_array.sge.sh](/Users/svdr/tinker/hpc/submit_prefilter_eval_array.sge.sh)
+
+Key changes:
+
+1. no longer force `ESM2_DEVICE=cuda`; use `auto`
+2. make `CUDA_VISIBLE_DEVICES` masking optional and default it to off
+3. stop relying on `/scratch` + `rsync` for durable outputs
+4. write shard results directly to persistent storage under `reports/hpc_sequence_eval/...`
+5. log `host`, `SGE_GPU`, masking mode, and selected runtime details
+
+### Validated shard-scoring execution results
+
+#### A-shard smoke on A100
+
+- host:
+  - `qb3-iogpu4.wynton.ucsf.edu`
+- run:
+  - `topoff1m-a-smoke-a100-cu121-20260321b-hpc_ready_A_shard_0001`
+- artifact:
+  - [/Users/svdr/tinker/reports/hpc_sequence_eval/topoff1m-a-smoke-a100-cu121-20260321b/runs/topoff1m-a-smoke-a100-cu121-20260321b-hpc_ready_A_shard_0001/summary.json](/Users/svdr/tinker/reports/hpc_sequence_eval/topoff1m-a-smoke-a100-cu121-20260321b/runs/topoff1m-a-smoke-a100-cu121-20260321b-hpc_ready_A_shard_0001/summary.json)
+
+Observed outcome:
+
+- `250` records seen / parsed / evaluated
+- `esm_info.device = cuda`
+- `esm_gate_pass_count = 132`
+- `geometry_pass_count = 8`
+- `functional_bridge_count = 0`
+- `duration_seconds = 198.56`
+- outputs written directly to persistent storage
+
+Interpretation:
+
+- the PEARL shard scorer now has a real, durable, GPU-backed Wynton execution path on A100.
+
+#### B-shard full run on A100
+
+- host:
+  - `qb3-iogpu4.wynton.ucsf.edu`
+- run:
+  - `topoff1m-b-a100-cu121-20260321-hpc_ready_B_shard_0001`
+- artifact:
+  - [/Users/svdr/tinker/reports/hpc_sequence_eval/topoff1m-b-a100-cu121-20260321/runs/topoff1m-b-a100-cu121-20260321-hpc_ready_B_shard_0001/summary.json](/Users/svdr/tinker/reports/hpc_sequence_eval/topoff1m-b-a100-cu121-20260321/runs/topoff1m-b-a100-cu121-20260321-hpc_ready_B_shard_0001/summary.json)
+
+Observed outcome:
+
+- `958` records seen / parsed / evaluated
+- `esm_gate_pass_count = 732`
+- `geometry_pass_count = 0`
+- `functional_bridge_count = 0`
+- `duration_seconds = 1157.435`
+- outputs written directly to persistent storage
+
+Interpretation:
+
+- the production path is not just smoke-valid; it has already produced durable real-run outputs on the B shard.
+
+### Runtime and array-planning implications
+
+Based on the validated A100 runs:
+
+- `250` records in `198.56s` implies roughly `0.79s / record`
+- `958` records in `1157.435s` implies roughly `1.21s / record`
+
+Operational estimate:
+
+- a `10,000`-record A shard is likely on the order of `2.2h - 3.4h`
+- the full `761,029` A-record pool would take roughly `10` days on one GPU if run fully sequentially
+- the correct execution model is therefore an SGE array (`1-77`) over independent shards, letting the scheduler accumulate completions over time
+
+### Production launch status
+
+After validating the A100 path, the full A-array production run was submitted:
+
+- run family:
+  - `topoff1m-a-a100-cu121-20260321`
+- scheduler shape:
+  - `1-77` array
+  - `hostname=qb3-iogpu*`
+  - `compute_cap=80`
+  - `h_rt=05:00:00`
+
+As of the time of this note:
+
+- B production output is complete (`1/1`)
+- A smoke is complete (`1/1`)
+- A full `1-77` production array is submitted and waiting on scheduler availability
+
+### Support escalation
+
+A Wynton support report was prepared and sent summarizing:
+
+- malformed `SGE_GPU`
+- `idgpu` CUDA/NVML failures
+- successful A40 and A100 minimal smoke jobs
+- exact minimal repro scripts and job IDs
+
+Operational implication:
+
+- current bottleneck is scheduler access to known-healthy GPU pools, not code correctness.

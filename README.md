@@ -9,15 +9,21 @@ This repository explores computational sequence design for PETase-family protein
 - Sponsor-facing summary: [`WHITEPAPER.md`](WHITEPAPER.md)
 - Full experimental history and decisions: [`notes/LABNOTES.md`](notes/LABNOTES.md)
 
-## Current State (March 2026)
+## Current State (March 22, 2026)
 
 - The project has clear existence proof of the target bridge:
   - single catalytic motif
   - geometry pass
   - high ESM proxy (`ESM >= 85`)
-- The bridge is still sparse and seed-fragile at larger prompt scales.
-- Current work is robustness and repair, gated by fixed-suite durability checks (`12/24/48`, fixed seeds), not broad RL scaling.
-- RL pilot was an explicit negative result on this landscape and is not the active path.
+- `repair20` did not clear durability and should not be advanced as the active scientific branch.
+- Current execution focus is the production-scale Wynton shard-scoring path for the `761,029` Tier-A handoff records and `958` Tier-B records, not additional exploratory RL scaling.
+- The validated cluster runtime is now:
+  - `qb3-iogpu*` (A100-SXM4-40GB) or `qb3-atgpu*` (A40)
+  - `torch 2.5.1+cu121`
+  - direct Python execution
+  - `SET_CUDA_VISIBLE_DEVICES=0`
+  - outputs written directly to persistent storage under `reports/hpc_sequence_eval/...`
+- The `qb3-idgpu*` pool (RTX 2080 Ti / TITAN RTX class) was found unreliable for this workload and is not the recommended production path.
 
 ## What The System Does
 
@@ -68,6 +74,28 @@ Example:
 export TINKER_API_KEY=...
 export ESM2_DEVICE=mps
 ```
+
+## Current Validated Wynton Path
+
+For Wynton production shard scoring, the repository now has a validated execution path that differs from the local/dev defaults:
+
+- Python env: `~/venvs/pearl-eval-cu121`
+- PyTorch: `2.5.1+cu121`
+- healthy pools observed in practice:
+  - `qb3-iogpu*` (A100)
+  - `qb3-atgpu*` (A40)
+- unhealthy pool observed in practice:
+  - `qb3-idgpu*`
+- GPU masking should remain off:
+  - `SET_CUDA_VISIBLE_DEVICES=0`
+- outputs should be written directly to persistent storage rather than staged in `/scratch`
+
+Current validated artifacts:
+
+- A-shard smoke on A100 (`250` records, CUDA path, durable output):
+  - [`reports/hpc_sequence_eval/topoff1m-a-smoke-a100-cu121-20260321b/runs/topoff1m-a-smoke-a100-cu121-20260321b-hpc_ready_A_shard_0001/summary.json`](reports/hpc_sequence_eval/topoff1m-a-smoke-a100-cu121-20260321b/runs/topoff1m-a-smoke-a100-cu121-20260321b-hpc_ready_A_shard_0001/summary.json)
+- B-shard full run on A100 (`958` records, CUDA path, durable output):
+  - [`reports/hpc_sequence_eval/topoff1m-b-a100-cu121-20260321/runs/topoff1m-b-a100-cu121-20260321-hpc_ready_B_shard_0001/summary.json`](reports/hpc_sequence_eval/topoff1m-b-a100-cu121-20260321/runs/topoff1m-b-a100-cu121-20260321-hpc_ready_B_shard_0001/summary.json)
 
 ## Data And Artifacts
 

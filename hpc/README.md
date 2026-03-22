@@ -91,3 +91,37 @@ qsub \
 1. Create the correct shard type before launching array jobs (`prompt` shards for RAFT arrays, `hpc_ready_*` sequence shards for prefilter-eval arrays).
 2. Ensure `logs/sge` exists before submit (`#$ -o` uses that path).
 3. If your cluster uses additional GPU selectors, add them to `#$ -l ...`.
+
+## March 2026 Wynton Execution Notes
+
+The generic `gpu.q` path was not uniformly healthy in practice. The following cluster/runtime combinations were observed during bring-up:
+
+- validated healthy:
+  - `qb3-iogpu*` with A100-SXM4-40GB
+  - `qb3-atgpu*` with A40
+- validated unhealthy for this workload:
+  - `qb3-idgpu*` (malformed `SGE_GPU` values, CUDA init failures, NVML failures)
+
+The currently validated production path for prefilter shard scoring is:
+
+1. Python env: `~/venvs/pearl-eval-cu121`
+2. PyTorch: `2.5.1+cu121`
+3. submission style:
+   - direct Python via `PYTHON_BIN`
+   - `SET_CUDA_VISIBLE_DEVICES=0`
+   - `HF_HOME=$HOME/.cache/huggingface`
+4. output handling:
+   - write directly to persistent storage under `reports/hpc_sequence_eval/...`
+   - do not rely on `/scratch` + `rsync` for final durability
+
+Observed timing on validated runs:
+
+- A100 A-shard smoke:
+  - `250` records in `198.56s`
+- A100 B-shard full run:
+  - `958` records in `1157.435s`
+
+Operational implication:
+
+- full `10,000`-record A shards are likely in the `2.2h - 3.4h` range
+- use at least `4h - 5h` walltime for the production `1-77` A-array

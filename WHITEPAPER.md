@@ -2,7 +2,7 @@
 
 **Project:** Protein Engineering Adapter via Reinforcement Learning (PEARL)  
 **Scope:** Computational PETase-family sequence design from inception to wet-lab handoff readiness  
-**Status Date:** March 9, 2026  
+**Status Date:** March 22, 2026  
 **Repository:** `/Users/svdr/tinker`
 
 ## Abstract
@@ -13,18 +13,19 @@ The central result to date is not full durability, but feasibility: the target m
 
 This white paper documents what has been built, what has been proven, what remains unresolved, and what milestones are required before external wet-lab verification.
 
-## Canonical Status Snapshot (March 8, 2026)
+## Canonical Status Snapshot (March 22, 2026)
 
 - Canonical reference policy:  
   `tinker://7a5aeb3f-0652-52d1-849d-9916dfb43c7c:train:0/weights/kimi25-micro-sft-top9-plus-doping29-cont-lr5e7-ep1`
 - Newest unconfirmed branch:  
   `tinker://6c7881f9-0330-5a3b-8acf-f2a44a7cbf70:train:0/weights/pearl-micro-sft-repair20-from-wave3-lineage-lr5e7-ep1`
-- Current phase: raw-generation stockpile + local prefilter + Wynton-side heavy scoring/retrain
-- Next required gate: Repair20 durability confirmation at `12 -> 24 -> 48` prompts with fixed seeds
+- Current phase: Wynton-side production shard scoring of the prefiltered stockpile on validated A100/A40 pools
+- Next required gate: complete the `77`-shard Tier-A scoring pass with durable outputs and then reassess retrain/repair priorities from mined results
 - Currently ruled-out paths:
   - resumed PPO
   - broad SFT mixing without strict lineage/diversity controls
-  - AlphaFold-scale downstream triage
+  - relying on `qb3-idgpu*` as the primary Wynton production pool
+  - AlphaFold-scale downstream triage before sequence-level downselection
 
 ## 1. Problem Definition
 
@@ -128,23 +129,34 @@ The repair/readiness loop remains scientifically central, but the operating cent
 
 ### 4.3 Latest completed robustness result
 
-`pearl-repair17-robustness-p12-t08-r1`:
+`repair20` is now a completed negative result, not a pending branch.
 
-- `tier2_hits_by_seed = [0,1,0]`
-- durability gate: failed
-- failed conditions: `seed_support`, `prompt_coverage`, `basin_pressure_vs_baseline`
+- latest postmortem conclusion: `repair20` failed durability and should not be advanced
+- operational implication: the active engineering effort moved to large-scale shard scoring and data mining on the prefiltered stockpile rather than immediate branch promotion
 
-Interpretation: this was a sideways move (bridge signal remained sparse and non-durable).
+Interpretation: the scientific picture is now clearer. The bridge exists, but `repair20` did not make it durable enough to become the canonical path.
 
-### 4.4 Current operational status (post-March 8 pivot)
+### 4.4 Current operational status (post-Wynton bring-up)
 
-- Repair20 branch exists as an unconfirmed successor checkpoint.
-- Repair20 durability confirmation is pending; it is not yet a completed robustness result.
 - Raw-generation and local prefilter execution completed with scheduler-ready handoff outputs:
   - `hpc_ready_A = 761,029`
   - `hpc_ready_B = 958`
 - Handoff shards and transfer package were built for Wynton execution.
-- Sequence-shard HPC scorer path was added and smoke-validated on real shard records.
+- Sequence-shard HPC scorer path was added and validated on real Wynton GPU execution.
+- Healthy production pools confirmed:
+  - `qb3-iogpu*` (A100-SXM4-40GB)
+  - `qb3-atgpu*` (A40)
+- Unhealthy pool confirmed for this runtime:
+  - `qb3-idgpu*` (malformed `SGE_GPU` values and CUDA/NVML init failures)
+- Validated production runtime:
+  - `torch 2.5.1+cu121`
+  - direct Python execution
+  - no `CUDA_VISIBLE_DEVICES` masking
+  - outputs written directly to persistent storage
+- Completed production evidence:
+  - A-shard smoke on A100: `250` records, `duration_seconds = 198.56`, device `cuda`
+  - B-shard full run on A100: `958` records, `duration_seconds = 1157.435`, device `cuda`, durable outputs written
+- Full A-array production run was submitted on `qb3-iogpu*` with `5h` walltime on March 21, 2026 and is waiting on scheduler availability.
 
 ## 5. Why This Is Still Viable
 

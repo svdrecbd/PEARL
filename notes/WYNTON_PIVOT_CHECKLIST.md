@@ -3,6 +3,31 @@
 Status date: March 7, 2026
 Scope: planning only (no code changes yet)
 
+## Execution Addendum (March 20-21, 2026)
+
+Planning assumptions were later validated against real cluster behavior.
+
+Observed outcome:
+
+1. `qb3-idgpu*` was not a reliable production pool for this workload.
+   - malformed `SGE_GPU` values were observed
+   - CUDA and NVML initialization failures were reproduced with minimal PyTorch smoke jobs
+2. `qb3-atgpu*` (A40) and `qb3-iogpu*` (A100) were validated as healthy pools for the same smoke jobs.
+3. The effective production runtime became:
+   - `torch 2.5.1+cu121`
+   - direct Python execution
+   - `SET_CUDA_VISIBLE_DEVICES=0`
+   - direct writes to persistent output storage
+4. End-to-end sequence-shard execution was validated on A100:
+   - A-shard smoke (`250` records) succeeded on CUDA and wrote durable outputs
+   - full B-shard run (`958` records) succeeded on CUDA and wrote durable outputs
+5. A full `1-77` A-array run was submitted on `qb3-iogpu*` with `5h` walltime after the smoke phase completed.
+
+Operational conclusion:
+
+- Wynton is a usable production path for this project only when constrained to known-healthy pools.
+- Array-style shard submission remains the correct strategy, but the main bottleneck is queue access, not code correctness.
+
 ## Preconditions
 
 1. Confirm Wynton account, PI/group membership, and `gpu.q` access.
