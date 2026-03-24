@@ -1,6 +1,16 @@
-# PEARL HPC Templates (Wynton / SGE)
+# PEARL HPC Templates (Legacy Wynton / SGE)
 
 These are starter templates for running PEARL workloads on Wynton with Apptainer + SGE.
+
+Status note (March 24, 2026):
+
+- these templates remain useful as historical reference and fallback tooling
+- Wynton successfully validated the evaluator path
+- Wynton is no longer the primary production runtime
+- production scoring has moved to Nebius GPU VMs after the benchmark/tuning cycle made the runtime and cost picture clear
+- see:
+  - `/Users/svdr/tinker/notes/NEBIUS_BENCHMARK_PLAN.md`
+  - `/Users/svdr/tinker/README.md`
 
 ## Files
 
@@ -125,3 +135,9 @@ Operational implication:
 
 - full `10,000`-record A shards are likely in the `2.2h - 3.4h` range
 - use at least `4h - 5h` walltime for the production `1-77` A-array
+
+Postscript:
+
+- those timings are now historical
+- after Nebius-side evaluator tuning, the project moved to a much faster staged runtime with CPU parallelism
+- treat the Wynton notes here as bring-up documentation, not the current production recommendation

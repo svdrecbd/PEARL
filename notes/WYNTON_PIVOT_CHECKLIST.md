@@ -1,7 +1,13 @@
 # Wynton HPC Pivot Checklist (UCSF)
 
-Status date: March 7, 2026
-Scope: planning only (no code changes yet)
+Status date: March 24, 2026
+Scope: historical planning and bring-up record
+
+Superseded operationally:
+
+- Wynton successfully validated the shard evaluator and durable output path.
+- Wynton is no longer the primary production runtime because scheduler latency dominated execution.
+- The production path has moved to Nebius GPU VMs, with preemptible `8x H100` as the current economic default.
 
 ## Execution Addendum (March 20-21, 2026)
 

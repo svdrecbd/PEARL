@@ -10,20 +10,77 @@ This document is meant to do three jobs:
 
 This is a living document. It should be updated whenever we change the search regime, reward/eval definition, or operational workflow.
 
-## Latest Canonical Status (as of March 8, 2026)
+## Latest Canonical Status (as of March 24, 2026)
 
 - canonical reference policy:
   - `tinker://7a5aeb3f-0652-52d1-849d-9916dfb43c7c:train:0/weights/kimi25-micro-sft-top9-plus-doping29-cont-lr5e7-ep1`
 - newest unconfirmed branch:
   - `tinker://6c7881f9-0330-5a3b-8acf-f2a44a7cbf70:train:0/weights/pearl-micro-sft-repair20-from-wave3-lineage-lr5e7-ep1`
 - current phase:
-  - raw-generation stockpile + local prefilter + Wynton-side heavy scoring / retrain
+  - raw-generation stockpile + local prefilter + Nebius-side heavy scoring / dataset materialization
 - next required gate:
-  - repair20 durability confirmation at `12 -> 24 -> 48` prompts with fixed seeds
+  - full Tier-A/Tier-B production scoring on preemptible `8x H100`, then clean dataset aggregation and shortlist/retrain triage
 - currently ruled-out paths:
   - resumed PPO
   - broad SFT mixing without strict lineage/diversity controls
+  - using Wynton as the primary production runtime
   - AlphaFold-scale downstream triage
+
+## March 24, 2026: Post-Wynton Nebius Pivot
+
+Wynton mattered, but it is no longer the operational center of gravity.
+
+What Wynton proved:
+
+- the shard evaluator ran correctly on real CUDA hardware
+- durable direct-to-storage outputs worked
+- `qb3-iogpu*` and `qb3-atgpu*` were healthy pools
+- `qb3-idgpu*` was not a healthy pool
+
+Why the project moved on:
+
+- Wynton queue latency became the main bottleneck once evaluator correctness was established
+- Nebius made it possible to benchmark hardware classes directly and then buy the correct runtime instead of waiting for scheduler access
+
+Nebius benchmark ladder summary:
+
+- L40S baseline:
+  - `0.364412 s/record`
+  - `9878.93 records/hour`
+- untuned H100:
+  - `0.25474 s/record`
+  - `14132.06 records/hour`
+- untuned H200:
+  - effectively tied with H100
+
+Important engineering lesson:
+
+- the GPU was not the real bottleneck
+- the CPU-side family / novelty evaluator was
+- once the evaluator was staged and parallelized, premium GPUs started to separate again
+
+Final tuned runtime:
+
+- `PREFILTER_EVAL_MODE=staged`
+- `PREFILTER_CPU_WORKERS=8`
+- `ESM2_BATCH_SIZE=256`
+- `ESM2_SEQUENCE_BATCH_SIZE=1`
+- `ESM2_PIPELINE_CHUNK_SIZE=128`
+
+Final tuned benchmark results:
+
+- H100 rerun:
+  - `108.953s` for `1000` records
+  - `33041.77 records/hour`
+- H200 best:
+  - `104.376s` for `1000` records
+  - `34490.69 records/hour`
+
+Operational conclusion:
+
+- H200 is only about `4.4%` faster than H100 after tuning
+- at the observed Nebius prices, preemptible H100 is the economic winner
+- the project now has a clear path to a clean mined dataset without further architectural uncertainty
 
 ## Project Goal
 

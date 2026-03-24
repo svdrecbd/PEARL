@@ -10,6 +10,8 @@ from typing import Any
 
 
 AA_PATTERN = re.compile(r"^[ACDEFGHIKLMNPQRSTVWY]+$")
+AA_ALPHABET = "ACDEFGHIKLMNPQRSTVWY"
+AA_INDEX = {aa: idx for idx, aa in enumerate(AA_ALPHABET)}
 SERINE_MOTIF_PATTERN = re.compile(r"G[A-Z]S[A-Z]G")
 SER_ASP_TARGET_GAP = 55
 ASP_HIS_TARGET_GAP = 13
@@ -241,6 +243,24 @@ def kmers(sequence: str, k: int) -> set[str]:
     return {sequence[idx : idx + k] for idx in range(len(sequence) - k + 1)}
 
 
+def kmer_mask(sequence: str, k: int) -> int:
+    if k != NOVELTY_KMER_SIZE or k != 3 or len(sequence) < k:
+        return 0
+
+    mask = 0
+    for idx in range(len(sequence) - k + 1):
+        try:
+            encoded = (
+                (AA_INDEX[sequence[idx]] * 20 * 20)
+                + (AA_INDEX[sequence[idx + 1]] * 20)
+                + AA_INDEX[sequence[idx + 2]]
+            )
+        except KeyError:
+            return 0
+        mask |= 1 << encoded
+    return mask
+
+
 def levenshtein(left: str, right: str) -> int:
     if left == right:
         return 0
@@ -270,8 +290,37 @@ def _get_cached_kmers(record: dict[str, Any]) -> set[str]:
     return kmers_value
 
 
-def assess_novelty(sequence: str, reference_records: list[dict[str, Any]]) -> dict[str, Any]:
-    query_kmers = kmers(sequence, NOVELTY_KMER_SIZE)
+def _get_cached_kmer_mask(record: dict[str, Any]) -> int:
+    cached = record.get("_cached_kmer_mask")
+    if isinstance(cached, int):
+        return cached
+    mask = kmer_mask(record["sequence"], NOVELTY_KMER_SIZE)
+    record["_cached_kmer_mask"] = mask
+    return mask
+
+
+def _get_cached_kmer_count(record: dict[str, Any]) -> int:
+    cached = record.get("_cached_kmer_count")
+    if isinstance(cached, int):
+        return cached
+    mask = _get_cached_kmer_mask(record)
+    if mask:
+        count = mask.bit_count()
+    else:
+        count = len(_get_cached_kmers(record))
+    record["_cached_kmer_count"] = count
+    return count
+
+
+def precompute_novelty_cache(records: list[dict[str, Any]]) -> None:
+    for record in records:
+        _get_cached_kmer_count(record)
+
+
+def _build_novelty_shortlist_from_sets(
+    query_kmers: set[str],
+    reference_records: list[dict[str, Any]],
+) -> list[tuple[float, int, dict[str, Any]]]:
     query_len = len(query_kmers)
     shortlist: list[tuple[float, int, dict[str, Any]]] = []
     for index, record in enumerate(reference_records):
@@ -285,7 +334,40 @@ def assess_novelty(sequence: str, reference_records: list[dict[str, Any]]) -> di
             continue
         if jaccard > shortlist[0][0]:
             heapq.heapreplace(shortlist, candidate)
+    return shortlist
 
+
+def _build_novelty_shortlist_from_masks(
+    query_mask: int,
+    query_kmer_count: int,
+    query_kmers: set[str],
+    reference_records: list[dict[str, Any]],
+) -> list[tuple[float, int, dict[str, Any]]]:
+    shortlist: list[tuple[float, int, dict[str, Any]]] = []
+    for index, record in enumerate(reference_records):
+        ref_mask = _get_cached_kmer_mask(record)
+        if ref_mask:
+            intersection_len = (query_mask & ref_mask).bit_count()
+            ref_kmer_count = _get_cached_kmer_count(record)
+        else:
+            ref_kmers = _get_cached_kmers(record)
+            intersection_len = len(query_kmers & ref_kmers)
+            ref_kmer_count = len(ref_kmers)
+        union = (query_kmer_count + ref_kmer_count - intersection_len) or 1
+        jaccard = intersection_len / union
+        candidate = (jaccard, index, record)
+        if len(shortlist) < NOVELTY_SHORTLIST_SIZE:
+            heapq.heappush(shortlist, candidate)
+            continue
+        if jaccard > shortlist[0][0]:
+            heapq.heapreplace(shortlist, candidate)
+    return shortlist
+
+
+def _select_best_identity_match(
+    sequence: str,
+    shortlist: list[tuple[float, int, dict[str, Any]]],
+) -> tuple[float, dict[str, Any] | None]:
     best_identity = 0.0
     best_match: dict[str, Any] | None = None
     for jaccard, _, record in sorted(shortlist, reverse=True):
@@ -299,6 +381,23 @@ def assess_novelty(sequence: str, reference_records: list[dict[str, Any]]) -> di
                 "sequence_length": record["length"],
                 "kmer_jaccard": round(jaccard, 4),
             }
+    return best_identity, best_match
+
+
+def assess_novelty(sequence: str, reference_records: list[dict[str, Any]]) -> dict[str, Any]:
+    if NOVELTY_KMER_SIZE == 3 and len(sequence) >= NOVELTY_KMER_SIZE and AA_PATTERN.fullmatch(sequence):
+        query_mask = kmer_mask(sequence, NOVELTY_KMER_SIZE)
+        query_kmers = kmers(sequence, NOVELTY_KMER_SIZE)
+        shortlist = _build_novelty_shortlist_from_masks(
+            query_mask,
+            query_mask.bit_count(),
+            query_kmers,
+            reference_records,
+        )
+    else:
+        shortlist = _build_novelty_shortlist_from_sets(kmers(sequence, NOVELTY_KMER_SIZE), reference_records)
+
+    best_identity, best_match = _select_best_identity_match(sequence, shortlist)
 
     return {
         "closest_edit_identity": round(best_identity, 4),

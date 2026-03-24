@@ -2,29 +2,30 @@
 
 **Project:** Protein Engineering Adapter via Reinforcement Learning (PEARL)  
 **Scope:** Computational PETase-family sequence design from inception to wet-lab handoff readiness  
-**Status Date:** March 22, 2026  
+**Status Date:** March 24, 2026  
 **Repository:** `/Users/svdr/tinker`
 
 ## Abstract
 
 PEARL is a computational protein design program focused on generating PETase/cutinase-like sequences that satisfy a strict intersection: single catalytic motif, geometry plausibility, and high sequence-level foldability proxy (`ESM >= 85`).
 
-The central result to date is not full durability, but feasibility: the target manifold exists and can be reached. The remaining bottleneck is reproducibility across seeds and prompt suites. The project has matured from exploratory generation to a gated engineering workflow with explicit go/no-go criteria, reproducible robustness benchmarks, retrain readiness checks, and now a stockpile-to-HPC triage pipeline.
+The central result to date is not full durability, but feasibility: the target manifold exists and can be reached. The project has now matured from exploratory generation to a gated engineering workflow with a benchmarked production scoring path, explicit go/no-go criteria, reproducible robustness benchmarks, retrain readiness checks, and a clear route to a clean scored dataset from the stockpiled handoff records.
 
 This white paper documents what has been built, what has been proven, what remains unresolved, and what milestones are required before external wet-lab verification.
 
-## Canonical Status Snapshot (March 22, 2026)
+## Canonical Status Snapshot (March 24, 2026)
 
 - Canonical reference policy:  
   `tinker://7a5aeb3f-0652-52d1-849d-9916dfb43c7c:train:0/weights/kimi25-micro-sft-top9-plus-doping29-cont-lr5e7-ep1`
 - Newest unconfirmed branch:  
   `tinker://6c7881f9-0330-5a3b-8acf-f2a44a7cbf70:train:0/weights/pearl-micro-sft-repair20-from-wave3-lineage-lr5e7-ep1`
-- Current phase: Wynton-side production shard scoring of the prefiltered stockpile on validated A100/A40 pools
-- Next required gate: complete the `77`-shard Tier-A scoring pass with durable outputs and then reassess retrain/repair priorities from mined results
+- Current phase: Nebius-side production shard scoring of the prefiltered stockpile with the tuned staged evaluator
+- Next required gate: launch the full Tier-A/Tier-B scoring pass on preemptible `8x H100`, then aggregate a clean mined dataset for shortlist and retrain decisions
 - Currently ruled-out paths:
   - resumed PPO
   - broad SFT mixing without strict lineage/diversity controls
-  - relying on `qb3-idgpu*` as the primary Wynton production pool
+  - treating Wynton as the primary production runtime
+  - paying the H200 premium without a benchmark-backed cost advantage
   - AlphaFold-scale downstream triage before sequence-level downselection
 
 ## 1. Problem Definition
@@ -72,11 +73,11 @@ The project is currently in a two-layer gated posture:
 
 1. budget-capped local raw generation and stockpiling
 2. deterministic local prefiltering and dedup triage
-3. Wynton-side heavy ESM/geometry scoring on handoff shards
+3. heavy GPU scoring on handoff shards
 4. bounded retrain updates only after explicit readiness/durability gates
 5. fixed robustness suites (`12/24/48`, fixed seeds) for branch confirmation
 
-The repair/readiness loop remains scientifically central, but the operating center of gravity has shifted to data stockpiling and HPC-side heavy evaluation.
+The repair/readiness loop remains scientifically central, but the operating center of gravity has shifted to data stockpiling and Nebius-side heavy evaluation.
 
 ## 3. System Architecture
 
@@ -136,27 +137,35 @@ The repair/readiness loop remains scientifically central, but the operating cent
 
 Interpretation: the scientific picture is now clearer. The bridge exists, but `repair20` did not make it durable enough to become the canonical path.
 
-### 4.4 Current operational status (post-Wynton bring-up)
+### 4.4 Current operational status (post-Wynton bring-up, post-Nebius benchmark ladder)
 
 - Raw-generation and local prefilter execution completed with scheduler-ready handoff outputs:
   - `hpc_ready_A = 761,029`
   - `hpc_ready_B = 958`
-- Handoff shards and transfer package were built for Wynton execution.
-- Sequence-shard HPC scorer path was added and validated on real Wynton GPU execution.
-- Healthy production pools confirmed:
-  - `qb3-iogpu*` (A100-SXM4-40GB)
-  - `qb3-atgpu*` (A40)
-- Unhealthy pool confirmed for this runtime:
-  - `qb3-idgpu*` (malformed `SGE_GPU` values and CUDA/NVML init failures)
-- Validated production runtime:
+- Handoff shards and transfer package were first validated on Wynton, then benchmarked in production-like form on Nebius.
+- Wynton proved evaluator correctness and durable output handling, but queue access made it operationally inferior to Nebius for full-stockpile work.
+- Nebius benchmark ladder completed across:
+  - `L40S`
+  - `H100`
+  - `H200`
+- Early GPU-only conclusions were misleading until the CPU-side evaluator bottleneck was removed.
+- Final tuned production runtime is:
   - `torch 2.5.1+cu121`
-  - direct Python execution
-  - no `CUDA_VISIBLE_DEVICES` masking
-  - outputs written directly to persistent storage
-- Completed production evidence:
-  - A-shard smoke on A100: `250` records, `duration_seconds = 198.56`, device `cuda`
-  - B-shard full run on A100: `958` records, `duration_seconds = 1157.435`, device `cuda`, durable outputs written
-- Full A-array production run was submitted on `qb3-iogpu*` with `5h` walltime on March 21, 2026 and is waiting on scheduler availability.
+  - `PREFILTER_EVAL_MODE=staged`
+  - `PREFILTER_CPU_WORKERS=8`
+  - `ESM2_BATCH_SIZE=256`
+  - `ESM2_SEQUENCE_BATCH_SIZE=1`
+  - `ESM2_PIPELINE_CHUNK_SIZE=128`
+- Final measured single-GPU outcomes:
+  - tuned H100: `108.953s` for `1000` records, `33041.77 records/hour`
+  - tuned H200: `104.376s` for `1000` records, `34490.69 records/hour`
+- Economic decision:
+  - H200 is only `~4.4%` faster than H100 after tuning
+  - at observed Nebius pricing, preemptible H100 is the cost-optimal default
+- Current production launch target:
+  - preemptible `8x H100`
+  - expected Tier-A wall time roughly `2.9h`
+  - expected full Tier-A GPU budget roughly `22.1 GPU-hours`
 
 ## 5. Why This Is Still Viable
 
@@ -173,27 +182,19 @@ This is a tractable robustness program if managed with strict gates and discipli
 
 This section is intentionally conservative. It defines required evidence stages and handoff criteria without over-promising activity outcomes.
 
-### Stage A: Computational durability recovery
+### Stage A: Clean dataset materialization
 
-**Goal:** complete Repair20 durability confirmation with seed support and baseline-locked basin metrics.
-
-Exit criteria:
-
-1. `p12` fixed seeds achieve at least floor-level reproducibility (for example, `>= [1,1,1]` or equivalent gate pass).
-2. Basin pressure improves versus locked baseline (bridge up, both failure basins down).
-
-### Stage B: Cross-scale robustness
-
-**Goal:** prove bridge does not disappear at larger prompt suites.
+**Goal:** score the full Tier-A/Tier-B stockpile on Nebius and materialize a clean mined dataset.
 
 Exit criteria:
 
-1. gate-valid non-zero signal at `p24`
-2. stress behavior characterized at `p48`
+1. all Tier-A and Tier-B records are scored with the tuned staged evaluator
+2. outputs are durable and aggregated into a single clean dataset
+3. shortlist, reject, and near-miss partitions are reproducible from the mined outputs
 
-### Stage C: Shortlist hardening
+### Stage B: Shortlist hardening
 
-**Goal:** build a trusted candidate frontier set for external evaluation.
+**Goal:** build a trusted candidate frontier set for structural triage and downstream decision-making.
 
 Required artifacts:
 
@@ -201,6 +202,16 @@ Required artifacts:
 2. structural sanity triage outputs
 3. diversity and novelty annotations
 4. clear failure-mode annotations for near misses
+
+### Stage C: Retrain / repair decision
+
+**Goal:** decide whether the mined dataset justifies another repair/retrain cycle or direct shortlist hardening only.
+
+Required evidence:
+
+1. mined positives and near-misses are large enough to support a disciplined update
+2. failure-basin composition is measured on the clean dataset
+3. any new branch uses the mined dataset, not anecdotal wins
 
 ### Stage D: Wet-lab handoff package
 

@@ -9,21 +9,31 @@ This repository explores computational sequence design for PETase-family protein
 - Sponsor-facing summary: [`WHITEPAPER.md`](WHITEPAPER.md)
 - Full experimental history and decisions: [`notes/LABNOTES.md`](notes/LABNOTES.md)
 
-## Current State (March 22, 2026)
+## Current State (March 24, 2026)
 
 - The project has clear existence proof of the target bridge:
   - single catalytic motif
   - geometry pass
   - high ESM proxy (`ESM >= 85`)
 - `repair20` did not clear durability and should not be advanced as the active scientific branch.
-- Current execution focus is the production-scale Wynton shard-scoring path for the `761,029` Tier-A handoff records and `958` Tier-B records, not additional exploratory RL scaling.
-- The validated cluster runtime is now:
-  - `qb3-iogpu*` (A100-SXM4-40GB) or `qb3-atgpu*` (A40)
+- Current execution focus is Nebius-side production scoring for the `761,029` Tier-A handoff records and `958` Tier-B records, not additional exploratory RL scaling.
+- Wynton served as the bring-up path and validated the evaluator, but it is no longer the preferred production environment because scheduler latency dominated wall time.
+- The validated production runtime is now:
   - `torch 2.5.1+cu121`
-  - direct Python execution
-  - `SET_CUDA_VISIBLE_DEVICES=0`
-  - outputs written directly to persistent storage under `reports/hpc_sequence_eval/...`
-- The `qb3-idgpu*` pool (RTX 2080 Ti / TITAN RTX class) was found unreliable for this workload and is not the recommended production path.
+  - `PREFILTER_EVAL_MODE=staged`
+  - `PREFILTER_CPU_WORKERS=8`
+  - `ESM2_BATCH_SIZE=256`
+  - `ESM2_SEQUENCE_BATCH_SIZE=1`
+  - `ESM2_PIPELINE_CHUNK_SIZE=128`
+- Final Nebius benchmark ladder:
+  - L40S baseline: `0.364412 s/record`
+  - tuned H100: `0.108953 s/record`
+  - tuned H200: `0.104376 s/record`
+- H200 is only `~4.4%` faster than H100 after tuning, so the current economic default is preemptible `8x H100`, not H200.
+- The path to a clean dataset is now straightforward:
+  - run the full A/B stockpile on Nebius
+  - aggregate scored candidates, rejects, and near-miss records
+  - build the shortlist/repair/retrain dataset from those mined outputs
 
 ## What The System Does
 
@@ -62,6 +72,8 @@ Requirements are pinned in [`requirements.txt`](requirements.txt) and include:
 - `transformers==5.2.0`
 - `numpy==2.4.2`
 
+Note: the production shard-scoring runtime used on Nebius/Wynton is a separate CUDA environment (`torch 2.5.1+cu121`) rather than the local/dev `requirements.txt` baseline.
+
 ## Runtime Requirements
 
 - Valid `TINKER_API_KEY`
@@ -75,22 +87,56 @@ export TINKER_API_KEY=...
 export ESM2_DEVICE=mps
 ```
 
-## Current Validated Wynton Path
+## Current Validated Nebius Path
 
-For Wynton production shard scoring, the repository now has a validated execution path that differs from the local/dev defaults:
+For production stockpile scoring, the repository now has a validated Nebius execution path that differs from the local/dev defaults:
 
 - Python env: `~/venvs/pearl-eval-cu121`
 - PyTorch: `2.5.1+cu121`
-- healthy pools observed in practice:
+- evaluator mode:
+  - `PREFILTER_EVAL_MODE=staged`
+  - `PREFILTER_CPU_WORKERS=8`
+  - `ESM2_BATCH_SIZE=256`
+  - `ESM2_SEQUENCE_BATCH_SIZE=1`
+  - `ESM2_PIPELINE_CHUNK_SIZE=128`
+- outputs should be written directly to persistent storage under `reports/nebius_benchmarks/...` during benchmarking and under the production output root during full stockpile runs
+- current benchmark artifacts live under:
+  - `reports/nebius_benchmarks/`
+
+Current validated benchmark outcomes:
+
+- L40S tuned baseline:
+  - `0.364412 s/record`
+  - `9878.93 records/hour`
+- H100 tuned rerun:
+  - `0.108953 s/record`
+  - `33041.77 records/hour`
+- H200 tuned best:
+  - `0.104376 s/record`
+  - `34490.69 records/hour`
+
+Operational implication:
+
+- a `10,000`-record shard is now about `17-18 minutes` on the final tuned path
+- the full `761,029` Tier-A pool is about `22.1 GPU-hours`
+- an `8x H100` node can clear the full Tier-A pool in roughly `2.9 hours`, before additional overhead
+- at current Nebius pricing, preemptible H100 is the economic default because H200 does not outperform it by enough to justify the price premium
+
+## Legacy Wynton Bring-Up
+
+Wynton is now a historical bring-up and fallback path, not the primary production target.
+
+What Wynton proved:
+
+- the shard evaluator ran correctly on real UCSF GPUs
+- durable direct-to-storage outputs worked
+- healthy pools were:
   - `qb3-iogpu*` (A100)
   - `qb3-atgpu*` (A40)
-- unhealthy pool observed in practice:
+- unhealthy pool:
   - `qb3-idgpu*`
-- GPU masking should remain off:
-  - `SET_CUDA_VISIBLE_DEVICES=0`
-- outputs should be written directly to persistent storage rather than staged in `/scratch`
 
-Current validated artifacts:
+Legacy validated artifacts:
 
 - A-shard smoke on A100 (`250` records, CUDA path, durable output):
   - [`reports/hpc_sequence_eval/topoff1m-a-smoke-a100-cu121-20260321b/runs/topoff1m-a-smoke-a100-cu121-20260321b-hpc_ready_A_shard_0001/summary.json`](reports/hpc_sequence_eval/topoff1m-a-smoke-a100-cu121-20260321b/runs/topoff1m-a-smoke-a100-cu121-20260321b-hpc_ready_A_shard_0001/summary.json)
