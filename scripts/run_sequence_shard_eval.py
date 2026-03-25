@@ -5,7 +5,7 @@ import json
 import multiprocessing as mp
 import os
 import time
-from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -177,8 +177,8 @@ def run_pipeline_mode(
     family_stats: dict[str, Any],
     reference_records: list[dict[str, Any]],
 ) -> None:
-    previous_eval_future: Future[dict[str, Any]] | None = None
-    with ThreadPoolExecutor(max_workers=1) as executor:
+    if PREFILTER_CPU_WORKERS <= 1 or os.name != "posix" or sys.platform == "darwin":
+        previous_eval_result: dict[str, Any] | None = None
         for record_chunk in iter_valid_record_chunks(
             in_handle=in_handle,
             input_jsonl=input_jsonl,
@@ -187,15 +187,14 @@ def run_pipeline_mode(
             limit=limit,
         ):
             raw_esm_scores = get_esm2_plddt_scores([record["sequence"] for record in record_chunk])
-            if previous_eval_future is not None:
+            if previous_eval_result is not None:
                 apply_evaluated_chunk(
-                    result=previous_eval_future.result(),
+                    result=previous_eval_result,
                     scored_handle=scored_handle,
                     bridge_handle=bridge_handle,
                     stats=stats,
                 )
-            previous_eval_future = executor.submit(
-                evaluate_record_chunk,
+            previous_eval_result = evaluate_record_chunk(
                 record_chunk=record_chunk,
                 raw_esm_scores=raw_esm_scores,
                 input_jsonl=str(input_jsonl),
@@ -204,13 +203,59 @@ def run_pipeline_mode(
                 reference_records=reference_records,
             )
 
-        if previous_eval_future is not None:
+        if previous_eval_result is not None:
             apply_evaluated_chunk(
-                result=previous_eval_future.result(),
+                result=previous_eval_result,
                 scored_handle=scored_handle,
                 bridge_handle=bridge_handle,
                 stats=stats,
             )
+        return
+
+    precompute_novelty_cache(reference_records)
+    init_cpu_worker_state(
+        family_stats=family_stats,
+        reference_records=reference_records,
+        input_jsonl=str(input_jsonl),
+        plddt_gate_threshold=plddt_gate_threshold,
+    )
+
+    previous_eval_futures: list[Future[dict[str, Any]]] = []
+    with ProcessPoolExecutor(
+        max_workers=PREFILTER_CPU_WORKERS,
+        mp_context=mp.get_context("fork"),
+    ) as executor:
+        for record_chunk in iter_valid_record_chunks(
+            in_handle=in_handle,
+            input_jsonl=input_jsonl,
+            reject_handle=reject_handle,
+            stats=stats,
+            limit=limit,
+        ):
+            raw_esm_scores = get_esm2_plddt_scores([record["sequence"] for record in record_chunk])
+
+            if previous_eval_futures:
+                for future in previous_eval_futures:
+                    apply_evaluated_chunk(
+                        result=future.result(),
+                        scored_handle=scored_handle,
+                        bridge_handle=bridge_handle,
+                        stats=stats,
+                    )
+
+            previous_eval_futures = [
+                executor.submit(evaluate_record_chunk_in_worker, chunk_pair)
+                for chunk_pair in split_record_score_chunk_for_cpu(record_chunk, raw_esm_scores)
+            ]
+
+        if previous_eval_futures:
+            for future in previous_eval_futures:
+                apply_evaluated_chunk(
+                    result=future.result(),
+                    scored_handle=scored_handle,
+                    bridge_handle=bridge_handle,
+                    stats=stats,
+                )
 
 
 def run_staged_mode(
@@ -376,6 +421,22 @@ def iter_record_score_chunks(
     for start in range(0, len(records), ESM2_PIPELINE_CHUNK_SIZE):
         stop = start + ESM2_PIPELINE_CHUNK_SIZE
         yield records[start:stop], raw_esm_scores[start:stop]
+
+
+def split_record_score_chunk_for_cpu(
+    records: list[dict[str, Any]],
+    raw_esm_scores: list[float],
+) -> list[tuple[list[dict[str, Any]], list[float]]]:
+    if len(records) <= 1 or PREFILTER_CPU_WORKERS <= 1:
+        return [(records, raw_esm_scores)]
+
+    target_parts = min(PREFILTER_CPU_WORKERS, len(records))
+    chunk_size = max(1, (len(records) + target_parts - 1) // target_parts)
+    parts: list[tuple[list[dict[str, Any]], list[float]]] = []
+    for start in range(0, len(records), chunk_size):
+        stop = start + chunk_size
+        parts.append((records[start:stop], raw_esm_scores[start:stop]))
+    return parts
 
 
 def init_cpu_worker_state(

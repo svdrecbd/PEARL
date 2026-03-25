@@ -19,6 +19,10 @@ ESM2_MODEL_NAME = os.environ.get("ESM2_MODEL_NAME", "facebook/esm2_t6_8M_UR50D")
 ESM2_BATCH_SIZE = max(1, int(os.environ.get("ESM2_BATCH_SIZE", "64")))
 ESM2_SEQUENCE_BATCH_SIZE = max(1, int(os.environ.get("ESM2_SEQUENCE_BATCH_SIZE", "16")))
 ESM2_SEQUENCE_LENGTH_BUCKET_SPAN = max(0, int(os.environ.get("ESM2_SEQUENCE_LENGTH_BUCKET_SPAN", "32")))
+ESM2_SEQUENCE_BATCH_TARGET_RESIDUES = max(
+    0,
+    int(os.environ.get("ESM2_SEQUENCE_BATCH_TARGET_RESIDUES", "0")),
+)
 MIN_SEQUENCE_LENGTH = max(MIN_EXTRACTABLE_SEQUENCE_LENGTH, int(os.environ.get("ESM2_MIN_SEQUENCE_LENGTH", "30")))
 ESM2_BACKEND = os.environ.get("ESM2_BACKEND", "torch").strip().lower() or "torch"
 ESM2_DEVICE = os.environ.get("ESM2_DEVICE", "").strip().lower()
@@ -117,6 +121,7 @@ def prewarm_esm2_model() -> dict[str, object]:
             "residue_batch_size": ESM2_BATCH_SIZE,
             "sequence_batch_size": ESM2_SEQUENCE_BATCH_SIZE,
             "sequence_length_bucket_span": ESM2_SEQUENCE_LENGTH_BUCKET_SPAN,
+            "sequence_batch_target_residues": ESM2_SEQUENCE_BATCH_TARGET_RESIDUES,
         }
 
     _, _, device = _get_esm2()
@@ -128,6 +133,7 @@ def prewarm_esm2_model() -> dict[str, object]:
         "residue_batch_size": ESM2_BATCH_SIZE,
         "sequence_batch_size": ESM2_SEQUENCE_BATCH_SIZE,
         "sequence_length_bucket_span": ESM2_SEQUENCE_LENGTH_BUCKET_SPAN,
+        "sequence_batch_target_residues": ESM2_SEQUENCE_BATCH_TARGET_RESIDUES,
     }
 
 
@@ -223,21 +229,29 @@ def _bucket_candidates_by_length(candidates: list[str]) -> list[list[str]]:
     buckets: list[list[str]] = []
     current_bucket: list[str] = []
     bucket_max_length = 0
+    bucket_total_residues = 0
     for candidate in candidates:
         candidate_length = len(candidate)
+        candidate_residues = max(1, candidate_length - 2)
         if (
             current_bucket
             and (
                 len(current_bucket) >= ESM2_SEQUENCE_BATCH_SIZE
                 or bucket_max_length - candidate_length > ESM2_SEQUENCE_LENGTH_BUCKET_SPAN
+                or (
+                    ESM2_SEQUENCE_BATCH_TARGET_RESIDUES > 0
+                    and bucket_total_residues + candidate_residues > ESM2_SEQUENCE_BATCH_TARGET_RESIDUES
+                )
             )
         ):
             buckets.append(current_bucket)
             current_bucket = []
+            bucket_total_residues = 0
 
         if not current_bucket:
             bucket_max_length = candidate_length
         current_bucket.append(candidate)
+        bucket_total_residues += candidate_residues
 
     if current_bucket:
         buckets.append(current_bucket)

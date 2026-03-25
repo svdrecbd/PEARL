@@ -14,6 +14,7 @@ PREFILTER_EVAL_MODE="${PREFILTER_EVAL_MODE:-pipeline}"
 ESM2_BATCH_SIZE="${ESM2_BATCH_SIZE:-64}"
 ESM2_SEQUENCE_BATCH_SIZE="${ESM2_SEQUENCE_BATCH_SIZE:-16}"
 ESM2_SEQUENCE_LENGTH_BUCKET_SPAN="${ESM2_SEQUENCE_LENGTH_BUCKET_SPAN:-32}"
+ESM2_SEQUENCE_BATCH_TARGET_RESIDUES="${ESM2_SEQUENCE_BATCH_TARGET_RESIDUES:-0}"
 ESM2_PIPELINE_CHUNK_SIZE="${ESM2_PIPELINE_CHUNK_SIZE:-256}"
 PREFILTER_CPU_WORKERS="${PREFILTER_CPU_WORKERS:-1}"
 ESM2_ENABLE_TF32="${ESM2_ENABLE_TF32:-1}"
@@ -43,6 +44,8 @@ Options:
   --esm2-sequence-batch-size <n> Override ESM2 cross-record batch size. Default: 16.
   --esm2-sequence-length-bucket-span <n>
                                  Max length spread within one sequence bucket. Default: 32.
+  --esm2-sequence-batch-target-residues <n>
+                                 Target total masked residues per sequence bucket. Default: 0.
   --esm2-pipeline-chunk-size <n> Number of valid records scored before CPU eval catches up. Default: 256.
   --prefilter-cpu-workers <n>    CPU worker processes used in staged mode. Default: 1.
   Env defaults:
@@ -104,6 +107,10 @@ while [[ $# -gt 0 ]]; do
       ESM2_SEQUENCE_LENGTH_BUCKET_SPAN="$2"
       shift 2
       ;;
+    --esm2-sequence-batch-target-residues)
+      ESM2_SEQUENCE_BATCH_TARGET_RESIDUES="$2"
+      shift 2
+      ;;
     --esm2-pipeline-chunk-size)
       ESM2_PIPELINE_CHUNK_SIZE="$2"
       shift 2
@@ -153,6 +160,7 @@ export PREFILTER_EVAL_MODE
 export ESM2_BATCH_SIZE
 export ESM2_SEQUENCE_BATCH_SIZE
 export ESM2_SEQUENCE_LENGTH_BUCKET_SPAN
+export ESM2_SEQUENCE_BATCH_TARGET_RESIDUES
 export ESM2_PIPELINE_CHUNK_SIZE
 export PREFILTER_CPU_WORKERS
 export ESM2_ENABLE_TF32
@@ -182,6 +190,7 @@ fi
   echo "[nebius-bench] esm2_batch_size=$ESM2_BATCH_SIZE"
   echo "[nebius-bench] esm2_sequence_batch_size=$ESM2_SEQUENCE_BATCH_SIZE"
   echo "[nebius-bench] esm2_sequence_length_bucket_span=$ESM2_SEQUENCE_LENGTH_BUCKET_SPAN"
+  echo "[nebius-bench] esm2_sequence_batch_target_residues=$ESM2_SEQUENCE_BATCH_TARGET_RESIDUES"
   echo "[nebius-bench] esm2_pipeline_chunk_size=$ESM2_PIPELINE_CHUNK_SIZE"
   echo "[nebius-bench] prefilter_cpu_workers=$PREFILTER_CPU_WORKERS"
   echo "[nebius-bench] esm2_device=${ESM2_DEVICE:-auto}"
