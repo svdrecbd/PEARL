@@ -24,7 +24,11 @@ def main() -> None:
         raise SystemExit(f"No rows found in {args.input_path}")
 
     deduped_rows = dedupe_rows(rows)
-    clusters = cluster_rows(deduped_rows, identity_threshold=args.cluster_identity_threshold)
+    clusters = cluster_rows(
+        deduped_rows,
+        identity_threshold=args.cluster_identity_threshold,
+        mode=args.cluster_mode,
+    )
     assign_cluster_ids(deduped_rows=deduped_rows, clusters=clusters)
 
     selected_rows = select_diverse_rows(
@@ -74,6 +78,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-total", type=int, default=48)
     parser.add_argument("--max-per-source-run", type=int, default=3)
     parser.add_argument("--max-per-cluster", type=int, default=2)
+    parser.add_argument(
+        "--cluster-mode",
+        choices=("heuristic", "exact"),
+        default="heuristic",
+        help="Heuristic mode is fast and intended for shortlist construction. Exact mode restores quadratic Levenshtein clustering.",
+    )
     parser.add_argument("--cluster-identity-threshold", type=float, default=0.85)
     args = parser.parse_args()
 
@@ -123,7 +133,33 @@ def row_priority_key(row: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
-def cluster_rows(rows: list[dict[str, Any]], *, identity_threshold: float) -> list[list[dict[str, Any]]]:
+def cluster_rows(
+    rows: list[dict[str, Any]],
+    *,
+    identity_threshold: float,
+    mode: str,
+) -> list[list[dict[str, Any]]]:
+    if mode == "exact":
+        return cluster_rows_exact(rows, identity_threshold=identity_threshold)
+    return cluster_rows_heuristic(rows)
+
+
+def cluster_rows_heuristic(rows: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    if not rows:
+        return []
+
+    grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(heuristic_cluster_key(row), []).append(row)
+
+    clusters = list(grouped.values())
+    for cluster in clusters:
+        cluster.sort(key=row_priority_key)
+    clusters.sort(key=len, reverse=True)
+    return clusters
+
+
+def cluster_rows_exact(rows: list[dict[str, Any]], *, identity_threshold: float) -> list[list[dict[str, Any]]]:
     if not rows:
         return []
 
@@ -157,6 +193,20 @@ def cluster_rows(rows: list[dict[str, Any]], *, identity_threshold: float) -> li
         cluster.sort(key=row_priority_key)
     clusters.sort(key=len, reverse=True)
     return clusters
+
+
+def heuristic_cluster_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    sequence = str(row.get("sequence") or "")
+    length = max(1, len(sequence))
+    length_bucket = int(round(length / 10.0) * 10)
+    window = min(24, length)
+    midpoint = max(0, (length // 2) - (window // 2))
+    return (
+        length_bucket,
+        sequence[:window],
+        sequence[midpoint : midpoint + window],
+        sequence[-window:],
+    )
 
 
 def normalized_identity(left: str, right: str) -> float:
@@ -291,6 +341,7 @@ def build_summary(
             "max_total": args.max_total,
             "max_per_source_run": args.max_per_source_run,
             "max_per_cluster": args.max_per_cluster,
+            "cluster_mode": args.cluster_mode,
             "cluster_identity_threshold": args.cluster_identity_threshold,
         },
     }

@@ -99,6 +99,7 @@ CONTROL_BLUEPRINT_TAG = os.environ.get("CONTROL_BLUEPRINT_TAG", "").strip()
 CONTROL_BLUEPRINT_RATIOS = os.environ.get("CONTROL_BLUEPRINT_RATIOS", "").strip()
 TIMING_ENABLED = os.environ.get("TINKER_TIMING", "0") == "1"
 PREWARM_ESM2 = os.environ.get("TINKER_PREWARM_ESM2", "1") == "1"
+SKIP_STAGE2_ESM = os.environ.get("TINKER_SKIP_STAGE2_ESM", "0") == "1"
 SAMPLER_CHECKPOINT_MAP_PATH = Path(
     os.environ.get("TINKER_SAMPLER_CHECKPOINT_MAP_PATH", ".tinker_sampler_checkpoint_map.json")
 )
@@ -271,7 +272,7 @@ def main() -> None:
         family_stats = compute_family_stats(reference_records)
         emit_timing_event(phase="compute_family_stats", status="end", started_at=phase_started_at)
 
-    if PREWARM_ESM2 and SECOND_STAGE_TOP_K > 0:
+    if PREWARM_ESM2 and SECOND_STAGE_TOP_K > 0 and not SKIP_STAGE2_ESM:
         phase_started_at = time.perf_counter()
         emit_timing_event(phase="prewarm_esm2_model", status="start")
         esm2_info = prewarm_esm2_model()
@@ -292,6 +293,7 @@ def main() -> None:
                 "candidate_sample_count": CANDIDATE_SAMPLE_COUNT,
                 "second_stage_top_k": SECOND_STAGE_TOP_K,
                 "plddt_gate_threshold": PLDDT_GATE_THRESHOLD,
+                "skip_stage2_esm": SKIP_STAGE2_ESM,
                 "rl_learning_rate": RL_LEARNING_RATE,
                 "rl_loss_fn": RL_LOSS_FN,
                 "rl_reward_mode": RL_REWARD_MODE,
@@ -1060,16 +1062,17 @@ def persist_progress(
                 "init_state_path": INIT_STATE_PATH,
                 "eval_only": EVAL_ONLY,
                 "prompt_variant": PROMPT_VARIANT,
-        "candidate_sample_count": CANDIDATE_SAMPLE_COUNT,
-        "second_stage_top_k": SECOND_STAGE_TOP_K,
-        "plddt_gate_threshold": PLDDT_GATE_THRESHOLD,
-        "second_stage_esm_weight": SECOND_STAGE_ESM_WEIGHT,
-        "second_stage_motif_weight": SECOND_STAGE_MOTIF_WEIGHT,
-        "second_stage_geometry_weight": SECOND_STAGE_GEOMETRY_WEIGHT,
-        "second_stage_template_weight": SECOND_STAGE_TEMPLATE_WEIGHT,
-        "records": candidate_audit_records,
-    },
-)
+                "candidate_sample_count": CANDIDATE_SAMPLE_COUNT,
+                "second_stage_top_k": SECOND_STAGE_TOP_K,
+                "plddt_gate_threshold": PLDDT_GATE_THRESHOLD,
+                "second_stage_esm_weight": SECOND_STAGE_ESM_WEIGHT,
+                "second_stage_motif_weight": SECOND_STAGE_MOTIF_WEIGHT,
+                "second_stage_geometry_weight": SECOND_STAGE_GEOMETRY_WEIGHT,
+                "second_stage_template_weight": SECOND_STAGE_TEMPLATE_WEIGHT,
+                "skip_stage2_esm": SKIP_STAGE2_ESM,
+                "records": candidate_audit_records,
+            },
+        )
     return report
 
 
@@ -1107,6 +1110,7 @@ def build_report_payload(
         "second_stage_motif_weight": SECOND_STAGE_MOTIF_WEIGHT,
         "second_stage_geometry_weight": SECOND_STAGE_GEOMETRY_WEIGHT,
         "second_stage_template_weight": SECOND_STAGE_TEMPLATE_WEIGHT,
+        "skip_stage2_esm": SKIP_STAGE2_ESM,
         "average_reward": average_reward,
         "records": step_records,
     }
@@ -1414,16 +1418,17 @@ def sample_valid_sequence(
         phase="score_stage2_esm",
         status="start",
         step=step,
-        extra={"stage2_candidate_count": len(stage2_candidates)},
+        extra={"stage2_candidate_count": len(stage2_candidates), "skip_stage2_esm": SKIP_STAGE2_ESM},
     )
     for candidate in stage2_candidates:
-        raw_esm_score = (
-            get_esm2_plddt_score(candidate["extracted_sequence"])
-            if candidate["extracted_sequence"]
+        raw_esm_score = 0.0
+        if (
+            not SKIP_STAGE2_ESM
+            and candidate["extracted_sequence"]
             and candidate["quality"]["hard_gate_pass"]
             and candidate["quality"]["soft_floor_pass"]
-            else 0.0
-        )
+        ):
+            raw_esm_score = get_esm2_plddt_score(candidate["extracted_sequence"])
         candidate["raw_esm_score"] = raw_esm_score
         candidate["stage2_score"] = compute_second_stage_score(
             raw_esm_score=raw_esm_score,
@@ -1528,6 +1533,8 @@ def build_candidate_audit_entry(candidate: dict[str, Any], is_selected: bool) ->
         "ser_his_strength": float(quality["ser_his_strength"]),
         "geometry_score": float(quality["geometry_score"]),
         "raw_esm_score": raw_esm_score,
+        "sequence_quality": quality,
+        "family_evaluation": family_evaluation,
         **bridge_flags,
         "best_gap_error": (
             family_evaluation["catalytic_geometry"]["best_gap_error"] if family_evaluation is not None else None

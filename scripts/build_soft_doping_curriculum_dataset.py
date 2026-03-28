@@ -20,6 +20,34 @@ def infer_canonical_motif(sequence: str, allowed_motifs: set[str]) -> str | None
     return None
 
 
+def resolve_training_prompt(row: dict[str, Any]) -> str:
+    prompt = str(row.get("prompt") or row.get("source_prompt") or "").strip()
+    if prompt:
+        return prompt
+
+    length = int(row.get("length") or row.get("sequence_length") or len(str(row.get("sequence") or "")) or 300)
+    motif = str(row.get("derived_motif") or "").strip()
+    if not motif:
+        family_eval = row.get("family_evaluation") or {}
+        serine_motifs = family_eval.get("serine_motifs") or []
+        if serine_motifs:
+            motif = str(serine_motifs[0]).strip()
+
+    motif_clause = f" with canonical serine motif {motif}" if motif else ""
+    return (
+        f"Generate a PETase-family esterase sequence around {length} aa"
+        f"{motif_clause} while preserving catalytic bridge geometry."
+    )
+
+
+def normalize_training_row(row: dict[str, Any]) -> dict[str, Any]:
+    enriched = dict(row)
+    prompt = resolve_training_prompt(enriched)
+    enriched["prompt"] = prompt
+    enriched["sequence_prompt"] = str(enriched.get("sequence_prompt") or prompt)
+    return enriched
+
+
 def build_dataset(
     *,
     purebred_rows: list[dict[str, Any]],
@@ -33,7 +61,7 @@ def build_dataset(
         motif = infer_canonical_motif(row["sequence"], allowed_motifs)
         if motif is None:
             continue
-        enriched = dict(row)
+        enriched = normalize_training_row(row)
         enriched["curriculum_role"] = "tier1_pull"
         enriched["curriculum_source"] = "purebred_canonical"
         enriched["derived_motif"] = motif
@@ -41,7 +69,7 @@ def build_dataset(
 
     strict_repairs: list[dict[str, Any]] = []
     for row in strict_rows:
-        enriched = dict(row)
+        enriched = normalize_training_row(row)
         enriched["curriculum_role"] = "tier1_pull"
         enriched["curriculum_source"] = "doping_strict"
         strict_repairs.append(enriched)
@@ -53,7 +81,7 @@ def build_dataset(
 
     selected_tier2: list[dict[str, Any]] = []
     for row in loose_rows:
-        enriched = dict(row)
+        enriched = normalize_training_row(row)
         enriched["curriculum_role"] = "tier2_anchor"
         enriched["curriculum_source"] = "doping_loose"
         selected_tier2.append(enriched)

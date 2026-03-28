@@ -43,6 +43,7 @@ def main() -> None:
         "python_executable": python_executable,
         "init_state_path": args.init_state_path,
         "eval_only": args.eval_only,
+        "stage1_only": args.stage1_only,
         "resume": args.resume,
         "prompt_count": args.prompt_count,
         "candidate_sample_count": args.candidate_sample_count,
@@ -85,6 +86,8 @@ def main() -> None:
         env["TINKER_INIT_STATE_PATH"] = args.init_state_path
     if args.eval_only:
         env["TINKER_EVAL_ONLY"] = "1"
+    if args.stage1_only:
+        env["TINKER_SKIP_STAGE2_ESM"] = "1"
     if args.resume:
         env["TINKER_RESUME_PROGRESS"] = "1"
     if candidate_audit_path is not None:
@@ -99,6 +102,7 @@ def main() -> None:
     summary["model"] = args.model
     summary["init_state_path"] = args.init_state_path
     summary["eval_only"] = args.eval_only
+    summary["stage1_only"] = args.stage1_only
     summary["prompt_count"] = args.prompt_count
     summary["candidate_sample_count"] = args.candidate_sample_count
     summary["second_stage_top_k"] = args.second_stage_top_k
@@ -154,6 +158,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--init-state-path")
     parser.add_argument("--eval-only", action="store_true")
+    parser.add_argument("--stage1-only", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--capture-candidate-audit", action="store_true")
     parser.add_argument("--seed", type=int, default=7)

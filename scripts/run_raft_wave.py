@@ -15,7 +15,22 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-MAX_SAFE_PARALLEL_JOBS = 4
+DEFAULT_MAX_SAFE_PARALLEL_JOBS = 12
+
+
+def resolve_max_safe_parallel_jobs() -> int:
+    raw_value = os.environ.get("TINKER_MAX_SAFE_PARALLEL_JOBS", str(DEFAULT_MAX_SAFE_PARALLEL_JOBS))
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise SystemExit(f"Invalid TINKER_MAX_SAFE_PARALLEL_JOBS={raw_value!r}; expected an integer") from exc
+    if value <= 0:
+        raise SystemExit("TINKER_MAX_SAFE_PARALLEL_JOBS must be positive")
+    return value
+
+
+MAX_SAFE_PARALLEL_JOBS = resolve_max_safe_parallel_jobs()
+DEFAULT_SHARD_COUNT = min(4, MAX_SAFE_PARALLEL_JOBS)
 
 
 def main() -> None:
@@ -32,14 +47,24 @@ def main() -> None:
     runs_dir.mkdir(parents=True, exist_ok=True)
 
     prompt_rows = load_jsonl(Path(args.prompts_path))
-    if args.total_prompt_count > len(prompt_rows):
+    if args.prompt_offset < 0:
+        raise SystemExit("--prompt-offset must be non-negative")
+    if args.prompt_offset >= len(prompt_rows):
         raise SystemExit(
-            f"Requested {args.total_prompt_count} prompts but only found {len(prompt_rows)} in {args.prompts_path}"
+            f"--prompt-offset={args.prompt_offset} is past the end of {args.prompts_path} "
+            f"({len(prompt_rows)} prompts available)"
+        )
+    if args.prompt_offset + args.total_prompt_count > len(prompt_rows):
+        raise SystemExit(
+            f"Requested prompt slice [{args.prompt_offset}, {args.prompt_offset + args.total_prompt_count}) "
+            f"but only found {len(prompt_rows)} prompts in {args.prompts_path}"
         )
 
     shuffled = list(prompt_rows)
     random.Random(args.seed).shuffle(shuffled)
-    selected_rows = shuffled[: args.total_prompt_count]
+    slice_start = args.prompt_offset
+    slice_end = args.prompt_offset + args.total_prompt_count
+    selected_rows = shuffled[slice_start:slice_end]
     shards = split_rows(selected_rows, args.shard_count)
 
     launched_jobs: list[dict[str, Any]] = []
@@ -59,7 +84,7 @@ def main() -> None:
             "--name",
             shard_name,
             "--variant",
-            "baseline",
+            args.variant,
             "--model",
             args.model,
             "--prompts-path",
@@ -84,6 +109,8 @@ def main() -> None:
             str(args.seed + shard_index),
             "--preserve-order",
         ]
+        if args.stage1_only:
+            command.extend(["--stage1-only", "--resume"])
 
         launch_command = [
             sys.executable,
@@ -114,14 +141,17 @@ def main() -> None:
         "name": args.name,
         "init_state_path": args.init_state_path,
         "model": args.model,
+        "variant": args.variant,
         "prompts_path": args.prompts_path,
         "reference_records_path": args.reference_records_path,
         "total_prompt_count": args.total_prompt_count,
+        "prompt_offset": args.prompt_offset,
         "shard_count": args.shard_count,
         "candidate_sample_count": args.candidate_sample_count,
         "second_stage_top_k": args.second_stage_top_k,
         "plddt_gate_threshold": args.plddt_gate_threshold,
         "temperature": args.temperature,
+        "stage1_only": args.stage1_only,
         "seed": args.seed,
         "jobs": launched_jobs,
         "prompts_dir": str(prompts_dir),
@@ -146,13 +176,20 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output-dir", default=str(ROOT / "reports" / "raft"))
     parser.add_argument("--model", default="moonshotai/Kimi-K2.5")
+    parser.add_argument(
+        "--variant",
+        choices=("baseline", "motif_prior_v1", "motif_prior_soft_v2"),
+        default="baseline",
+    )
     parser.add_argument("--total-prompt-count", type=int, default=200)
-    parser.add_argument("--shard-count", type=int, default=MAX_SAFE_PARALLEL_JOBS)
+    parser.add_argument("--prompt-offset", type=int, default=0)
+    parser.add_argument("--shard-count", type=int, default=DEFAULT_SHARD_COUNT)
     parser.add_argument("--candidate-sample-count", type=int, default=256)
     parser.add_argument("--second-stage-top-k", type=int, default=16)
     parser.add_argument("--plddt-gate-threshold", type=float, default=85.0)
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--esm2-device", default="mps")
+    parser.add_argument("--stage1-only", action="store_true")
     parser.add_argument("--seed", type=int, default=37)
     parser.add_argument("--api-key")
     return parser.parse_args()

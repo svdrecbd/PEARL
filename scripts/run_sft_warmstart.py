@@ -55,7 +55,8 @@ def main() -> None:
         for batch_index, batch_rows in enumerate(chunked(epoch_rows, args.batch_size)):
             datums: list[types.Datum] = []
             for row in batch_rows:
-                sequence_prompt = build_sequence_prompt(str(row["prompt"]), family_stats)
+                prompt = resolve_training_prompt(row)
+                sequence_prompt = build_sequence_prompt(prompt, family_stats)
                 prompt_input = types.ModelInput.from_ints(
                     tokenizer.encode(sequence_prompt, add_special_tokens=False)
                 )
@@ -67,7 +68,7 @@ def main() -> None:
                         "batch_index": batch_index,
                         "accession": row.get("accession"),
                         "label": row.get("label"),
-                        "prompt": row["prompt"],
+                        "prompt": prompt,
                         "sequence_length": len(row["sequence"]),
                         "esm_score": row.get("esm_score"),
                     }
@@ -205,6 +206,26 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
             if line:
                 rows.append(json.loads(line))
     return rows
+
+
+def resolve_training_prompt(row: dict[str, Any]) -> str:
+    prompt = str(row.get("prompt") or row.get("source_prompt") or "").strip()
+    if prompt:
+        return prompt
+
+    length = int(row.get("length") or row.get("sequence_length") or len(str(row.get("sequence") or "")) or 300)
+    motif = str(row.get("derived_motif") or "").strip()
+    if not motif:
+        family_eval = row.get("family_evaluation") or {}
+        serine_motifs = family_eval.get("serine_motifs") or []
+        if serine_motifs:
+            motif = str(serine_motifs[0]).strip()
+
+    motif_clause = f" with canonical serine motif {motif}" if motif else ""
+    return (
+        f"Generate a PETase-family esterase sequence around {length} aa"
+        f"{motif_clause} while preserving catalytic bridge geometry."
+    )
 
 
 def chunked(rows: list[dict[str, Any]], batch_size: int) -> list[list[dict[str, Any]]]:

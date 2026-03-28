@@ -10,19 +10,21 @@ This document is meant to do three jobs:
 
 This is a living document. It should be updated whenever we change the search regime, reward/eval definition, or operational workflow.
 
-## Latest Canonical Status (as of March 24, 2026)
+## Latest Canonical Status (as of March 28, 2026)
 
-- canonical reference policy:
-  - `tinker://7a5aeb3f-0652-52d1-849d-9916dfb43c7c:train:0/weights/kimi25-micro-sft-top9-plus-doping29-cont-lr5e7-ep1`
-- newest unconfirmed branch:
-  - `tinker://6c7881f9-0330-5a3b-8acf-f2a44a7cbf70:train:0/weights/pearl-micro-sft-repair20-from-wave3-lineage-lr5e7-ep1`
+- active mined-data engine:
+  - `balanced + motif_prior_soft_v2` half-million lane
+  - `500,224` raw candidates -> `50` exact-unique functional hits -> `12` exact-unique family-faithful hits
+- latest completed strict branch:
+  - `tinker://51507407-5b89-5e0f-ad7c-708d20a85322:train:0/weights/pearl-micro-sft-topoff1m-a-strict-first-union-stageb-lr5e7-ep1`
 - current phase:
-  - raw-generation stockpile + local prefilter + Nebius-side heavy scoring / dataset materialization
+  - strict-heavy recipe iteration on top of the validated half-million mined pool
 - next required gate:
-  - full Tier-A/Tier-B production scoring on preemptible `8x H100`, then clean dataset aggregation and shortlist/retrain triage
+  - prove that a stricter retrain recipe can turn the mined positives into a durable checkpoint on the fixed `12/24/48` suite
 - currently ruled-out paths:
   - resumed PPO
-  - broad SFT mixing without strict lineage/diversity controls
+  - another loose-heavy SFT mix
+  - another immediate half-million mining tranche
   - using Wynton as the primary production runtime
   - AlphaFold-scale downstream triage
 
@@ -1622,3 +1624,496 @@ A Wynton support report was prepared and sent summarizing:
 Operational implication:
 
 - current bottleneck is scheduler access to known-healthy GPU pools, not code correctness.
+
+## March 27, 2026 topoff1m A-run closeout + postprocess + robustness handoff
+
+### A-run production closeout
+
+The full `topoff1m` Tier-A Nebius run is now complete and fully local.
+
+Primary bundle:
+
+- [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/bundle_summary.json](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/bundle_summary.json)
+- [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/all_functional_bridges.jsonl](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/all_functional_bridges.jsonl)
+- [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/family_faithful_bridges.jsonl](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/family_faithful_bridges.jsonl)
+- [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/family_faithful_bridges.fasta](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/family_faithful_bridges.fasta)
+
+Bundle totals:
+
+- `77` shard summaries
+- `761,029` records evaluated
+- `15,583` geometry passes
+- `141` functional bridges
+- `10` family-faithful bridges
+
+Interpretation:
+
+- the run was not a washout
+- strict tier-1 density was still too thin for a clean retrain gate on mined hits alone
+- the next rational step became repair/doping rather than immediate “mine more”
+
+### H100 repair wave
+
+Repair outputs:
+
+- [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_summary_wave1_h100.json](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_summary_wave1_h100.json)
+- [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_survivors_wave1_h100.jsonl](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_survivors_wave1_h100.jsonl)
+- [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_best_attempts_wave1_h100.jsonl](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_best_attempts_wave1_h100.jsonl)
+
+Observed result:
+
+- `32` seed hits processed
+- `8,908` variants evaluated
+- `446` raw survivors
+
+Raw survivors were too loose to trust directly, so the survivor pool was capped and validated.
+
+Key files:
+
+- lineage-capped survivor pool:
+  - [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_survivors_wave1_h100_lineage_capped.jsonl](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_survivors_wave1_h100_lineage_capped.jsonl)
+- readiness result:
+  - [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_survivor_readiness_wave1_h100_lineage_capped.json](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_survivor_readiness_wave1_h100_lineage_capped.json)
+- strict family repairs:
+  - [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_survivors_wave1_h100_strict_family.jsonl](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_survivors_wave1_h100_strict_family.jsonl)
+- strict shortlist:
+  - [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_survivors_wave1_h100_strict_shortlist.jsonl](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_survivors_wave1_h100_strict_shortlist.jsonl)
+
+Validated outcome:
+
+- `61` capped survivors considered
+- only `8` survived strict validation
+- only `2` were strict family-clean repairs
+- `53` were rejected from conservative training use
+
+Repair-readiness outcome:
+
+- `ready_for_retrain = true`
+- `182` deduped tier-2 positives
+- `70` deduped tier-1 proxies
+- `145` train tier-2 after holdout
+- `40` train tier-1 proxies after holdout
+
+Interpretation:
+
+- repair solved the gate problem
+- strict-family density is still narrow, so training should remain conservative
+- this was enough to justify a limited warmstart branch pair
+
+### Warmstart branches
+
+Recommended curricula:
+
+- ultra-conservative:
+  - [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/soft_doping_curriculum_ultra_conservative.jsonl](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/soft_doping_curriculum_ultra_conservative.jsonl)
+  - [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/soft_doping_curriculum_ultra_conservative_summary.json](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/soft_doping_curriculum_ultra_conservative_summary.json)
+- balanced-strict:
+  - [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/soft_doping_curriculum_balanced_strict.jsonl](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/soft_doping_curriculum_balanced_strict.jsonl)
+  - [/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/soft_doping_curriculum_balanced_strict_summary.json](/Users/svdr/tinker/reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/soft_doping_curriculum_balanced_strict_summary.json)
+
+Warmstart outputs:
+
+- ultra:
+  - [/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-ultra-conservative-lr5e7-ep1/summary.json](/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-ultra-conservative-lr5e7-ep1/summary.json)
+- balanced:
+  - [/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-balanced-strict-lr5e7-ep1/summary.json](/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-balanced-strict-lr5e7-ep1/summary.json)
+
+Warmstart stats:
+
+- ultra:
+  - `47` pairs
+  - mean sequence length `475.3`
+  - mean ESM `93.04`
+- balanced:
+  - `53` pairs
+  - mean sequence length `482.81`
+  - mean ESM `93.78`
+
+Interpretation:
+
+- two post-topoff checkpoints now exist
+- the project is no longer in “can we ever hit bridge?” territory
+- the immediate question is whether either branch shows durable uplift on the frozen suite
+
+### Two-phase H100 robustness path
+
+The original one-process H100 robustness path was the wrong architecture for this workload.
+
+Observed problem:
+
+- remote Tinker sampling dominated wall clock
+- the H100 only helped during local ESM bursts
+- GPU utilization looked flat or bursty even when the suite was technically alive
+
+The replacement path is now:
+
+1. stockpile stage-1 candidate pools first
+2. defer local ESM rescoring/finalization to a separate H100 step
+3. summarize the suite only after finalized ablation dirs exist
+
+Files added for this:
+
+- [/Users/svdr/tinker/scripts/run_robustness_two_phase.py](/Users/svdr/tinker/scripts/run_robustness_two_phase.py)
+- [/Users/svdr/tinker/scripts/finalize_ablation_from_candidate_audit.py](/Users/svdr/tinker/scripts/finalize_ablation_from_candidate_audit.py)
+- [/Users/svdr/tinker/scripts/run_nebius_h100_robustness.sh](/Users/svdr/tinker/scripts/run_nebius_h100_robustness.sh)
+- [/Users/svdr/tinker/scripts/launch_topoff1m_a_robustness_h100.sh](/Users/svdr/tinker/scripts/launch_topoff1m_a_robustness_h100.sh)
+- [/Users/svdr/tinker/scripts/sync_topoff1m_a_eval_bundle.sh](/Users/svdr/tinker/scripts/sync_topoff1m_a_eval_bundle.sh)
+
+Operational lessons from the March 27 bring-up:
+
+1. the queue for `balanced` must wait on `ultra`’s `robustness_summary.json`, not the `ultra` parent PID
+2. the Nebius eval venv must include:
+   - `sentencepiece`
+   - `protobuf`
+   - `tiktoken`
+3. stockpile lanes can fail transiently, so `run_robustness_two_phase.py` now supports:
+   - `--stockpile-jobs`
+   - `--stockpile-retries`
+4. completed stage-1 ablation logs are written per lane under:
+   - `reports/ablations/<run_name>/stage1.log`
+
+Recommended VM settings for the current branch:
+
+- `STOCKPILE_JOBS=4`
+- `STOCKPILE_RETRIES=2`
+- one H100 per active suite
+- run `ultra` first, `balanced` second on the same VM unless a second H100 is available
+
+### Current live branch state during the March 27 robustness run
+
+The active live run family is:
+
+- ultra suite:
+  - `pearl-topoff1m-a-ultra-robustness-2phase-h100-p12p24p48-t08-s41s53s67`
+- balanced suite:
+  - `pearl-topoff1m-a-balanced-robustness-2phase-h100-p12p24p48-t08-s41s53s67`
+
+Partial ultra accomplishments already observed during the live run:
+
+- finalized:
+  - `p12/s41`
+  - `p12/s53`
+  - `p12/s67`
+  - `p24/s41`
+- partial signal:
+  - `p12/s53` already produced `1` functional bridge step
+  - `p24/s41` already produced `1` functional bridge step
+  - no family-faithful steps observed yet in the completed `ultra` subset
+
+Interpretation:
+
+- `ultra` is not dead
+- the suite has already shown nonzero tier-2 signal
+- the correct decision on more mining still depends on the final `ultra` and `balanced` robustness summaries
+
+Kill condition for the current robustness VM:
+
+- do not stop the VM until both of these files exist:
+  - `/home/svdr/work/tinker/reports/robustness/pearl-topoff1m-a-ultra-robustness-2phase-h100-p12p24p48-t08-s41s53s67/robustness_summary.json`
+  - `/home/svdr/work/tinker/reports/robustness/pearl-topoff1m-a-balanced-robustness-2phase-h100-p12p24p48-t08-s41s53s67/robustness_summary.json`
+
+At that point:
+
+1. rsync the `reports/robustness/` and `reports/ablations/` outputs back locally
+2. archive the launcher logs
+3. then kill the VM
+
+## March 27, 2026 robustness failure + softmotif half-million mining pivot
+
+### Robustness outcome
+
+The post-topoff `ultra` branch finished its two-phase H100 robustness suite and failed the durability gate.
+
+Primary summary:
+
+- [/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-ultra-robustness-2phase-h100-p12p24p48-t08-s41s53s67/robustness_summary.json](/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-ultra-robustness-2phase-h100-p12p24p48-t08-s41s53s67/robustness_summary.json)
+
+Interpretation:
+
+- the repair-derived checkpoint was not durable enough to become the new default branch
+- the failure did **not** invalidate the data signal; it invalidated the branch as a stable model endpoint
+- the right pivot was to stop spending H100 time on robustness and move into stockpile-first remine
+
+The `balanced` robustness branch was intentionally stopped once the architecture decision was clear.
+
+### Stockpile-first mining architecture
+
+The active mining lane became:
+
+- checkpoint:
+  - `tinker://6c592489-8afb-558c-a9b3-7331cf4d62ed:train:0/weights/pearl-micro-sft-topoff1m-a-balanced-strict-lr5e7-ep1`
+- prompt variant:
+  - `motif_prior_soft_v2`
+- workflow:
+  1. run `stage1-only` remote sampling locally
+  2. capture `candidate_audit.json` per shard
+  3. defer H100 ESM rescoring/finalization until the stockpile is complete
+
+Relevant scripts used in this pivot:
+
+- [/Users/svdr/tinker/scripts/run_raft_wave.py](/Users/svdr/tinker/scripts/run_raft_wave.py)
+- [/Users/svdr/tinker/scripts/finalize_raft_wave.py](/Users/svdr/tinker/scripts/finalize_raft_wave.py)
+- [/Users/svdr/tinker/scripts/rebalance_stage1_wave.py](/Users/svdr/tinker/scripts/rebalance_stage1_wave.py)
+
+Operational notes:
+
+- `run_raft_wave.py` now supports `--prompt-offset`, which made the second non-overlapping wave possible
+- stage1-only mode skips local ESM prewarm and keeps the remote generation loop cheap enough to parallelize harder
+- `rebalance_stage1_wave.py` helped on the coarse wave, but a final edge-case bug remained in mixed stopped/rebalanced states; the last `300k` prompts were completed via a manual tail fix rather than trusting another rebalance
+
+### Completed mining waves
+
+#### `300k` wave
+
+Wave directory:
+
+- [/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-balanced-softmotif-raft-stage1-p1172-c256-20260327c](/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-balanced-softmotif-raft-stage1-p1172-c256-20260327c)
+
+Finalization summary:
+
+- [/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-balanced-softmotif-raft-stage1-p1172-c256-20260327c/finalization_summary.json](/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-balanced-softmotif-raft-stage1-p1172-c256-20260327c/finalization_summary.json)
+
+Outcome:
+
+- `1,172` prompts
+- `300,032` raw candidates
+- `27` functional bridge steps
+- `4` family-faithful bridge steps
+- exact dedup on finalized hits:
+  - `27` functional exact-unique sequences
+  - `4` family-faithful exact-unique sequences
+
+#### `200k` wave
+
+Wave directory:
+
+- [/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-balanced-softmotif-raft-stage1-p782-c256-next782-20260327d](/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-balanced-softmotif-raft-stage1-p782-c256-next782-20260327d)
+
+Finalization summary:
+
+- [/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-balanced-softmotif-raft-stage1-p782-c256-next782-20260327d/finalization_summary.json](/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-balanced-softmotif-raft-stage1-p782-c256-next782-20260327d/finalization_summary.json)
+
+Outcome:
+
+- `782` prompts
+- `200,192` raw candidates
+- `23` functional bridge steps
+- `8` family-faithful bridge steps
+- exact dedup on finalized hits:
+  - `23` functional exact-unique sequences
+  - `8` family-faithful exact-unique sequences
+
+### Combined half-million result
+
+All-in mining totals for the new lane:
+
+- `1,954` prompts finalized
+- `500,224` raw candidates generated
+- `50` functional bridge steps
+- `12` family-faithful bridge steps
+- exact dedup on finalized hits:
+  - `50` functional exact-unique sequences
+  - `12` family-faithful exact-unique sequences
+
+Interpretation:
+
+- the new lane is a real positive result, not just a pilot artifact
+- the `200k` tranche actually improved strict-hit density relative to the `300k` tranche
+- the project now has a working data engine even though the previous retrain branch failed durability
+
+The bottleneck has shifted:
+
+- no longer “can we find real hits?”
+- now “can we cluster, validate, and retrain on the cleaner mined pool without collapsing diversity?”
+
+### New project state after the half-million run
+
+Current posture:
+
+- model branch:
+  - still unresolved after `ultra` durability failure
+- mining/data branch:
+  - materially improved and now productive
+- next work:
+  1. lineage-aware clustering of the `50 / 12` finalized hit set
+  2. conservative curriculum construction from that clustered pool
+  3. the next retrain/eval loop using the cleaner mined positives
+
+Operational implication:
+
+- do not spend on another large mining tranche until the `50 / 12` pool has been clustered and tried in the next conservative retrain cycle
+- if the next conservative cycle still fails durability, the mining lane remains valuable, but the flywheel needs better diversity control rather than more blind volume
+
+## March 28, 2026 strict-first union cycle + next recipe
+
+### Why the softmotif lineage-conservative branch was not enough
+
+The first mined-pool retrain branch used the new half-million positives, but it still failed durability.
+
+Primary summary:
+
+- [/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-softmotif-lineage-conservative-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json](/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-softmotif-lineage-conservative-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json)
+
+Observed pattern:
+
+- `p12`: `0 / 3` seeds with any tier-2 hit
+- `p24`: `0 / 3`
+- `p48`: `1 / 3`, with only `1` total tier-2 hit
+
+Diagnosis:
+
+- the mined pool itself was not the main problem
+- the curriculum was still too loose-heavy relative to the scarce strict positives
+- it taught bridge-adjacent basin behavior better than it taught the narrow strict-family bridge manifold
+
+### Strict-first union datasets
+
+To test that diagnosis, a stricter recipe was built from:
+
+- old A-run family-faithful hits
+- new half-million family-faithful hits
+- canonical purebreds
+- then a very limited bridge-only mix-in
+
+Builder and outputs:
+
+- builder:
+  - [/Users/svdr/tinker/scripts/build_strict_first_union_curricula.py](/Users/svdr/tinker/scripts/build_strict_first_union_curricula.py)
+- stage A dataset:
+  - [/Users/svdr/tinker/reports/raft/topoff1m-a-strict-first-union-postprocess-20260327/strict_first_union_stage_a.jsonl](/Users/svdr/tinker/reports/raft/topoff1m-a-strict-first-union-postprocess-20260327/strict_first_union_stage_a.jsonl)
+  - [/Users/svdr/tinker/reports/raft/topoff1m-a-strict-first-union-postprocess-20260327/strict_first_union_stage_a_summary.json](/Users/svdr/tinker/reports/raft/topoff1m-a-strict-first-union-postprocess-20260327/strict_first_union_stage_a_summary.json)
+- stage B dataset:
+  - [/Users/svdr/tinker/reports/raft/topoff1m-a-strict-first-union-postprocess-20260327/strict_first_union_stage_b.jsonl](/Users/svdr/tinker/reports/raft/topoff1m-a-strict-first-union-postprocess-20260327/strict_first_union_stage_b.jsonl)
+  - [/Users/svdr/tinker/reports/raft/topoff1m-a-strict-first-union-postprocess-20260327/strict_first_union_stage_b_summary.json](/Users/svdr/tinker/reports/raft/topoff1m-a-strict-first-union-postprocess-20260327/strict_first_union_stage_b_summary.json)
+
+Stage A contents:
+
+- `48` rows
+- `26` unique strict sequences
+- `10` old A-run family-faithful uniques, each repeated `2x`
+- `12` new half-million family-faithful uniques, each repeated `2x`
+- `4` canonical purebred uniques, each repeated `1x`
+
+Stage B contents:
+
+- `60` rows
+- `38` unique sequences
+- same `48` strict rows from stage A
+- plus only `12` bridge-only anchors
+
+Interpretation:
+
+- this was a much cleaner recipe than the earlier loose-heavy branch
+- but the anchor mix was still nontrivial enough that it could blur the basin again if the strict core had not already consolidated
+
+### Stage A and stage B training
+
+Launchers:
+
+- [/Users/svdr/tinker/scripts/launch_topoff1m_a_strict_first_union.sh](/Users/svdr/tinker/scripts/launch_topoff1m_a_strict_first_union.sh)
+- [/Users/svdr/tinker/scripts/launch_topoff1m_a_strict_first_union_robustness.sh](/Users/svdr/tinker/scripts/launch_topoff1m_a_strict_first_union_robustness.sh)
+
+Stage A checkpoint:
+
+- [/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-strict-first-union-stagea-lr1e6-ep2/summary.json](/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-strict-first-union-stagea-lr1e6-ep2/summary.json)
+
+Stage A stats:
+
+- `48` pairs
+- `2` epochs
+- LR `1e-6`
+- mean sequence length `384.04`
+
+Stage B checkpoint:
+
+- [/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-strict-first-union-stageb-lr5e7-ep1/summary.json](/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-strict-first-union-stageb-lr5e7-ep1/summary.json)
+
+Stage B stats:
+
+- `60` pairs
+- `1` epoch
+- LR `5e-7`
+- mean sequence length `366.82`
+
+### Strict-first stage-B robustness outcome
+
+Primary summary:
+
+- [/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-strict-first-union-stageb-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json](/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-strict-first-union-stageb-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json)
+
+Outcome:
+
+- `completed_run_count: 9`
+- `durability_gate.passed: false`
+
+Per prompt-size result:
+
+- `p12`:
+  - tier-2 hits by seed `[0, 0, 1]`
+  - prompt coverage `1 / 12`
+- `p24`:
+  - tier-2 hits by seed `[0, 0, 0]`
+  - prompt coverage `0 / 24`
+- `p48`:
+  - tier-2 hits by seed `[1, 0, 2]`
+  - prompt coverage `3 / 48`
+  - one family-faithful hit in `p48 / s67`
+
+Interpretation:
+
+- this branch still failed, but it failed better than the previous mined-pool conservative branch
+- the strict-first idea is probably directionally correct
+- the useful signal all appeared where the prompt budget was largest
+- the bridge manifold did not collapse to absolute zero, which is materially different from the prior failure pattern
+
+Why it still failed:
+
+- `12` bridge-only anchors was likely still enough to widen the basin before the strict core fully stabilized
+- the strict core itself may still be under-consolidated at `2` epochs / `1e-6`
+- the evidence points to a recipe problem, not a “need another half-million immediately” problem
+
+### Next recipe: strict-core-v2, then stage-b-lite only if needed
+
+The next recipe should be stricter, not broader.
+
+Recommended stage A (`strict-core-v2`):
+
+- strict-only union of:
+  - old A-run family-faithful hits
+  - new half-million family-faithful hits
+  - canonical purebreds
+- stronger oversampling than the current stage A:
+  - new family-faithful rows: about `3x`
+  - old family-faithful rows: about `2x`
+  - purebreds: about `2x`
+- target size: around `64` rows
+- `2-3` epochs
+- LR roughly `1e-6` to `1.5e-6`
+
+Reasoning:
+
+- the branch improved once strict positives dominated
+- the next question is whether removing anchors entirely and pushing strict consolidation harder improves prompt coverage at `p48` and wakes up `p24`
+
+Recommended stage B (`stage-b-lite`), only if the stricter stage A looks better:
+
+- start from the `strict-core-v2` checkpoint
+- add only `4-8` bridge-only anchors
+- pick anchors by:
+  - strongest geometry
+  - best reward / ESM
+  - family-like length band
+  - non-overlapping lineage
+- train `1` epoch
+- LR roughly `2e-7` to `5e-7`
+
+Decision rule:
+
+- if strict-only stage A outperforms the current stage-B branch, keep the core strict and add fewer anchors
+- if strict-only stage A also fails flatly, continue recipe work before buying another large mining tranche
+
+Operational implication:
+
+- do not jump straight to another half-million run
+- the mined pool is already strong enough to justify at least one more strict-only recipe cycle
+- the next spend should be on recipe sharpening, not more blind data volume

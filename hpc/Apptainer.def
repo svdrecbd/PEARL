@@ -26,7 +26,7 @@ From: nvcr.io/nvidia/pytorch:23.10-py3
     # Torch comes from the NVIDIA base image.
     # Keep this list aligned with repository requirements except torch.
     python -m pip install \
-        tinker==0.14.0 \
+        tinker==0.16.1 \
         transformers==5.2.0 \
         numpy==2.4.2 \
         safetensors==0.7.0 \

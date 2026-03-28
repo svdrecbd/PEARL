@@ -4,6 +4,7 @@ import argparse
 import json
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from local_proxy import ESM2_MODEL_NAME, get_esm2_plddt_score
+from local_proxy import ESM2_MODEL_NAME, get_esm2_plddt_scores
 from petase_family import (
     ASP_HIS_TARGET_GAP,
     SER_ASP_TARGET_GAP,
@@ -39,6 +40,20 @@ def main() -> None:
         audit,
         family_stats=family_stats,
         selected_only=args.selected_only,
+    )[: args.max_hits]
+
+    print(
+        json.dumps(
+            {
+                "event": "repair_start",
+                "hit_count": len(hits),
+                "rounds": args.rounds,
+                "beam_size": args.beam_size,
+                "top_residues_per_position": args.top_residues_per_position,
+                "proposal_device": args.proposal_device,
+            }
+        ),
+        flush=True,
     )
 
     proposal_model = ProposalModel(device_name=args.proposal_device)
@@ -48,7 +63,22 @@ def main() -> None:
     total_variants = 0
     survivors = 0
 
-    for hit in hits[: args.max_hits]:
+    run_started_at = time.perf_counter()
+    for hit_index, hit in enumerate(hits, start=1):
+        hit_started_at = time.perf_counter()
+        print(
+            json.dumps(
+                {
+                    "event": "hit_start",
+                    "hit_index": hit_index,
+                    "hit_count": len(hits),
+                    "source_run": hit.get("source_run"),
+                    "source_parent_esm_score": hit["raw_esm_score"],
+                    "sequence_length": len(hit["sequence"]),
+                }
+            ),
+            flush=True,
+        )
         result = repair_hit(
             hit=hit,
             proposal_model=proposal_model,
@@ -58,6 +88,8 @@ def main() -> None:
             top_residues_per_position=args.top_residues_per_position,
             beam_size=args.beam_size,
             esm_threshold=args.esm_threshold,
+            hit_index=hit_index,
+            hit_count=len(hits),
         )
         total_variants += result["evaluated_variant_count"]
         best_attempt_rows.extend(result["best_attempts"])
@@ -84,6 +116,20 @@ def main() -> None:
                     "geometry": survivor["geometry"],
                 }
             )
+        print(
+            json.dumps(
+                {
+                    "event": "hit_complete",
+                    "hit_index": hit_index,
+                    "hit_count": len(hits),
+                    "evaluated_variant_count": result["evaluated_variant_count"],
+                    "survivor_count": len(result["survivors"]),
+                    "best_attempt_count": len(result["best_attempts"]),
+                    "elapsed_seconds": round(time.perf_counter() - hit_started_at, 2),
+                }
+            ),
+            flush=True,
+        )
 
     output_rows = dedupe_rows(output_rows)
     best_attempt_rows = dedupe_best_attempts(best_attempt_rows)
@@ -106,6 +152,7 @@ def main() -> None:
         "evaluated_variant_count": total_variants,
         "survivor_count": len(output_rows),
         "proposal_device": proposal_model.device.type,
+        "elapsed_seconds": round(time.perf_counter() - run_started_at, 2),
     }
     if args.summary_path:
         Path(args.summary_path).write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -195,6 +242,8 @@ def repair_hit(
     top_residues_per_position: int,
     beam_size: int,
     esm_threshold: float,
+    hit_index: int,
+    hit_count: int,
 ) -> dict[str, Any]:
     beam: list[dict[str, Any]] = [
         {
@@ -219,13 +268,14 @@ def repair_hit(
         candidate_rows: list[dict[str, Any]] = []
         seen_sequences = {row["sequence"] for row in beam}
         for current in beam:
+            top_residues_by_position = proposal_model.top_residues_for_positions(
+                current["sequence"],
+                positions=mutable_positions,
+                count=top_residues_per_position,
+            )
             for position in mutable_positions:
                 current_residue = current["sequence"][position - 1]
-                for replacement in proposal_model.top_residues(
-                    current["sequence"],
-                    position=position,
-                    count=top_residues_per_position,
-                ):
+                for replacement in top_residues_by_position[position]:
                     if replacement == current_residue:
                         continue
                     sequence = mutate_position(current["sequence"], position, replacement)
@@ -236,11 +286,9 @@ def repair_hit(
                         continue
                     geometry = assess_catalytic_geometry(sequence, family_stats)
                     evaluated_variant_count += 1
-                    esm_score = get_esm2_plddt_score(sequence)
                     candidate_rows.append(
                         {
                             "sequence": sequence,
-                            "esm_score": esm_score,
                             "mutations": current["mutations"] + [f"{position}:{current_residue}->{replacement}"],
                             "mutation_count": current["mutation_count"] + 1,
                             "round_index": round_index,
@@ -249,7 +297,25 @@ def repair_hit(
                     )
 
         if not candidate_rows:
+            print(
+                json.dumps(
+                    {
+                        "event": "hit_round",
+                        "hit_index": hit_index,
+                        "hit_count": hit_count,
+                        "round_index": round_index,
+                        "candidate_count": 0,
+                        "beam_count": len(beam),
+                        "survivor_count": len(survivors),
+                    }
+                ),
+                flush=True,
+            )
             break
+
+        esm_scores = get_esm2_plddt_scores([row["sequence"] for row in candidate_rows])
+        for row, esm_score in zip(candidate_rows, esm_scores):
+            row["esm_score"] = esm_score
 
         candidate_rows.sort(
             key=lambda row: (
@@ -267,6 +333,21 @@ def repair_hit(
             if not bool(candidate["geometry"]["passes"]):
                 continue
             survivors.append(candidate)
+        print(
+            json.dumps(
+                {
+                    "event": "hit_round",
+                    "hit_index": hit_index,
+                    "hit_count": hit_count,
+                    "round_index": round_index,
+                    "candidate_count": len(candidate_rows),
+                    "beam_count": len(beam),
+                    "survivor_count": len(survivors),
+                    "best_round_score": beam[0]["esm_score"] if beam else None,
+                }
+            ),
+            flush=True,
+        )
 
     return {
         "evaluated_variant_count": evaluated_variant_count,
@@ -405,24 +486,54 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 class ProposalModel:
     def __init__(self, *, device_name: str) -> None:
         self.tokenizer = AutoTokenizer.from_pretrained(ESM2_MODEL_NAME)
-        self.model = AutoModelForMaskedLM.from_pretrained(ESM2_MODEL_NAME)
         self.device = resolve_device(device_name)
+        torch_dtype = get_proposal_model_dtype(self.device)
+        model_kwargs: dict[str, Any] = {}
+        if torch_dtype is not None:
+            model_kwargs["torch_dtype"] = torch_dtype
+        self.model = AutoModelForMaskedLM.from_pretrained(ESM2_MODEL_NAME, **model_kwargs)
         self.model.to(self.device)
         self.model.eval()
-
-    def top_residues(self, sequence: str, *, position: int, count: int) -> list[str]:
-        encoded = self.tokenizer(sequence, return_tensors="pt")
-        input_ids = encoded["input_ids"].to(self.device)
-        attention_mask = encoded["attention_mask"].to(self.device)
-        masked = input_ids.clone()
-        masked[0, position] = self.tokenizer.mask_token_id
-        with torch.no_grad():
-            logits = self.model(input_ids=masked, attention_mask=attention_mask).logits[0, position]
-        ranked = sorted(
-            ((float(logits[self.tokenizer.convert_tokens_to_ids(aa)]), aa) for aa in AMINO_ACIDS),
-            reverse=True,
+        self.mask_token_id = self.tokenizer.mask_token_id
+        if self.mask_token_id is None:
+            raise RuntimeError(f"Tokenizer for {ESM2_MODEL_NAME!r} does not define a mask token")
+        self.amino_acids = list(AMINO_ACIDS)
+        self.amino_acid_token_ids = torch.tensor(
+            [self.tokenizer.convert_tokens_to_ids(aa) for aa in self.amino_acids],
+            device=self.device,
+            dtype=torch.long,
         )
-        return [aa for _, aa in ranked[:count]]
+        self.autocast_kwargs = get_proposal_autocast_kwargs(self.device)
+
+    def top_residues_for_positions(
+        self,
+        sequence: str,
+        *,
+        positions: list[int],
+        count: int,
+    ) -> dict[int, list[str]]:
+        if not positions:
+            return {}
+        encoded = self.tokenizer(sequence, return_tensors="pt")
+        base_input_ids = encoded["input_ids"]
+        base_attention_mask = encoded["attention_mask"]
+        batch_size = len(positions)
+        input_ids = base_input_ids.repeat(batch_size, 1).to(self.device)
+        attention_mask = base_attention_mask.repeat(batch_size, 1).to(self.device)
+        batch_positions = torch.tensor(positions, device=self.device, dtype=torch.long)
+        row_indexes = torch.arange(batch_size, device=self.device, dtype=torch.long)
+        input_ids[row_indexes, batch_positions] = self.mask_token_id
+        with torch.no_grad():
+            with torch.autocast(**self.autocast_kwargs):
+                logits = self.model(input_ids=input_ids, attention_mask=attention_mask).logits
+        position_logits = logits[row_indexes, batch_positions]
+        amino_acid_logits = position_logits.index_select(1, self.amino_acid_token_ids)
+        top_k = min(count, len(self.amino_acids))
+        top_indexes = amino_acid_logits.topk(k=top_k, dim=1).indices.detach().cpu().tolist()
+        return {
+            position: [self.amino_acids[index] for index in indexes]
+            for position, indexes in zip(positions, top_indexes)
+        }
 
 
 def resolve_device(value: str) -> torch.device:
@@ -433,6 +544,22 @@ def resolve_device(value: str) -> torch.device:
             return torch.device("mps")
         return torch.device("cpu")
     return torch.device(value)
+
+
+def get_proposal_model_dtype(device: torch.device) -> torch.dtype | None:
+    if device.type != "cuda":
+        return None
+    if torch.cuda.is_bf16_supported():
+        return torch.bfloat16
+    return torch.float16
+
+
+def get_proposal_autocast_kwargs(device: torch.device) -> dict[str, object]:
+    if device.type != "cuda":
+        return {"device_type": "cpu", "enabled": False}
+    if torch.cuda.is_bf16_supported():
+        return {"device_type": "cuda", "enabled": True, "dtype": torch.bfloat16}
+    return {"device_type": "cuda", "enabled": True, "dtype": torch.float16}
 
 
 if __name__ == "__main__":
