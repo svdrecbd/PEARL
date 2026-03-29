@@ -10,21 +10,27 @@ This document is meant to do three jobs:
 
 This is a living document. It should be updated whenever we change the search regime, reward/eval definition, or operational workflow.
 
-## Latest Canonical Status (as of March 28, 2026)
+## Latest Canonical Status (as of March 29, 2026)
 
 - active mined-data engine:
-  - `balanced + motif_prior_soft_v2` half-million lane
-  - `500,224` raw candidates -> `50` exact-unique functional hits -> `12` exact-unique family-faithful hits
+  - `stage-b-lite` 1M lane
+  - `1,000,192` raw candidates -> `134` exact-unique functional hits -> `37` exact-unique family-faithful hits
+  - `133` lineage clusters at `0.85`, largest cluster size `2`
 - latest completed strict branch:
-  - `tinker://51507407-5b89-5e0f-ad7c-708d20a85322:train:0/weights/pearl-micro-sft-topoff1m-a-strict-first-union-stageb-lr5e7-ep1`
+  - `tinker://a55837d7-3b0d-5ea7-aaac-5c6a15fd88e0:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v4-stageb-lite-lr5e7-ep1`
+  - robustness failed hard:
+    - `p12`: `0 / 3` seeds with hits
+    - `p24`: `1 / 3`
+    - `p48`: `0 / 3`
+    - total retained hits: `1` functional, `1` family-faithful
 - current phase:
-  - strict-heavy recipe iteration on top of the validated half-million mined pool
+  - top-slice strict-recipe redesign on top of the validated 1M mined pool
 - next required gate:
-  - prove that a stricter retrain recipe can turn the mined positives into a durable checkpoint on the fixed `12/24/48` suite
+  - prove that a tighter strict-core recipe can recover `p48` coverage on the fixed `12/24/48` suite before buying another large mining tranche
 - currently ruled-out paths:
   - resumed PPO
   - another loose-heavy SFT mix
-  - another immediate half-million mining tranche
+  - treating the 1M mine as a failure
   - using Wynton as the primary production runtime
   - AlphaFold-scale downstream triage
 
