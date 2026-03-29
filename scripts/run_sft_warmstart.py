@@ -151,7 +151,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--name", required=True)
     parser.add_argument("--dataset-path", required=True)
     parser.add_argument("--records-path", required=True)
-    parser.add_argument("--output-dir", default="/Users/svdr/tinker/reports/warmstart")
+    parser.add_argument("--output-dir", default=str(ROOT / "reports" / "warmstart"))
     parser.add_argument("--model", default="Qwen/Qwen3-8B")
     parser.add_argument("--init-state-path")
     parser.add_argument("--checkpoint-name")

@@ -21,6 +21,10 @@ if [[ -z "${TINKER_API_KEY:-}" ]]; then
 fi
 
 case "$VARIANT" in
+  stageb-lite)
+    INIT_STATE_PATH="tinker://f95b13f5-4c21-5851-85d6-f6196bbe2779:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v2-stageb-lite-lr5e7-ep1"
+    WAVE_NAME="pearl-topoff1m-a-stageb-lite-raft-stage1-p${TOTAL_PROMPTS}-c${CANDIDATE_SAMPLE_COUNT}-${DATE_TAG}"
+    ;;
   balanced)
     INIT_STATE_PATH="tinker://6c592489-8afb-558c-a9b3-7331cf4d62ed:train:0/weights/pearl-micro-sft-topoff1m-a-balanced-strict-lr5e7-ep1"
     WAVE_NAME="pearl-topoff1m-a-balanced-raft-stage1-p${TOTAL_PROMPTS}-c${CANDIDATE_SAMPLE_COUNT}-${DATE_TAG}"
@@ -34,7 +38,7 @@ case "$VARIANT" in
     WAVE_NAME="pearl-topoff1m-a-ancestor-raft-stage1-p${TOTAL_PROMPTS}-c${CANDIDATE_SAMPLE_COUNT}-${DATE_TAG}"
     ;;
   *)
-    echo "usage: $0 [balanced|ultra|ancestor]" >&2
+    echo "usage: $0 [stageb-lite|balanced|ultra|ancestor]" >&2
     exit 1
     ;;
 esac

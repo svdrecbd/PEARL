@@ -2117,3 +2117,199 @@ Operational implication:
 - do not jump straight to another half-million run
 - the mined pool is already strong enough to justify at least one more strict-only recipe cycle
 - the next spend should be on recipe sharpening, not more blind data volume
+
+## March 29, 2026 1M stage-b-lite tranche + strict-core-v4 failure
+
+### 1M mining tranche outcome
+
+The next mining tranche used the strongest available miner prior at the time, `stage-b-lite`, and pushed to roughly one million raw candidates.
+
+Wave:
+
+- [/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-stageb-lite-raft-stage1-p3907-c256-20260329a](/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-stageb-lite-raft-stage1-p3907-c256-20260329a)
+
+Finalization summary:
+
+- [/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-stageb-lite-raft-stage1-p3907-c256-20260329a/finalization_summary.json](/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-stageb-lite-raft-stage1-p3907-c256-20260329a/finalization_summary.json)
+
+Outcome:
+
+- `3,907` prompts
+- `1,000,192` raw candidates
+- `134` functional bridge steps
+- `37` family-faithful bridge steps
+
+Interpretation:
+
+- the 1M tranche clearly validated the mining lane again
+- this was not a marginal extension of the half-million result
+- the bottleneck after this point was no longer positive discovery, but how to turn a much larger strict pool into a durable checkpoint
+
+### 1M postprocess bundle and retrain readiness
+
+Bundle and readiness outputs:
+
+- [/Users/svdr/tinker/reports/raft/topoff1m-a-stageb-lite-1m-postprocess-20260329/bundle_summary.json](/Users/svdr/tinker/reports/raft/topoff1m-a-stageb-lite-1m-postprocess-20260329/bundle_summary.json)
+- [/Users/svdr/tinker/reports/raft/topoff1m-a-stageb-lite-1m-postprocess-20260329/retrain_readiness_selected_only.json](/Users/svdr/tinker/reports/raft/topoff1m-a-stageb-lite-1m-postprocess-20260329/retrain_readiness_selected_only.json)
+
+Key counts:
+
+- `134` exact-unique functional hits
+- `37` exact-unique family-faithful hits
+- `133` lineage clusters at `0.85`
+- largest cluster size `2`
+- `ready_for_retrain: true`
+- after holdout:
+  - `107` train tier-2
+  - `12` train tier-1-proxy
+
+Interpretation:
+
+- the 1M bundle is genuinely diverse
+- the strict pool is not being faked by cluster collapse
+- the project had, by any reasonable gate, enough mined strict material to justify another retrain cycle
+
+### strict-core-v4 datasets
+
+To exploit the 1M bundle, a broader strict-core recipe was built.
+
+Stage A summary:
+
+- [/Users/svdr/tinker/reports/raft/topoff1m-a-strict-core-v4-postprocess-20260329/strict_core_v4_stage_a_summary.json](/Users/svdr/tinker/reports/raft/topoff1m-a-strict-core-v4-postprocess-20260329/strict_core_v4_stage_a_summary.json)
+
+Stage B-lite summary:
+
+- [/Users/svdr/tinker/reports/raft/topoff1m-a-strict-core-v4-postprocess-20260329/strict_core_v4_stage_b_lite_summary.json](/Users/svdr/tinker/reports/raft/topoff1m-a-strict-core-v4-postprocess-20260329/strict_core_v4_stage_b_lite_summary.json)
+
+Stage A contents:
+
+- `102` rows
+- `51` unique strict sequences
+- `10` old A-run family-faithful uniques, repeated `2x`
+- `37` new 1M family-faithful uniques, repeated `2x`
+- `4` canonical purebreds, repeated `2x`
+
+Stage B-lite contents:
+
+- `106` rows
+- `55` unique sequences
+- same `102` strict rows
+- plus only `4` anchors
+
+Interpretation:
+
+- on paper this looked like the right scale-up
+- in practice it changed two variables at once:
+  - it widened the strict pool dramatically
+  - it reduced per-sequence consolidation compared with the earlier stronger recipe
+
+### strict-core-v4 training
+
+Stage A summary:
+
+- [/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v4-stagea-lr1e6-ep2/summary.json](/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v4-stagea-lr1e6-ep2/summary.json)
+
+Stage B-lite summary:
+
+- [/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v4-stageb-lite-lr5e7-ep1/summary.json](/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v4-stageb-lite-lr5e7-ep1/summary.json)
+
+Stage A stats:
+
+- `102` pairs
+- `2` epochs
+- LR `1e-6`
+- mean sequence length `341.98`
+- mean ESM score `7.71`
+
+Stage B-lite stats:
+
+- `106` pairs
+- `1` epoch
+- LR `5e-7`
+- mean sequence length `340.42`
+- mean ESM score `7.42`
+
+### strict-core-v4 stage-B-lite robustness outcome
+
+Primary summary:
+
+- [/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-strict-core-v4-stageb-lite-robustness-2phase-l40-p12p24p48-t08-s41s53s67/robustness_summary.json](/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-strict-core-v4-stageb-lite-robustness-2phase-l40-p12p24p48-t08-s41s53s67/robustness_summary.json)
+
+Outcome:
+
+- `completed_run_count: 9`
+- `durability_gate.passed: false`
+
+Per prompt-size result:
+
+- `p12`:
+  - tier-2 hits by seed `[0, 0, 0]`
+  - prompt coverage `0 / 12`
+- `p24`:
+  - tier-2 hits by seed `[1, 0, 0]`
+  - prompt coverage `1 / 24`
+  - exactly one family-faithful hit in `p24 / s41`
+- `p48`:
+  - tier-2 hits by seed `[0, 0, 0]`
+  - prompt coverage `0 / 48`
+
+Retained totals:
+
+- `1` functional hit
+- `1` family-faithful hit
+
+Interpretation:
+
+- this was not a narrow miss
+- the branch collapsed at the exact place where the better recipes had previously shown life: `p48`
+- the 1M data did not rescue the recipe because the recipe itself had become too diffuse
+
+### Why v4 regressed despite much better data
+
+This is the important diagnosis.
+
+Compared with `strict-core-v2` stage A:
+
+- `v2` stage A:
+  - `64` rows
+  - `26` unique strict sequences
+  - new family-faithful rows repeated `3x`
+  - trained for `3` epochs
+- `v4` stage A:
+  - `102` rows
+  - `51` unique strict sequences
+  - all strict buckets repeated only `2x`
+  - trained for `2` epochs
+
+So `v4` did two weakening things at once:
+
+- it almost doubled the strict target surface area
+- it reduced how hard each strict sequence was reinforced
+
+That likely explains the observed failure pattern:
+
+- the 1M pool itself was strong
+- the retrain gate was easily satisfied
+- but the model never consolidated enough on the bridge manifold to survive the `p48` block
+
+In other words:
+
+- this was a dilution failure, not a data failure
+
+### Next recipe direction after v4
+
+The next recipe should not discard the 1M mine. It should use a tighter top slice of it.
+
+Proposed direction (`strict-core-v5`):
+
+- do not feed all `37` new family-faithful hits back into stage A
+- take a narrower top slice of the 1M family-faithful set
+- keep the old A-run family-faithful hits and canonical purebreds
+- restore heavier repetition on the strongest strict rows
+- return to `3` stage-A epochs
+- only add a tiny anchor mix, if any, after the strict core shows `p48` recovery
+
+Decision rule after that:
+
+- if the tighter top-slice recipe still fails, stop spending on micro-variants and go back to the mines
+- the next mining escalation should then be about `1.5M` raw candidates with the best available miner prior

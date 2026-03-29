@@ -9,7 +9,7 @@ This repository explores computational sequence design for PETase-family protein
 - Sponsor-facing summary: [`WHITEPAPER.md`](WHITEPAPER.md)
 - Full experimental history and decisions: [`notes/LABNOTES.md`](notes/LABNOTES.md)
 
-## Current State (March 28, 2026)
+## Current State (March 29, 2026)
 
 - The full Tier-A Nebius A-stockpile is complete and local:
   - `761,029` records evaluated
@@ -25,30 +25,37 @@ This repository explores computational sequence design for PETase-family protein
   - strict family-clean repairs: `2`
 - The retrain gate opened on repaired tier-1 proxies:
   - see `reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_survivor_readiness_wave1_h100_lineage_capped.json`
-- Two post-topoff warmstart branches were trained:
-  - `pearl-micro-sft-topoff1m-a-ultra-conservative-lr5e7-ep1`
-  - `pearl-micro-sft-topoff1m-a-balanced-strict-lr5e7-ep1`
-- `ultra` robustness is complete and failed durability:
-  - `reports/robustness/pearl-topoff1m-a-ultra-robustness-2phase-h100-p12p24p48-t08-s41s53s67/robustness_summary.json`
-- The new `balanced + motif_prior_soft_v2` mining lane is now the active positive result:
-  - `300,032` raw candidates -> `27` functional bridge steps -> `4` family-faithful bridge steps
-  - `200,192` raw candidates -> `23` functional bridge steps -> `8` family-faithful bridge steps
-  - combined `500,224` raw candidates -> `50` functional bridge steps -> `12` family-faithful bridge steps
-  - exact dedup on finalized hits remains `50` functional + `12` family-faithful
-- The first mined-pool retrain branch (`softmotif-lineage-conservative`) also failed durability:
-  - `reports/robustness/pearl-topoff1m-a-softmotif-lineage-conservative-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json`
-- A stricter follow-up branch was then trained:
-  - stage A strict union:
-    - `reports/warmstart/pearl-micro-sft-topoff1m-a-strict-first-union-stagea-lr1e6-ep2/summary.json`
-  - stage B strict union + small-anchor mix:
-    - `reports/warmstart/pearl-micro-sft-topoff1m-a-strict-first-union-stageb-lr5e7-ep1/summary.json`
-- The `strict-first-union` stage-B checkpoint still failed durability, but it failed better:
-  - `reports/robustness/pearl-topoff1m-a-strict-first-union-stageb-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json`
-  - `p12`: one seed hit tier-2 once
-  - `p24`: zero tier-2 hits
-  - `p48`: hits by seed `[1, 0, 2]`, including one family-faithful hit
-- Current execution focus is no longer “find any strict hits”.
-  - It is now recipe work on top of the validated `500k` mined pool.
+- Historical retrain failures are now established:
+  - `ultra` failed durability:
+    - `reports/robustness/pearl-topoff1m-a-ultra-robustness-2phase-h100-p12p24p48-t08-s41s53s67/robustness_summary.json`
+  - `softmotif-lineage-conservative` failed durability:
+    - `reports/robustness/pearl-topoff1m-a-softmotif-lineage-conservative-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json`
+  - `strict-first-union` stage B failed durability, but showed nonzero `p48` signal:
+    - `reports/robustness/pearl-topoff1m-a-strict-first-union-stageb-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json`
+- The mining lane is now the real positive result:
+  - half-million softmotif tranche:
+    - `500,224` raw candidates -> `50` functional bridge steps -> `12` family-faithful bridge steps
+  - 1M `stage-b-lite` tranche:
+    - `1,000,192` raw candidates -> `134` functional bridge steps -> `37` family-faithful bridge steps
+    - exact dedup remains `134` functional + `37` family-faithful
+    - lineage clustering at `0.85` yields `133` clusters with largest cluster size `2`
+  - bundle/readiness:
+    - `reports/raft/topoff1m-a-stageb-lite-1m-postprocess-20260329/bundle_summary.json`
+    - `reports/raft/topoff1m-a-stageb-lite-1m-postprocess-20260329/retrain_readiness_selected_only.json`
+- The newest recipe cycle was `strict-core-v4`:
+  - stage A strict-only summary:
+    - `reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v4-stagea-lr1e6-ep2/summary.json`
+  - stage B-lite summary:
+    - `reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v4-stageb-lite-lr5e7-ep1/summary.json`
+  - stage B-lite robustness summary:
+    - `reports/robustness/pearl-topoff1m-a-strict-core-v4-stageb-lite-robustness-2phase-l40-p12p24p48-t08-s41s53s67/robustness_summary.json`
+- `strict-core-v4` failed hard:
+  - `p12`: `0 / 3` seeds with hits
+  - `p24`: `1 / 3`, with exactly `1` family-faithful hit
+  - `p48`: `0 / 3`
+  - total retained hits: `1` functional, `1` family-faithful
+- Current execution focus is no longer “prove the 1M mine worked”.
+  - It is now recipe sharpening on top of the validated 1M strict pool.
 - Wynton served as the bring-up path and validated the evaluator, but it is no longer the preferred production environment because scheduler latency dominated wall time.
 - The validated production runtime for the sequence-stockpile scorer is:
   - `torch 2.5.1+cu121`
@@ -63,15 +70,15 @@ This repository explores computational sequence design for PETase-family protein
   - tuned H200: `0.104376 s/record`
 - H200 is only `~4.4%` faster than H100 after tuning, so the current economic default is preemptible `8x H100`, not H200.
 - The current decision gate is:
-  - treat the `balanced + motif_prior_soft_v2` half-million mining lane as the live data engine
-  - treat strict-heavy retraining as directionally correct, but assume the current `12`-anchor stage-B mix still blurs the basin
-  - next recipe candidate is `strict-core-v2`:
-    - strict-only union of old A-run family-faithful hits + new half-million family-faithful hits + canonical purebreds
-    - stronger strict oversampling
-    - `2-3` epochs at roughly `1e-6` to `1.5e-6`
-  - only if that looks better, try `stage-b-lite`:
-    - add just `4-8` bridge-only anchors for `1` low-LR epoch
-  - do not spend on another large mining tranche until the stricter recipe space is exhausted
+  - treat the 1M `stage-b-lite` bundle as the live data engine
+  - treat `strict-core-v4` as a recipe failure caused by dilution, not by lack of positive data
+  - the next recipe should be a tighter top-slice strict core:
+    - do not feed all `37` new family-faithful hits back into stage A at once
+    - take a narrower top slice of the 1M strict pool
+    - restore heavier repetition on the best strict rows
+    - return to `3` stage-A epochs before adding any anchors
+  - only add a tiny anchor mix after the stricter core shows `p48` recovery
+  - if that tighter recipe still fails, escalate to a larger `~1.5M` mining tranche with the best available miner prior
 
 ## What The System Does
 
@@ -97,12 +104,15 @@ This repository explores computational sequence design for PETase-family protein
 - `scripts/check_repair_survivor_readiness.py`: retrain-go/no-go checks after adding repair survivors to a base run pool
 - `scripts/build_diversity_capped_repair_pool.py`: caps repair pools by source run + sequence identity cluster before repair generation
 - `scripts/build_strict_first_union_curricula.py`: builds strict-first union stage-A/stage-B curricula from old and new family-faithful pools plus a small anchor set
+- `scripts/build_topoff1m_a_strict_core_v4_datasets.sh`: builds the 1M-backed `strict-core-v4` stage-A / stage-B-lite datasets
 - `scripts/run_raft_wave.py`: detached mining waves with stage1-only stockpiling, prompt offsets, and a safety cap on parallel workers
 - `scripts/rebalance_stage1_wave.py`: stop/relaunch unfinished stage1 prompt subsets as more shards when a wave is too coarse
 - `scripts/launch_detached_job.py`: robust detached process launcher with metadata/logs
 - `scripts/launch_topoff1m_a_warmstart.sh`: detached warmstart launcher for the `ultra` and `balanced` A-run curricula
 - `scripts/launch_topoff1m_a_strict_first_union.sh`: detached warmstart launcher for the strict-first union stage-A / stage-B recipe
 - `scripts/launch_topoff1m_a_strict_first_union_robustness.sh`: detached two-phase robustness launcher for the strict-first union checkpoints
+- `scripts/launch_topoff1m_a_strict_core_v4.sh`: detached warmstart launcher for the 1M-backed `strict-core-v4` stage-A / stage-B-lite recipe
+- `scripts/launch_topoff1m_a_strict_core_v4_robustness.sh`: detached two-phase robustness launcher for the `strict-core-v4` checkpoint
 - `scripts/sync_topoff1m_a_eval_bundle.sh`: pushes the H100 eval bundle to a Nebius VM
 - `scripts/launch_topoff1m_a_robustness_h100.sh`: detached H100 launcher for the two-phase `ultra`/`balanced` robustness suites
 
