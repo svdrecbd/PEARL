@@ -29,9 +29,11 @@ As of March 30, 2026:
   - stage-A smoke recovered narrow `p48` signal
   - full stage-B-lite robustness still failed durability
 - current direction:
+  - optimize for reproducible cross-prompt coverage, not existence of isolated strict hits
   - stop `v7`-style micro-variants on the same retrain family
-  - run another mining-backed loop
-  - keep the reranker lane as a diagnostic track until it clearly beats scalar reward baselines on harder held-out splits
+  - run a coverage-aware next `1.0M` mining tranche from the best current miner prior, with an adversarial prompt slice for historically weak-conversion buckets
+  - test one constrained strict prototype with prompt-first / prompt-bucket / cluster diversity and a stricter `p48` smoke gate that requires `2` seeds and `2` prompts
+  - keep the reranker lane reranker-first and diagnostic-only until it clearly beats scalar reward baselines on harder held-out prompt / bucket / cluster splits
 
 See [`docs/science.md`](docs/science.md) for the current research readout and primary artifact links.
 
@@ -48,7 +50,7 @@ The supported reusable workflows are:
 
 The details and entrypoints for those workflows live in [`docs/workflows.md`](docs/workflows.md).
 
-Versioned `strict_core_*` and `strict_first_union` wrappers now live under the archive and are exposed at their old `scripts/` paths through symlinks for continuity with the historical record. They are not the supported workflow surface anymore.
+Versioned `strict_core_*` and `strict_first_union` wrappers now live under the archive and are exposed at their old `scripts/` paths through symlinks for continuity with the historical record. They are not the supported workflow surface anymore. The supported control flow is now config-driven and library-backed through `src/pearl`.
 
 ## Installation
 
@@ -69,14 +71,19 @@ Production CUDA environments used on Nebius are separate from the local/dev base
 
 ## Repo Landmarks
 
-- `main.py`: current monolithic generation/eval engine
+- `main.py`: current generation/eval engine with shared helpers now extracted into `src/pearl`
 - `petase_family.py`: family scoring and catalytic geometry checks
 - `local_proxy.py`: local ESM proxy scorer
-- `scripts/`: workflow entrypoints and helpers
+- `src/pearl/`: reusable library surface for paths, detached jobs, reports, smoke gates, curricula, and run-record assembly
+- `scripts/`: supported workflow entrypoints plus archived compatibility symlinks
 - `reports/`: local run artifacts
 - `data/`: prompts, records, and family datasets
 
-The point of the current cleanup pass is to keep the reusable workflows small and boring, while treating historical experiment wrappers as archive surface rather than core code.
+The repo boundary is now explicit:
+
+- reusable engine and shared helpers live under `src/pearl`
+- supported workflow runners are config-driven entrypoints
+- historical campaign wrappers are archived and kept only through compatibility symlinks
 
 ## Typical Workflows
 

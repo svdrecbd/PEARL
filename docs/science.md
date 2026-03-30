@@ -43,11 +43,28 @@ References:
 - reranker lane: now exists as a diagnostic track
 - retrain recipe family: still not converting mined strict signal into enough cross-prompt coverage
 
-## Current Default Next Move
+Current governing objective:
 
-- run another mining-backed loop
-- use the constrained selector and stricter smoke gate on the next strict prototype
-- keep the reranker lane as a diagnostic track until it clearly beats the scalar reward baseline on the harder held-out splits
+> We are no longer optimizing for existence of strict hits; we are optimizing for reproducible cross-prompt coverage.
+
+## Current Research Direction
+
+Main branch:
+- run another coverage-aware `~1.0M` mining tranche from the best current miner prior
+- reserve part of that tranche for adversarial prompt buckets that repeatedly under-converted
+- build one strict prototype with prompt-first, prompt-bucket, and `0.85` cluster constraints
+- only promote to stage B if stage-A `p48` smoke reaches at least `2/3` seeds with hits and at least `2` prompts hit across seeds
+
+Parallel branch:
+- keep building the reranker lane from mined outputs
+- treat it as a reranker-first measurement track, not a generator-training default
+- only consider generator-side preference training if the reranker clearly beats scalar reward baselines on the harder held-out prompt / bucket / cluster splits
+
+## Repo / Engine State
+
+- supported workflow control flow is now config-driven
+- shared reusable logic now lives under [/Users/svdr/tinker/src/pearl](/Users/svdr/tinker/src/pearl)
+- historical PETase campaign wrappers now live under [/Users/svdr/tinker/archive/2026q1_topoff1m_a/scripts](/Users/svdr/tinker/archive/2026q1_topoff1m_a/scripts) with compatibility symlinks left behind in `scripts/`
 
 For full chronology and engineering incidents, use:
 - [/Users/svdr/tinker/notes/LABNOTES.md](/Users/svdr/tinker/notes/LABNOTES.md)

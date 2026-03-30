@@ -7,6 +7,10 @@ This repo currently supports a small set of reusable workflows. If a task does n
 Purpose:
 - run a stage1 mining wave from a chosen prior over a prompt pack or prompt slice
 
+Current scientific default:
+- use mining to increase cross-prompt strict coverage, not just raw strict-hit count
+- current next-tranche path is the coverage-aware `stageb-lite` million with an adversarial prompt slice for historically weak-conversion buckets
+
 Primary entrypoints:
 - [/Users/svdr/tinker/scripts/mining_experiment.py](/Users/svdr/tinker/scripts/mining_experiment.py)
 - [/Users/svdr/tinker/scripts/launch_mining_experiment.sh](/Users/svdr/tinker/scripts/launch_mining_experiment.sh)
@@ -49,6 +53,7 @@ Primary entrypoint:
 Important current behavior:
 - constrained prompt / prompt-bucket / cluster selection
 - loud failure on shortfall instead of silent backfill
+- current prototype policy is coverage-first: prompt diversity first, then prompt-bucket / cluster diversity, then quality ranking
 - config-driven build path available through:
   - [/Users/svdr/tinker/scripts/strict_experiment.py](/Users/svdr/tinker/scripts/strict_experiment.py)
   - [/Users/svdr/tinker/configs/experiments/strict/topoff1m_a_strict_core_v6.json](/Users/svdr/tinker/configs/experiments/strict/topoff1m_a_strict_core_v6.json)
@@ -73,6 +78,10 @@ Purpose:
 - run fixed `p12/p24/p48` robustness suites
 - run smaller `p48` smoke gates before promoting a branch
 
+Current strict-branch promotion rule:
+- a smoke pass now requires at least `2` seeds with hits and at least `2` prompts hit across seeds
+- isolated strict hits no longer justify automatic stage-B promotion
+
 Primary entrypoints:
 - [/Users/svdr/tinker/scripts/run_robustness_two_phase.py](/Users/svdr/tinker/scripts/run_robustness_two_phase.py)
 - [/Users/svdr/tinker/scripts/evaluate_strict_core_smoke_gate.py](/Users/svdr/tinker/scripts/evaluate_strict_core_smoke_gate.py)
@@ -83,6 +92,10 @@ Primary entrypoints:
 Purpose:
 - build prompt-matched preference pairs from mined outputs
 - train a lightweight reranker and compare it against scalar proxy baselines
+
+Current scientific role:
+- reranker is a diagnostic / measurement lane first
+- do not treat it as a generator-training default until it clearly beats the strongest scalar reward baselines on the harder held-out splits
 
 Primary entrypoints:
 - [/Users/svdr/tinker/scripts/build_pairwise_reranker_dataset.py](/Users/svdr/tinker/scripts/build_pairwise_reranker_dataset.py)

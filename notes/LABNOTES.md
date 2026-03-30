@@ -38,9 +38,12 @@ This file remains the long-form experimental and engineering fossil record.
     - `p24`: hits by seed `[0, 1, 0]`, prompt coverage `1 / 24`
     - `p48`: hits by seed `[0, 1, 1]`, prompt coverage `2 / 48`
 - current phase:
+  - governing objective: reproducible cross-prompt coverage, not existence of isolated strict hits
   - stop `v7`-style micro-tweaks on the current recipe family
   - treat the enlarged strict pool as validated mining output, not as a failed data engine
-  - the next serious move is another mining-backed loop from the best available miner prior
+  - next main branch: another coverage-aware mining-backed loop from the best available miner prior, with an adversarial prompt slice for historically weak-conversion buckets
+  - next strict prototype: prompt-first / prompt-bucket / cluster-constrained stage A, with no silent fallback and a stricter `p48` smoke gate that requires `2` seeds and `2` prompts
+  - parallel branch: keep the reranker lane reranker-first and diagnostic until it clearly beats scalar reward baselines on harder held-out prompt / bucket / cluster splits
 - currently ruled-out paths:
   - resumed PPO
   - another loose-heavy SFT mix
@@ -48,6 +51,12 @@ This file remains the long-form experimental and engineering fossil record.
   - treating the `1.6M` merged mine as a failure
   - using Wynton as the primary production runtime
   - AlphaFold-scale downstream triage
+
+Supported engine state:
+
+- reusable engine logic now lives under [/Users/svdr/tinker/src/pearl](/Users/svdr/tinker/src/pearl)
+- supported workflow identity now lives under [/Users/svdr/tinker/configs/experiments](/Users/svdr/tinker/configs/experiments)
+- historical PETase wrapper families now live under [/Users/svdr/tinker/archive/2026q1_topoff1m_a/scripts](/Users/svdr/tinker/archive/2026q1_topoff1m_a/scripts) with compatibility symlinks left behind in `scripts/`
 
 ## March 24, 2026: Post-Wynton Nebius Pivot
 
