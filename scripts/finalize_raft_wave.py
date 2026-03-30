@@ -36,7 +36,7 @@ def main() -> None:
     if not runs_dir.exists():
         raise SystemExit(f"Missing runs directory: {runs_dir}")
 
-    run_dirs = sorted(path for path in runs_dir.iterdir() if path.is_dir())
+    run_dirs = list_finalizable_run_dirs(wave_dir=wave_dir, runs_dir=runs_dir)
     results: list[dict[str, Any]] = []
     for run_dir in run_dirs:
         result = finalize_ablation_dir(
@@ -68,6 +68,20 @@ def resolve_runs_dir(*, wave_dir: Path, wave_metadata: dict[str, Any]) -> Path:
         # Cross-machine syncs preserve the original absolute path in wave_metadata.
         # Fall back to the colocated wave directory when the recorded path is stale.
     return (wave_dir / "runs").resolve()
+
+
+def list_finalizable_run_dirs(*, wave_dir: Path, runs_dir: Path) -> list[Path]:
+    run_dirs = sorted(path for path in runs_dir.iterdir() if path.is_dir())
+    prompts_dir = wave_dir / "prompts"
+    if not prompts_dir.exists():
+        return run_dirs
+
+    # Rebalanced waves keep the valid shard manifests in wave_dir/prompts.
+    # Stale duplicate generations only have per-run prompt_subset.jsonl files,
+    # so filtering by colocated prompt manifests preserves valid work while
+    # excluding superseded or accidental duplicate generations.
+    selected = [path for path in run_dirs if (prompts_dir / f"{path.name}.jsonl").exists()]
+    return selected or run_dirs
 
 
 def build_summary(

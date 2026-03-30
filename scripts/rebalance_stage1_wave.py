@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
@@ -185,17 +186,30 @@ def collect_run_states(*, runs_dir: Path) -> list[dict[str, Any]]:
                 f"Prompt subset length mismatch in {run_dir}: metadata prompt_count={prompt_count}, rows={len(prompt_rows)}"
             )
         completed_prompt_count = extract_contiguous_step_count(report.get("records"), prompt_count=prompt_count)
+        run_name = str(metadata.get("name") or run_dir.name)
         states.append(
             {
                 "run_dir": str(run_dir),
-                "name": str(metadata.get("name") or run_dir.name),
+                "name": run_name,
+                "generation": extract_rebalance_generation(run_name),
                 "metadata": metadata,
                 "prompt_count": prompt_count,
                 "completed_prompt_count": completed_prompt_count,
                 "remaining_rows": prompt_rows[completed_prompt_count:],
             }
         )
-    return states
+    if not states:
+        return states
+
+    latest_generation = max(int(state["generation"]) for state in states)
+    return [state for state in states if int(state["generation"]) == latest_generation]
+
+
+def extract_rebalance_generation(name: str) -> int:
+    match = re.search(r"-rebal(\d+)-shard\d+$", name)
+    if not match:
+        return 0
+    return int(match.group(1))
 
 
 def extract_contiguous_step_count(raw_records: Any, *, prompt_count: int) -> int:

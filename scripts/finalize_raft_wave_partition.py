@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
 
 
 from scripts.finalize_ablation_from_candidate_audit import finalize_ablation_dir
-from scripts.finalize_raft_wave import build_summary, resolve_runs_dir
+from scripts.finalize_raft_wave import build_summary, list_finalizable_run_dirs, resolve_runs_dir
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,7 +46,7 @@ def main() -> None:
     if not runs_dir.exists():
         raise SystemExit(f"Missing runs directory: {runs_dir}")
 
-    run_dirs = sorted(path for path in runs_dir.iterdir() if path.is_dir())
+    run_dirs = list_finalizable_run_dirs(wave_dir=wave_dir, runs_dir=runs_dir)
     selected_run_dirs = run_dirs[args.partition_index :: args.partition_count]
     if not selected_run_dirs:
         raise SystemExit(

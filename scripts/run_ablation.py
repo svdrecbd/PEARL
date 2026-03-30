@@ -275,13 +275,13 @@ def summarize_report(report: dict[str, Any]) -> dict[str, Any]:
         "trainable_count": len(trainable),
         "trainable_rate": safe_rate(len(trainable), len(records)),
         "average_reward": round(report["average_reward"], 4),
-        "average_esm_reward": round(sum(esm_rewards) / len(esm_rewards), 4),
-        "average_family_reward": round(sum(family_rewards) / len(family_rewards), 4),
+        "average_esm_reward": round(safe_mean(esm_rewards), 4),
+        "average_family_reward": round(safe_mean(family_rewards), 4),
         "average_family_reward_trainable": round(
             sum(record["reward_components"]["family_reward"] for record in trainable) / max(1, len(trainable)),
             4,
         ),
-        "mean_length": round(sum(lengths) / len(lengths), 2),
+        "mean_length": round(safe_mean(lengths), 2),
         "any_serine_motif_rate": safe_rate(
             sum(bool(evaluation["serine_motifs"]) for evaluation in family_evaluations),
             len(records),
@@ -332,6 +332,12 @@ def safe_rate(numerator: int, denominator: int) -> float:
     if denominator == 0:
         return 0.0
     return round(numerator / denominator, 4)
+
+
+def safe_mean(values: list[float] | list[int]) -> float:
+    if not values:
+        return 0.0
+    return float(sum(values) / len(values))
 
 
 def sanitize_name(value: str) -> str:

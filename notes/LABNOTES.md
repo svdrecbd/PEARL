@@ -10,27 +10,33 @@ This document is meant to do three jobs:
 
 This is a living document. It should be updated whenever we change the search regime, reward/eval definition, or operational workflow.
 
-## Latest Canonical Status (as of March 29, 2026)
+## Latest Canonical Status (as of March 30, 2026)
 
 - active mined-data engine:
-  - `stage-b-lite` 1M lane
-  - `1,000,192` raw candidates -> `134` exact-unique functional hits -> `37` exact-unique family-faithful hits
-  - `133` lineage clusters at `0.85`, largest cluster size `2`
+  - merged `stage-b-lite` `1.6M` pool
+  - `1,597,184` raw candidates across the `1,000,192` first tranche plus the `596,992` add-on tranche
+  - merged postprocess bundle:
+    - `179` exact-unique functional hits
+    - `54` exact-unique family-faithful hits
+    - `197` lineage clusters at `0.85`, largest cluster size `2`
 - latest completed strict branch:
-  - `tinker://a55837d7-3b0d-5ea7-aaac-5c6a15fd88e0:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v4-stageb-lite-lr5e7-ep1`
-  - robustness failed hard:
-    - `p12`: `0 / 3` seeds with hits
-    - `p24`: `1 / 3`
-    - `p48`: `0 / 3`
-    - total retained hits: `1` functional, `1` family-faithful
+  - `tinker://241de107-2843-5038-9584-4ffa8949f43c:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v6-stageb-lite-lr5e7-ep1`
+  - stage-A smoke custom gate passed narrowly on `p48`:
+    - hits by seed `[0, 1, 0]`
+    - prompt coverage `1 / 48`
+  - full robustness still failed:
+    - `p12`: hits by seed `[1, 0, 0]`, prompt coverage `1 / 12`
+    - `p24`: hits by seed `[0, 1, 0]`, prompt coverage `1 / 24`
+    - `p48`: hits by seed `[0, 1, 1]`, prompt coverage `2 / 48`
 - current phase:
-  - top-slice strict-recipe redesign on top of the validated 1M mined pool
-- next required gate:
-  - prove that a tighter strict-core recipe can recover `p48` coverage on the fixed `12/24/48` suite before buying another large mining tranche
+  - stop `v7`-style micro-tweaks on the current recipe family
+  - treat the enlarged strict pool as validated mining output, not as a failed data engine
+  - the next serious move is another mining-backed loop from the best available miner prior
 - currently ruled-out paths:
   - resumed PPO
   - another loose-heavy SFT mix
-  - treating the 1M mine as a failure
+  - another tiny strict-core variant before buying more data
+  - treating the `1.6M` merged mine as a failure
   - using Wynton as the primary production runtime
   - AlphaFold-scale downstream triage
 
@@ -2319,3 +2325,196 @@ Decision rule after that:
 
 - if the tighter top-slice recipe still fails, stop spending on micro-variants and go back to the mines
 - the next mining escalation should then be about `1.5M` raw candidates with the best available miner prior
+
+## March 30, 2026 600k add-on tranche, 1.6M merge, strict-core-v6, and checkpoint cleanup
+
+### 600k add-on tranche outcome
+
+The follow-up mining tranche was stopped early for budget protection after the clean valid wave reached `596,992` raw candidates.
+
+Wave:
+
+- [/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-stageb-lite-raft-stage1-p3906-c256-20260329b-next3907](/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-stageb-lite-raft-stage1-p3906-c256-20260329b-next3907)
+
+Finalization summary:
+
+- [/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-stageb-lite-raft-stage1-p3906-c256-20260329b-next3907/finalization_summary.json](/Users/svdr/tinker/reports/raft/pearl-topoff1m-a-stageb-lite-raft-stage1-p3906-c256-20260329b-next3907/finalization_summary.json)
+
+Outcome:
+
+- `2,332` valid unique prompts
+- `596,992` valid unique raw candidates
+- `64` functional bridge steps
+- `20` family-faithful bridge steps
+
+Interpretation:
+
+- the add-on tranche was not huge, but it materially thickened the strict pool again
+- the mining lane still looked healthy
+- the real question became what the merged pool would do after exact dedup and clustering
+
+### 1.6M merged bundle and retrain readiness
+
+Merged outputs:
+
+- [/Users/svdr/tinker/reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/bundle_summary.json](/Users/svdr/tinker/reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/bundle_summary.json)
+- [/Users/svdr/tinker/reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/retrain_readiness_selected_only.json](/Users/svdr/tinker/reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/retrain_readiness_selected_only.json)
+
+Key merged counts:
+
+- `198` finalized step hits in the merged source pool
+- `179` exact-unique functional hits
+- `54` exact-unique family-faithful hits
+- `197` lineage clusters at `0.85`
+- largest cluster size `2`
+- selected-only retrain readiness still passes easily
+
+Interpretation:
+
+- the merged `1.6M` pool is strong enough that lack of positives is no longer the bottleneck
+- the pool is still not collapsing into a few giant lineages
+- if recipe quality were the real limiting factor before, this was a fair chance to prove it
+
+### strict-core-v6 datasets
+
+Stage A summary:
+
+- [/Users/svdr/tinker/reports/raft/topoff1m-a-strict-core-v6-postprocess-20260329/strict_core_v6_stage_a_summary.json](/Users/svdr/tinker/reports/raft/topoff1m-a-strict-core-v6-postprocess-20260329/strict_core_v6_stage_a_summary.json)
+
+Stage B-lite summary:
+
+- [/Users/svdr/tinker/reports/raft/topoff1m-a-strict-core-v6-postprocess-20260329/strict_core_v6_stage_b_lite_summary.json](/Users/svdr/tinker/reports/raft/topoff1m-a-strict-core-v6-postprocess-20260329/strict_core_v6_stage_b_lite_summary.json)
+
+Stage A contents:
+
+- `124` rows
+- `38` unique strict sequences
+- `10` old A-run family-faithful uniques, repeated `2x`
+- `24` top-slice new family-faithful uniques, repeated `4x`
+- `4` canonical purebreds, repeated `2x`
+
+Stage B-lite contents:
+
+- `126` rows
+- `40` unique sequences
+- same `124` strict rows
+- plus only `2` anchors
+
+Interpretation:
+
+- `v6` was the strongest recipe we had actually trained on the merged `1.6M` pool
+- it was broader than `v2`, but still more concentrated than the diffuse `v4` branch
+- this was the last credible small recipe turn before returning to mining
+
+### strict-core-v6 training
+
+Stage A summary:
+
+- [/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v6-stagea-lr1e6-ep3/summary.json](/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v6-stagea-lr1e6-ep3/summary.json)
+
+Stage B-lite summary:
+
+- [/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v6-stageb-lite-lr5e7-ep1/summary.json](/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v6-stageb-lite-lr5e7-ep1/summary.json)
+
+Stage A stats:
+
+- `124` pairs
+- `3` epochs
+- LR `1e-6`
+
+Stage B-lite stats:
+
+- `126` pairs
+- `1` epoch
+- LR `5e-7`
+
+### strict-core-v6 smoke and full robustness outcome
+
+Stage-A smoke summary:
+
+- [/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-strict-core-v6-stagea-smoke-p48-t08-s41s53s67/robustness_summary.json](/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-strict-core-v6-stagea-smoke-p48-t08-s41s53s67/robustness_summary.json)
+
+Stage-B-lite full robustness summary:
+
+- [/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-strict-core-v6-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json](/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-strict-core-v6-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json)
+
+Smoke outcome:
+
+- official durability gate: failed
+- custom smoke gate: passed
+- `p48` hits by seed `[0, 1, 0]`
+- prompt coverage `1 / 48`
+
+Full robustness outcome:
+
+- `durability_gate.passed: false`
+- `p12`: hits by seed `[1, 0, 0]`, prompt coverage `1 / 12`
+- `p24`: hits by seed `[0, 1, 0]`, prompt coverage `1 / 24`
+- `p48`: hits by seed `[0, 1, 1]`, prompt coverage `2 / 48`
+
+Interpretation:
+
+- `v6` was not dead
+- it recovered nonzero signal at every prompt size and got `2 / 3` `p48` seeds with hits
+- but prompt coverage was still nowhere near enough to pass
+- after `v4`, `v5`, and `v6`, the honest read is that this recipe family still does not cash the current strict pool into durability
+
+### Operational note: `hell1` path mismatch stalled the watcher chain
+
+The `hell1` run did not initially fail because of the model. It stalled because of a path mismatch.
+
+What happened:
+
+- the box had a nested sync layout under `/home/svdr/work/tinker/Users/svdr/tinker/...`
+- smoke completed there and wrote its summary there
+- the queue watcher polled only the top-level `/home/svdr/work/tinker/reports/...` path
+- so the watcher slept forever even though smoke had already finished
+
+What fixed it:
+
+- link the completed smoke suite into the top-level path the watcher expected
+- write the smoke decision there
+- let the existing watcher continue into `stage-b-lite` and then full robustness
+
+Interpretation:
+
+- this was an operator/pathing failure, not a scientific result
+- once the path mismatch was repaired, the queued chain completed cleanly
+
+### Operational note: checkpoint storage cleanup
+
+The remote Tinker checkpoint estate was also pruned aggressively.
+
+Cleanup manifest:
+
+- [/Users/svdr/tinker/reports/checkpoint_cleanup_20260330/summary.txt](/Users/svdr/tinker/reports/checkpoint_cleanup_20260330/summary.txt)
+- [/Users/svdr/tinker/reports/checkpoint_cleanup_20260330/keep_paths.txt](/Users/svdr/tinker/reports/checkpoint_cleanup_20260330/keep_paths.txt)
+- [/Users/svdr/tinker/reports/checkpoint_cleanup_20260330/delete_paths.txt](/Users/svdr/tinker/reports/checkpoint_cleanup_20260330/delete_paths.txt)
+
+Outcome:
+
+- `123` stale checkpoints deleted
+- `6` explicitly retained at cleanup time
+- about `676 GB` removed from remote checkpoint storage
+
+Important engineering note:
+
+- the Tinker CLI help advertised direct path deletion, but the installed CLI parser rejected explicit `tinker://...` checkpoint paths
+- the cleanup was completed safely through the SDK method `delete_checkpoint_from_tinker_path(...)`
+
+### Decision after v6
+
+At this point the project has spent the current strict pool on multiple real recipe attempts.
+
+Interpretation:
+
+- mining is still the strong part of the system
+- the merged `1.6M` pool is real and diverse
+- but `v4`, `v5`, and `v6` still failed to convert it into durability
+
+Operational implication:
+
+- stop spending on `v7`-style micro-variants of the same retrain family
+- the next meaningful move is another mining-backed loop
+- the question is no longer whether the data engine works; it does
+- the question is how much more strict mass the next tranche needs before a new recipe family can finally clear coverage

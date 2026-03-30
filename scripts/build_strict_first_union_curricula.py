@@ -113,11 +113,37 @@ def ranked_anchor_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         key=lambda row: (
             -float(row.get("reward", 0.0)),
             -float(row.get("esm_reward", row.get("esm_score", 0.0))),
-            float(row.get("best_gap_error", 999)),
+            float(row.get("best_gap_error", 999.0) or 999.0),
             len(str(row.get("sequence", ""))),
         )
     )
     return ranked
+
+
+def ranked_strict_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    ranked = dedupe_by_sequence(rows)
+    ranked.sort(
+        key=lambda row: (
+            -int(bool(row.get("family_faithful_bridge_passes"))),
+            -int(bool(row.get("passes_core_screen"))),
+            -int(bool(row.get("catalytic_geometry_passes"))),
+            -float(row.get("reward", 0.0)),
+            -float(row.get("esm_reward", row.get("esm_score", 0.0) or 0.0)),
+            float(row.get("best_gap_error", 999.0) or 999.0),
+            int(row.get("stage2_rank", 9999) or 9999),
+            int(row.get("stage1_rank", 9999) or 9999),
+            int(row.get("cluster_size", 9999) or 9999),
+            len(str(row.get("sequence", ""))),
+        )
+    )
+    return ranked
+
+
+def select_top_ranked_rows(rows: list[dict[str, Any]], top_k: int | None) -> list[dict[str, Any]]:
+    ranked = ranked_strict_rows(rows)
+    if top_k is None or top_k <= 0:
+        return ranked
+    return ranked[:top_k]
 
 
 def repeated_rows(
@@ -233,11 +259,14 @@ def main() -> None:
     parser.add_argument("--new-repeat", type=int, default=2)
     parser.add_argument("--pure-repeat", type=int, default=1)
     parser.add_argument("--anchor-count", type=int, default=12)
+    parser.add_argument("--new-top-k", type=int)
+    parser.add_argument("--selected-new-output-path")
     args = parser.parse_args()
 
     allowed_motifs = {motif.strip() for motif in args.allowed_motifs.split(",") if motif.strip()}
     old_rows = dedupe_by_sequence(load_jsonl(Path(args.old_strict_path)))
-    new_rows = dedupe_by_sequence(load_jsonl(Path(args.new_strict_path)))
+    new_rows_all = dedupe_by_sequence(load_jsonl(Path(args.new_strict_path)))
+    new_rows = select_top_ranked_rows(new_rows_all, args.new_top_k)
     pure_rows = canonical_purebreds(load_jsonl(Path(args.purebred_path)), allowed_motifs)
     anchor_rows = ranked_anchor_rows(load_jsonl(Path(args.anchor_path)))
 
@@ -257,14 +286,26 @@ def main() -> None:
 
     write_jsonl(Path(args.stage_a_output_path), stage_a_rows)
     write_jsonl(Path(args.stage_b_output_path), stage_b_rows)
+    if args.selected_new_output_path:
+        write_jsonl(Path(args.selected_new_output_path), new_rows)
 
     stage_a_summary.update(
         {
             "old_unique_count": len(old_rows),
             "new_unique_count": len(new_rows),
+            "new_unique_count_raw": len(new_rows_all),
+            "new_top_k": args.new_top_k,
+            "new_selected_cluster_count": len(
+                {
+                    str(row.get("cluster_id"))
+                    for row in new_rows
+                    if row.get("cluster_id") is not None
+                }
+            ),
             "canonical_purebred_unique_count": len(pure_rows),
             "allowed_motifs": sorted(allowed_motifs),
             "output_path": args.stage_a_output_path,
+            "selected_new_output_path": args.selected_new_output_path,
         }
     )
     Path(args.stage_a_summary_path).write_text(json.dumps(stage_a_summary, indent=2) + "\n")
