@@ -18,7 +18,6 @@ Runtime requirements:
 Minimal validation suite:
 
 ```bash
-cd /Users/svdr/tinker
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
@@ -34,25 +33,27 @@ Current library-backed test surface includes:
 The repo should resolve paths from repo root, not from one machine-specific absolute path.
 
 Shell entrypoints should prefer:
-- [/Users/svdr/tinker/scripts/repo_root.sh](/Users/svdr/tinker/scripts/repo_root.sh)
+- [scripts/repo_root.sh](../scripts/repo_root.sh)
 
 Python code should prefer:
-- [/Users/svdr/tinker/src/pearl/paths.py](/Users/svdr/tinker/src/pearl/paths.py)
+- [src/pearl/paths.py](../src/pearl/paths.py)
+- [src/pearl/family.py](../src/pearl/family.py)
+- [src/pearl/esm_proxy.py](../src/pearl/esm_proxy.py)
 
 Detached job launch/stop plumbing should prefer:
-- [/Users/svdr/tinker/src/pearl/detached_jobs.py](/Users/svdr/tinker/src/pearl/detached_jobs.py)
-- [/Users/svdr/tinker/src/pearl/watchers.py](/Users/svdr/tinker/src/pearl/watchers.py)
+- [src/pearl/detached_jobs.py](../src/pearl/detached_jobs.py)
+- [src/pearl/watchers.py](../src/pearl/watchers.py)
 - thin CLIs:
-  - [/Users/svdr/tinker/scripts/launch_detached_job.py](/Users/svdr/tinker/scripts/launch_detached_job.py)
-  - [/Users/svdr/tinker/scripts/stop_detached_job.py](/Users/svdr/tinker/scripts/stop_detached_job.py)
+  - [scripts/launch_detached_job.py](../scripts/launch_detached_job.py)
+  - [scripts/stop_detached_job.py](../scripts/stop_detached_job.py)
 
 Checkpoint-map and atomic JSON helpers should prefer:
-- [/Users/svdr/tinker/src/pearl/checkpoints.py](/Users/svdr/tinker/src/pearl/checkpoints.py)
-- [/Users/svdr/tinker/src/pearl/io_utils.py](/Users/svdr/tinker/src/pearl/io_utils.py)
+- [src/pearl/checkpoints.py](../src/pearl/checkpoints.py)
+- [src/pearl/io_utils.py](../src/pearl/io_utils.py)
 
 ## Current Operator Rule
 
-Use the supported workflow entrypoints from [/Users/svdr/tinker/docs/workflows.md](/Users/svdr/tinker/docs/workflows.md).
+Use the supported workflow entrypoints from [docs/workflows.md](workflows.md).
 
 Do not treat versioned campaign wrappers as the default operational surface unless you are explicitly replaying historical work.
 
@@ -61,20 +62,20 @@ Do not treat versioned campaign wrappers as the default operational surface unle
 The supported strict experiment path is now:
 
 ```bash
-bash /Users/svdr/tinker/scripts/launch_strict_experiment.sh \
-  --config /Users/svdr/tinker/configs/experiments/strict/topoff1m_a_strict_core_v6.json \
+bash scripts/launch_strict_experiment.sh \
+  --config configs/experiments/strict/topoff1m_a_strict_core_v6.json \
   describe --pretty
 ```
 
 ```bash
-bash /Users/svdr/tinker/scripts/launch_strict_experiment.sh \
-  --config /Users/svdr/tinker/configs/experiments/strict/topoff1m_a_strict_core_v6.json \
+bash scripts/launch_strict_experiment.sh \
+  --config configs/experiments/strict/topoff1m_a_strict_core_v6.json \
   build-datasets
 ```
 
 ```bash
-bash /Users/svdr/tinker/scripts/launch_strict_experiment.sh \
-  --config /Users/svdr/tinker/configs/experiments/strict/topoff1m_a_strict_core_v6.json \
+bash scripts/launch_strict_experiment.sh \
+  --config configs/experiments/strict/topoff1m_a_strict_core_v6.json \
   launch-chain
 ```
 
@@ -94,40 +95,40 @@ Supported subcommands are:
 The supported mining path is now:
 
 ```bash
-bash /Users/svdr/tinker/scripts/launch_mining_experiment.sh \
-  --config /Users/svdr/tinker/configs/experiments/mining/topoff1m_a_targeted_raft.json \
+bash scripts/launch_mining_experiment.sh \
+  --config configs/experiments/mining/topoff1m_a_targeted_raft.json \
   describe --pretty
 ```
 
 ```bash
-bash /Users/svdr/tinker/scripts/launch_mining_experiment.sh \
-  --config /Users/svdr/tinker/configs/experiments/mining/topoff1m_a_stageb_lite_coverage_million.json \
+bash scripts/launch_mining_experiment.sh \
+  --config configs/experiments/mining/topoff1m_a_stageb_lite_coverage_million.json \
   build-prompt-pack
 ```
 
 ```bash
-bash /Users/svdr/tinker/scripts/launch_mining_experiment.sh \
-  --config /Users/svdr/tinker/configs/experiments/mining/topoff1m_a_stageb_lite_even_million.json \
+bash scripts/launch_mining_experiment.sh \
+  --config configs/experiments/mining/topoff1m_a_stageb_lite_even_million.json \
   launch-stage1
 ```
 
 The generic runners now share the same repo-root and detached-job helpers:
-- [/Users/svdr/tinker/scripts/strict_experiment.py](/Users/svdr/tinker/scripts/strict_experiment.py)
-- [/Users/svdr/tinker/scripts/mining_experiment.py](/Users/svdr/tinker/scripts/mining_experiment.py)
+- [scripts/strict_experiment.py](../scripts/strict_experiment.py)
+- [scripts/mining_experiment.py](../scripts/mining_experiment.py)
 
 ## Historical Scripts
 
 The historical wrapper inventory is tracked in:
 
-- [/Users/svdr/tinker/archive/2026q1_topoff1m_a/manifest.json](/Users/svdr/tinker/archive/2026q1_topoff1m_a/manifest.json)
+- [archive/2026q1_topoff1m_a/manifest.json](../archive/2026q1_topoff1m_a/manifest.json)
 
 Those files now live under the archive, and the old `scripts/` paths are compatibility symlinks for continuity with old notes and report links. They are not the supported surface.
 
 The current `v6` wrapper family is now a compatibility layer:
-- [/Users/svdr/tinker/scripts/build_topoff1m_a_strict_core_v6_datasets.sh](/Users/svdr/tinker/scripts/build_topoff1m_a_strict_core_v6_datasets.sh)
-- [/Users/svdr/tinker/scripts/launch_topoff1m_a_strict_core_v6.sh](/Users/svdr/tinker/scripts/launch_topoff1m_a_strict_core_v6.sh)
-- [/Users/svdr/tinker/scripts/launch_topoff1m_a_strict_core_v6_smoke.sh](/Users/svdr/tinker/scripts/launch_topoff1m_a_strict_core_v6_smoke.sh)
-- [/Users/svdr/tinker/scripts/launch_topoff1m_a_strict_core_v6_robustness.sh](/Users/svdr/tinker/scripts/launch_topoff1m_a_strict_core_v6_robustness.sh)
+- [scripts/build_topoff1m_a_strict_core_v6_datasets.sh](../scripts/build_topoff1m_a_strict_core_v6_datasets.sh)
+- [scripts/launch_topoff1m_a_strict_core_v6.sh](../scripts/launch_topoff1m_a_strict_core_v6.sh)
+- [scripts/launch_topoff1m_a_strict_core_v6_smoke.sh](../scripts/launch_topoff1m_a_strict_core_v6_smoke.sh)
+- [scripts/launch_topoff1m_a_strict_core_v6_robustness.sh](../scripts/launch_topoff1m_a_strict_core_v6_robustness.sh)
 
 Those names are preserved, but they now dispatch through the config-driven strict runner instead of carrying their own workflow logic.
 

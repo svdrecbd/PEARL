@@ -13,11 +13,14 @@ from typing import Any
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
+SRC_ROOT = ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from local_proxy import ESM2_SEQUENCE_BATCH_SIZE, get_esm2_plddt_scores, prewarm_esm2_model
-from petase_family import (
+from pearl.esm_proxy import ESM2_SEQUENCE_BATCH_SIZE, get_esm2_plddt_scores, prewarm_esm2_model
+from pearl.family import (
     compute_family_reward,
     compute_family_stats,
     evaluate_candidate,

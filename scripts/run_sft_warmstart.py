@@ -13,11 +13,14 @@ import tinker
 from tinker import types
 
 ROOT = Path(__file__).resolve().parent.parent
+SRC_ROOT = ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from main import build_sequence_prompt, resolve_base_model
-from petase_family import compute_family_stats, load_reference_records
+from pearl.family import compute_family_stats, load_reference_records
 
 
 def main() -> None:

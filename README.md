@@ -72,8 +72,8 @@ Production CUDA environments used on Nebius are separate from the local/dev base
 ## Repo Landmarks
 
 - `main.py`: current generation/eval engine with shared helpers now extracted into `src/pearl`
-- `petase_family.py`: family scoring and catalytic geometry checks
-- `local_proxy.py`: local ESM proxy scorer
+- `src/pearl/family.py`: family scoring and catalytic geometry checks
+- `src/pearl/esm_proxy.py`: local ESM proxy scorer
 - `src/pearl/`: reusable library surface for paths, detached jobs, reports, smoke gates, curricula, and run-record assembly
 - `scripts/`: supported workflow entrypoints plus archived compatibility symlinks
 - `reports/`: local run artifacts

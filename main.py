@@ -29,13 +29,13 @@ from pearl.reports import (
 )
 from pearl.run_records import build_candidate_audit_record, build_step_record
 
-from local_proxy import (
+from pearl.esm_proxy import (
     extract_amino_acid_sequence,
     get_esm2_plddt_score,
     inspect_raw_sequence_text,
     prewarm_esm2_model,
 )
-from petase_family import (
+from pearl.family import (
     NOVELTY_IDENTITY_THRESHOLD,
     compute_family_reward,
     compute_family_stats,

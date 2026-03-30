@@ -8,28 +8,30 @@ The intent is:
 - historical wrapper scripts preserved, but demoted from the supported surface
 
 Current supported config-driven strict experiment example:
-- [/Users/svdr/tinker/configs/experiments/strict/topoff1m_a_strict_core_v6.json](/Users/svdr/tinker/configs/experiments/strict/topoff1m_a_strict_core_v6.json)
+- [strict/topoff1m_a_strict_core_v6.json](strict/topoff1m_a_strict_core_v6.json)
 
 Current generic launcher:
-- [/Users/svdr/tinker/scripts/strict_experiment.py](/Users/svdr/tinker/scripts/strict_experiment.py)
-- [/Users/svdr/tinker/scripts/launch_strict_experiment.sh](/Users/svdr/tinker/scripts/launch_strict_experiment.sh)
+- [scripts/strict_experiment.py](../../scripts/strict_experiment.py)
+- [scripts/launch_strict_experiment.sh](../../scripts/launch_strict_experiment.sh)
 
 Current generic mining launcher:
-- [/Users/svdr/tinker/scripts/mining_experiment.py](/Users/svdr/tinker/scripts/mining_experiment.py)
-- [/Users/svdr/tinker/scripts/launch_mining_experiment.sh](/Users/svdr/tinker/scripts/launch_mining_experiment.sh)
+- [scripts/mining_experiment.py](../../scripts/mining_experiment.py)
+- [scripts/launch_mining_experiment.sh](../../scripts/launch_mining_experiment.sh)
 
 Shared reusable plumbing extracted so far:
-- [/Users/svdr/tinker/src/pearl/paths.py](/Users/svdr/tinker/src/pearl/paths.py)
-- [/Users/svdr/tinker/src/pearl/detached_jobs.py](/Users/svdr/tinker/src/pearl/detached_jobs.py)
-- [/Users/svdr/tinker/src/pearl/watchers.py](/Users/svdr/tinker/src/pearl/watchers.py)
-- [/Users/svdr/tinker/src/pearl/checkpoints.py](/Users/svdr/tinker/src/pearl/checkpoints.py)
-- [/Users/svdr/tinker/src/pearl/io_utils.py](/Users/svdr/tinker/src/pearl/io_utils.py)
-- [/Users/svdr/tinker/src/pearl/reports.py](/Users/svdr/tinker/src/pearl/reports.py)
-- [/Users/svdr/tinker/src/pearl/smoke_gate.py](/Users/svdr/tinker/src/pearl/smoke_gate.py)
-- [/Users/svdr/tinker/src/pearl/strict_curricula.py](/Users/svdr/tinker/src/pearl/strict_curricula.py)
-- [/Users/svdr/tinker/src/pearl/run_records.py](/Users/svdr/tinker/src/pearl/run_records.py)
+- [src/pearl/paths.py](../../src/pearl/paths.py)
+- [src/pearl/family.py](../../src/pearl/family.py)
+- [src/pearl/esm_proxy.py](../../src/pearl/esm_proxy.py)
+- [src/pearl/detached_jobs.py](../../src/pearl/detached_jobs.py)
+- [src/pearl/watchers.py](../../src/pearl/watchers.py)
+- [src/pearl/checkpoints.py](../../src/pearl/checkpoints.py)
+- [src/pearl/io_utils.py](../../src/pearl/io_utils.py)
+- [src/pearl/reports.py](../../src/pearl/reports.py)
+- [src/pearl/smoke_gate.py](../../src/pearl/smoke_gate.py)
+- [src/pearl/strict_curricula.py](../../src/pearl/strict_curricula.py)
+- [src/pearl/run_records.py](../../src/pearl/run_records.py)
 
 Mining configs:
-- [/Users/svdr/tinker/configs/experiments/mining/topoff1m_a_targeted_raft.json](/Users/svdr/tinker/configs/experiments/mining/topoff1m_a_targeted_raft.json)
-- [/Users/svdr/tinker/configs/experiments/mining/topoff1m_a_stageb_lite_even_million.json](/Users/svdr/tinker/configs/experiments/mining/topoff1m_a_stageb_lite_even_million.json)
-- [/Users/svdr/tinker/configs/experiments/mining/topoff1m_a_stageb_lite_coverage_million.json](/Users/svdr/tinker/configs/experiments/mining/topoff1m_a_stageb_lite_coverage_million.json)
+- [mining/topoff1m_a_targeted_raft.json](mining/topoff1m_a_targeted_raft.json)
+- [mining/topoff1m_a_stageb_lite_even_million.json](mining/topoff1m_a_stageb_lite_even_million.json)
+- [mining/topoff1m_a_stageb_lite_coverage_million.json](mining/topoff1m_a_stageb_lite_coverage_million.json)

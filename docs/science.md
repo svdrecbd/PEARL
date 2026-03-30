@@ -11,8 +11,8 @@ Current merged `stage-b-lite` mined pool:
 - `197` lineage clusters at `0.85`
 
 Core references:
-- [/Users/svdr/tinker/reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/bundle_summary.json](/Users/svdr/tinker/reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/bundle_summary.json)
-- [/Users/svdr/tinker/reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/retrain_readiness_selected_only.json](/Users/svdr/tinker/reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/retrain_readiness_selected_only.json)
+- [reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/bundle_summary.json](../reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/bundle_summary.json)
+- [reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/retrain_readiness_selected_only.json](../reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/retrain_readiness_selected_only.json)
 
 Latest completed strict branch:
 - `strict-core-v6`
@@ -31,8 +31,8 @@ Results:
   - `p48`: `[0, 1, 1]`, coverage `2 / 48`
 
 References:
-- [/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-strict-core-v6-stagea-smoke-p48-t08-s41s53s67/robustness_summary.json](/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-strict-core-v6-stagea-smoke-p48-t08-s41s53s67/robustness_summary.json)
-- [/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-strict-core-v6-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json](/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-strict-core-v6-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json)
+- [reports/robustness/pearl-topoff1m-a-strict-core-v6-stagea-smoke-p48-t08-s41s53s67/robustness_summary.json](../reports/robustness/pearl-topoff1m-a-strict-core-v6-stagea-smoke-p48-t08-s41s53s67/robustness_summary.json)
+- [reports/robustness/pearl-topoff1m-a-strict-core-v6-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json](../reports/robustness/pearl-topoff1m-a-strict-core-v6-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json)
 
 ## Current Read
 
@@ -63,8 +63,8 @@ Parallel branch:
 ## Repo / Engine State
 
 - supported workflow control flow is now config-driven
-- shared reusable logic now lives under [/Users/svdr/tinker/src/pearl](/Users/svdr/tinker/src/pearl)
-- historical PETase campaign wrappers now live under [/Users/svdr/tinker/archive/2026q1_topoff1m_a/scripts](/Users/svdr/tinker/archive/2026q1_topoff1m_a/scripts) with compatibility symlinks left behind in `scripts/`
+- shared reusable logic now lives under [src/pearl](../src/pearl)
+- historical PETase campaign wrappers now live under [archive/2026q1_topoff1m_a/scripts](../archive/2026q1_topoff1m_a/scripts) with compatibility symlinks left behind in `scripts/`
 
 For full chronology and engineering incidents, use:
-- [/Users/svdr/tinker/notes/LABNOTES.md](/Users/svdr/tinker/notes/LABNOTES.md)
+- [notes/LABNOTES.md](../notes/LABNOTES.md)

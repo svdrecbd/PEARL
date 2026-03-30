@@ -3,7 +3,7 @@
 **Project:** Protein Engineering Adapter via Reinforcement Learning (PEARL)  
 **Scope:** Computational PETase-family sequence design from inception to wet-lab handoff readiness  
 **Status Date:** March 24, 2026  
-**Repository:** `/Users/svdr/tinker`
+**Repository:** `tinker`
 
 ## Abstract
 
@@ -57,8 +57,8 @@ In PEARL terms, this is the **bridge**. Most generated candidates fall into one 
 
 ### 2.2 Evaluator maturation
 
-- Implemented local family/motif/geometry scoring in `petase_family.py`
-- Added local ESM proxy scoring in `local_proxy.py`
+- Implemented local family/motif/geometry scoring in `src/pearl/family.py`
+- Added local ESM proxy scoring in `src/pearl/esm_proxy.py`
 - Added second-stage ranking and candidate audit capture
 
 ### 2.3 Model and workflow pivots
@@ -84,8 +84,8 @@ The repair/readiness loop remains scientifically central, but the operating cent
 ### 3.1 Core runtime components
 
 - `main.py`: generation, scoring, ranking, reporting
-- `petase_family.py`: motif + geometry + family scoring
-- `local_proxy.py`: ESM proxy scoring
+- `src/pearl/family.py`: motif + geometry + family scoring
+- `src/pearl/esm_proxy.py`: ESM proxy scoring
 - `scripts/run_ablation.py`: single-run reproducible eval/ablation
 - `scripts/run_robustness_suite.py`: fixed-suite durability aggregation and gate
 - `scripts/run_sequence_shard_eval.py`: sequence-shard scoring path for prefilter handoff records
@@ -413,4 +413,4 @@ Not allowed yet:
   `/Users/svdr/tinker/reports/analysis/backward_lane/pearl-repair18to20-intersection-cycle1/intersection_pool_diversity_capped_summary.json`
 
 - Full experiment narrative:  
-  `/Users/svdr/tinker/notes/LABNOTES.md`
+  `notes/LABNOTES.md`

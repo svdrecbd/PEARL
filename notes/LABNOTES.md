@@ -12,10 +12,10 @@ This is a living document. It should be updated whenever we change the search re
 
 Supported operator docs now live under:
 
-- [/Users/svdr/tinker/docs/overview.md](/Users/svdr/tinker/docs/overview.md)
-- [/Users/svdr/tinker/docs/workflows.md](/Users/svdr/tinker/docs/workflows.md)
-- [/Users/svdr/tinker/docs/operations.md](/Users/svdr/tinker/docs/operations.md)
-- [/Users/svdr/tinker/docs/science.md](/Users/svdr/tinker/docs/science.md)
+- [docs/overview.md](../docs/overview.md)
+- [docs/workflows.md](../docs/workflows.md)
+- [docs/operations.md](../docs/operations.md)
+- [docs/science.md](../docs/science.md)
 
 This file remains the long-form experimental and engineering fossil record.
 
@@ -54,9 +54,9 @@ This file remains the long-form experimental and engineering fossil record.
 
 Supported engine state:
 
-- reusable engine logic now lives under [/Users/svdr/tinker/src/pearl](/Users/svdr/tinker/src/pearl)
-- supported workflow identity now lives under [/Users/svdr/tinker/configs/experiments](/Users/svdr/tinker/configs/experiments)
-- historical PETase wrapper families now live under [/Users/svdr/tinker/archive/2026q1_topoff1m_a/scripts](/Users/svdr/tinker/archive/2026q1_topoff1m_a/scripts) with compatibility symlinks left behind in `scripts/`
+- reusable engine logic now lives under [src/pearl](../src/pearl)
+- supported workflow identity now lives under [configs/experiments](../configs/experiments)
+- historical PETase wrapper families now live under [archive/2026q1_topoff1m_a/scripts](../archive/2026q1_topoff1m_a/scripts) with compatibility symlinks left behind in `scripts/`
 
 ## March 24, 2026: Post-Wynton Nebius Pivot
 
@@ -168,16 +168,16 @@ This is the current post-mining direction after broad sampling saturated.
 
 ## Repo Landmarks
 
-- Public-facing project doc: [README.md](/Users/svdr/tinker/README.md)
-- Main loop: [main.py](/Users/svdr/tinker/main.py)
-- Family evaluator: [petase_family.py](/Users/svdr/tinker/petase_family.py)
-- Local ESM proxy: [local_proxy.py](/Users/svdr/tinker/local_proxy.py)
-- Ablation runner: [run_ablation.py](/Users/svdr/tinker/scripts/run_ablation.py)
-- Stratified mining runner: [run_kimi_zero_shot_stratified_search.py](/Users/svdr/tinker/scripts/run_kimi_zero_shot_stratified_search.py)
-- SFT warm-start runner: [run_sft_warmstart.py](/Users/svdr/tinker/scripts/run_sft_warmstart.py)
-- Detached launcher: [launch_detached_job.py](/Users/svdr/tinker/scripts/launch_detached_job.py)
-- Detached reseed launcher: [launch_reseed3_batch_detached.sh](/Users/svdr/tinker/scripts/launch_reseed3_batch_detached.sh)
-- Catalytic Doping builder: [build_catalytic_doping_candidates.py](/Users/svdr/tinker/scripts/build_catalytic_doping_candidates.py)
+- Public-facing project doc: [README.md](../README.md)
+- Main loop: [main.py](../main.py)
+- Family evaluator: [src/pearl/family.py](/Users/svdr/tinker/src/pearl/family.py)
+- Local ESM proxy: [src/pearl/esm_proxy.py](/Users/svdr/tinker/src/pearl/esm_proxy.py)
+- Ablation runner: [scripts/run_ablation.py](../scripts/run_ablation.py)
+- Stratified mining runner: [scripts/run_kimi_zero_shot_stratified_search.py](../scripts/run_kimi_zero_shot_stratified_search.py)
+- SFT warm-start runner: [scripts/run_sft_warmstart.py](../scripts/run_sft_warmstart.py)
+- Detached launcher: [scripts/launch_detached_job.py](../scripts/launch_detached_job.py)
+- Detached reseed launcher: [scripts/launch_reseed3_batch_detached.sh](../scripts/launch_reseed3_batch_detached.sh)
+- Catalytic Doping builder: [scripts/build_catalytic_doping_candidates.py](../scripts/build_catalytic_doping_candidates.py)
 
 ## Chronology
 
@@ -204,7 +204,7 @@ The early dry run proved the infrastructure, not the biology.
 
 ### Phase 2: Data Expansion
 
-We built a real UniProt-derived dataset under [data/petase_family_expanded](/Users/svdr/tinker/data/petase_family_expanded).
+We built a real UniProt-derived dataset under [data/petase_family_expanded](../data/petase_family_expanded).
 
 Important point:
 
@@ -778,8 +778,8 @@ Do this first:
 2. read this file
 3. inspect:
    - [main.py](/Users/svdr/tinker/main.py)
-   - [petase_family.py](/Users/svdr/tinker/petase_family.py)
-   - [local_proxy.py](/Users/svdr/tinker/local_proxy.py)
+   - [src/pearl/family.py](/Users/svdr/tinker/src/pearl/family.py)
+   - [src/pearl/esm_proxy.py](/Users/svdr/tinker/src/pearl/esm_proxy.py)
 4. understand the unicorn definition
 5. understand the bridge failure mode
 6. do not reuse output paths for new experiments
