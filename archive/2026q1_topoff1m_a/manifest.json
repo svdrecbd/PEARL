@@ -1,0 +1,81 @@
+{
+  "campaign": "topoff1m_a",
+  "status": "historical_wrapper_surface",
+  "policy": {
+    "supported_surface": false,
+    "preserved_in_place": false,
+    "archived_script_dir": "archive/2026q1_topoff1m_a/scripts",
+    "compatibility_links_in_scripts": true,
+    "move_summary_path": "archive/2026q1_topoff1m_a/move_summary.json",
+    "reason": "moved into archive and left addressable through symlinks under scripts/ for continuity with historical labnotes and report links",
+    "allow_compatibility_shims": true
+  },
+  "historical_wrappers": {
+    "build": [
+      "scripts/build_topoff1m_a_strict_core_v2_datasets.sh",
+      "scripts/build_topoff1m_a_strict_core_v3_datasets.sh",
+      "scripts/build_topoff1m_a_strict_core_v4_datasets.sh",
+      "scripts/build_topoff1m_a_strict_core_v5_datasets.sh",
+      "scripts/build_topoff1m_a_strict_core_v6_datasets.sh"
+    ],
+    "launch": [
+      "scripts/launch_topoff1m_a_strict_first_union.sh",
+      "scripts/launch_topoff1m_a_strict_first_union_robustness.sh",
+      "scripts/launch_topoff1m_a_strict_core_v2.sh",
+      "scripts/launch_topoff1m_a_strict_core_v2_robustness.sh",
+      "scripts/launch_topoff1m_a_strict_core_v3.sh",
+      "scripts/launch_topoff1m_a_strict_core_v3_robustness.sh",
+      "scripts/launch_topoff1m_a_strict_core_v4.sh",
+      "scripts/launch_topoff1m_a_strict_core_v4_robustness.sh",
+      "scripts/launch_topoff1m_a_strict_core_v5.sh",
+      "scripts/launch_topoff1m_a_strict_core_v5_cycle.sh",
+      "scripts/launch_topoff1m_a_strict_core_v5_smoke.sh",
+      "scripts/launch_topoff1m_a_strict_core_v5_robustness.sh",
+      "scripts/launch_topoff1m_a_strict_core_v6.sh",
+      "scripts/launch_topoff1m_a_strict_core_v6_smoke.sh",
+      "scripts/launch_topoff1m_a_strict_core_v6_robustness.sh"
+    ],
+    "queue": [
+      "scripts/queue_topoff1m_a_strict_core_v3_after_stageb_lite.sh",
+      "scripts/queue_topoff1m_a_strict_core_v4_stageb_after_stagea.sh",
+      "scripts/queue_topoff1m_a_strict_core_v5_smoke_after_stagea.sh",
+      "scripts/queue_topoff1m_a_strict_core_v5_stageb_after_smoke.sh",
+      "scripts/queue_topoff1m_a_strict_core_v5_robustness_after_stageb.sh",
+      "scripts/queue_topoff1m_a_strict_core_v6_smoke_after_stagea.sh",
+      "scripts/queue_topoff1m_a_strict_core_v6_stageb_after_smoke.sh",
+      "scripts/queue_topoff1m_a_strict_core_v6_robustness_after_stageb.sh"
+    ]
+  },
+  "reusable_engine_not_archived": [
+    "scripts/build_strict_first_union_curricula.py"
+  ],
+  "compatibility_shims": [
+    "scripts/build_topoff1m_a_strict_core_v2_datasets.sh",
+    "scripts/build_topoff1m_a_strict_core_v3_datasets.sh",
+    "scripts/build_topoff1m_a_strict_core_v4_datasets.sh",
+    "scripts/build_topoff1m_a_strict_core_v5_datasets.sh",
+    "scripts/build_topoff1m_a_strict_core_v6_datasets.sh",
+    "scripts/launch_topoff1m_a_targeted_raft.sh",
+    "scripts/launch_topoff1m_a_stageb_lite_even_million.sh",
+    "scripts/launch_topoff1m_a_stageb_lite_coverage_million.sh",
+    "scripts/launch_topoff1m_a_strict_core_v2.sh",
+    "scripts/launch_topoff1m_a_strict_core_v2_robustness.sh",
+    "scripts/launch_topoff1m_a_strict_core_v3.sh",
+    "scripts/launch_topoff1m_a_strict_core_v3_robustness.sh",
+    "scripts/launch_topoff1m_a_strict_core_v4.sh",
+    "scripts/launch_topoff1m_a_strict_core_v4_robustness.sh",
+    "scripts/launch_topoff1m_a_strict_core_v5.sh",
+    "scripts/launch_topoff1m_a_strict_core_v5_cycle.sh",
+    "scripts/launch_topoff1m_a_strict_core_v5_smoke.sh",
+    "scripts/launch_topoff1m_a_strict_core_v5_robustness.sh",
+    "scripts/launch_topoff1m_a_strict_core_v6.sh",
+    "scripts/launch_topoff1m_a_strict_core_v6_smoke.sh",
+    "scripts/launch_topoff1m_a_strict_core_v6_robustness.sh",
+    "scripts/queue_topoff1m_a_strict_core_v5_smoke_after_stagea.sh",
+    "scripts/queue_topoff1m_a_strict_core_v5_stageb_after_smoke.sh",
+    "scripts/queue_topoff1m_a_strict_core_v5_robustness_after_stageb.sh",
+    "scripts/queue_topoff1m_a_strict_core_v6_smoke_after_stagea.sh",
+    "scripts/queue_topoff1m_a_strict_core_v6_stageb_after_smoke.sh",
+    "scripts/queue_topoff1m_a_strict_core_v6_robustness_after_stageb.sh"
+  ]
+}

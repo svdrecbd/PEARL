@@ -1,11 +1,1 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-STAGE_A_SUMMARY="$ROOT/reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v6-stagea-lr1e6-ep3/summary.json"
-
-while [[ ! -f "$STAGE_A_SUMMARY" ]]; do
-  sleep 20
-done
-
-bash "$ROOT/scripts/launch_topoff1m_a_strict_core_v6_smoke.sh"
+../archive/2026q1_topoff1m_a/scripts/queue_topoff1m_a_strict_core_v6_smoke_after_stagea.sh

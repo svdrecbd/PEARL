@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+import sys
 import time
 from collections import Counter
 from pathlib import Path
@@ -12,6 +13,21 @@ from typing import Any
 import numpy as np
 import tinker
 from tinker import types
+
+ROOT = Path(__file__).resolve().parent
+SRC_ROOT = ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from pearl.checkpoints import load_sampler_checkpoint_map, persist_sampler_checkpoint_mapping
+from pearl.io_utils import load_json_object
+from pearl.reports import (
+    ReportContext,
+    extract_contiguous_step_records,
+    persist_progress,
+    validate_resume_report_payload,
+)
+from pearl.run_records import build_candidate_audit_record, build_step_record
 
 from local_proxy import (
     extract_amino_acid_sequence,
@@ -102,6 +118,20 @@ PREWARM_ESM2 = os.environ.get("TINKER_PREWARM_ESM2", "1") == "1"
 SKIP_STAGE2_ESM = os.environ.get("TINKER_SKIP_STAGE2_ESM", "0") == "1"
 SAMPLER_CHECKPOINT_MAP_PATH = Path(
     os.environ.get("TINKER_SAMPLER_CHECKPOINT_MAP_PATH", ".tinker_sampler_checkpoint_map.json")
+)
+REPORT_CONTEXT = ReportContext(
+    init_state_path=INIT_STATE_PATH,
+    eval_only=EVAL_ONLY,
+    prompt_variant=PROMPT_VARIANT,
+    candidate_sample_count=CANDIDATE_SAMPLE_COUNT,
+    second_stage_top_k=SECOND_STAGE_TOP_K,
+    plddt_gate_threshold=PLDDT_GATE_THRESHOLD,
+    second_stage_esm_weight=SECOND_STAGE_ESM_WEIGHT,
+    second_stage_motif_weight=SECOND_STAGE_MOTIF_WEIGHT,
+    second_stage_geometry_weight=SECOND_STAGE_GEOMETRY_WEIGHT,
+    second_stage_template_weight=SECOND_STAGE_TEMPLATE_WEIGHT,
+    skip_stage2_esm=SKIP_STAGE2_ESM,
+    prompts_path=PROMPTS_PATH,
 )
 MIN_VALID_SEQUENCE_LENGTH = 120
 MAX_VALID_SEQUENCE_LENGTH = 360
@@ -330,6 +360,7 @@ def main() -> None:
         prompts=prompts,
         step_records=step_records,
         candidate_audit_records=candidate_audit_records,
+        context=REPORT_CONTEXT,
     )
     emit_timing_event(phase="persist_progress_initial", status="end", started_at=phase_started_at)
     emit_timing_event(phase="startup_total", status="end", started_at=startup_started_at)
@@ -428,51 +459,34 @@ def main() -> None:
         )
         if CANDIDATE_AUDIT_PATH:
             candidate_audit_records.append(
-                {
-                    "step": step,
-                    "prompt": prompt,
-                    "sequence_prompt": sequence_prompt,
-                    "selection_metadata": selection_metadata,
-                    "candidates": candidate_audit,
-                }
+                build_candidate_audit_record(
+                    step=step,
+                    prompt=prompt,
+                    sequence_prompt=sequence_prompt,
+                    selection_metadata=selection_metadata,
+                    candidate_audit=candidate_audit,
+                )
             )
         eligible_for_training = bool(quality["is_trainable"] and sampled_sequence.tokens and reward > 0.0)
         if not eligible_for_training:
             step_records.append(
-                {
-                    "step": step,
-                    "prompt": prompt,
-                    "sample_text": sampled_text,
-                    "extracted_sequence": extracted_sequence,
-                    "reward": reward,
-                    "selection_metadata": selection_metadata,
-                    "reward_components": {
-                        "reward_mode": reward_info["reward_mode"],
-                        "esm_reward": raw_esm_score,
-                        "esm_gate_pass": reward_info["esm_gate_pass"],
-                        "functional_bridge_passes": reward_info["functional_bridge_passes"],
-                        "family_faithful_bridge_passes": reward_info["family_faithful_bridge_passes"],
-                        "family_reward": family_reward_info["family_reward"],
-                        "rl_family_reward": reward_info["rl_family_reward"],
-                        "dense_family_reward": reward_info["dense_family_reward"],
-                        "dense_reward_components": reward_info["dense_reward_components"],
-                        "template_penalty": reward_info["template_penalty"],
-                        "motif_spam_penalty": reward_info["motif_spam_penalty"],
-                        "tandem_repeat_penalty": reward_info["tandem_repeat_penalty"],
-                        "local_entropy_penalty": reward_info["local_entropy_penalty"],
-                        "kmer_uniqueness_ratio": reward_info["kmer_uniqueness_ratio"],
-                        "motif_count": reward_info["motif_count"],
-                        "max_tandem_repeat_similarity": reward_info["max_tandem_repeat_similarity"],
-                        "min_local_window_entropy": reward_info["min_local_window_entropy"],
-                        "family_reward_components": family_reward_info["family_reward_components"],
-                    },
-                    "sample_token_count": len(sampled_sequence.tokens),
-                    "sample_attempts": attempts,
-                    "sequence_quality": quality,
-                    "family_evaluation": family_evaluation,
-                    "training_skipped": True,
-                    "update_performed": False,
-                }
+                build_step_record(
+                    step=step,
+                    prompt=prompt,
+                    sampled_text=sampled_text,
+                    extracted_sequence=extracted_sequence,
+                    reward=reward,
+                    selection_metadata=selection_metadata,
+                    raw_esm_score=raw_esm_score,
+                    reward_info=reward_info,
+                    family_reward_info=family_reward_info,
+                    quality=quality,
+                    family_evaluation=family_evaluation,
+                    sample_token_count=len(sampled_sequence.tokens),
+                    sample_attempts=attempts,
+                    training_skipped=True,
+                    update_performed=False,
+                )
             )
             persist_progress(
                 report_path=report_path,
@@ -486,45 +500,29 @@ def main() -> None:
                 prompts=prompts,
                 step_records=step_records,
                 candidate_audit_records=candidate_audit_records,
+                context=REPORT_CONTEXT,
             )
             continue
 
         if EVAL_ONLY:
             step_records.append(
-                {
-                    "step": step,
-                    "prompt": prompt,
-                    "sample_text": sampled_text,
-                    "extracted_sequence": extracted_sequence,
-                    "reward": reward,
-                    "selection_metadata": selection_metadata,
-                    "reward_components": {
-                        "reward_mode": reward_info["reward_mode"],
-                        "esm_reward": raw_esm_score,
-                        "esm_gate_pass": reward_info["esm_gate_pass"],
-                        "functional_bridge_passes": reward_info["functional_bridge_passes"],
-                        "family_faithful_bridge_passes": reward_info["family_faithful_bridge_passes"],
-                        "family_reward": family_reward_info["family_reward"],
-                        "rl_family_reward": reward_info["rl_family_reward"],
-                        "dense_family_reward": reward_info["dense_family_reward"],
-                        "dense_reward_components": reward_info["dense_reward_components"],
-                        "template_penalty": reward_info["template_penalty"],
-                        "motif_spam_penalty": reward_info["motif_spam_penalty"],
-                        "tandem_repeat_penalty": reward_info["tandem_repeat_penalty"],
-                        "local_entropy_penalty": reward_info["local_entropy_penalty"],
-                        "kmer_uniqueness_ratio": reward_info["kmer_uniqueness_ratio"],
-                        "motif_count": reward_info["motif_count"],
-                        "max_tandem_repeat_similarity": reward_info["max_tandem_repeat_similarity"],
-                        "min_local_window_entropy": reward_info["min_local_window_entropy"],
-                        "family_reward_components": family_reward_info["family_reward_components"],
-                    },
-                    "sample_token_count": len(sampled_sequence.tokens),
-                    "sample_attempts": attempts,
-                    "sequence_quality": quality,
-                    "family_evaluation": family_evaluation,
-                    "training_skipped": False,
-                    "update_performed": False,
-                }
+                build_step_record(
+                    step=step,
+                    prompt=prompt,
+                    sampled_text=sampled_text,
+                    extracted_sequence=extracted_sequence,
+                    reward=reward,
+                    selection_metadata=selection_metadata,
+                    raw_esm_score=raw_esm_score,
+                    reward_info=reward_info,
+                    family_reward_info=family_reward_info,
+                    quality=quality,
+                    family_evaluation=family_evaluation,
+                    sample_token_count=len(sampled_sequence.tokens),
+                    sample_attempts=attempts,
+                    training_skipped=False,
+                    update_performed=False,
+                )
             )
             persist_progress(
                 report_path=report_path,
@@ -538,6 +536,7 @@ def main() -> None:
                 prompts=prompts,
                 step_records=step_records,
                 candidate_audit_records=candidate_audit_records,
+                context=REPORT_CONTEXT,
             )
             continue
 
@@ -558,42 +557,25 @@ def main() -> None:
         optim_step_result = optim_step_future.result()
 
         step_records.append(
-            {
-                "step": step,
-                "prompt": prompt,
-                "sample_text": sampled_text,
-                "extracted_sequence": extracted_sequence,
-                "reward": reward,
-                "selection_metadata": selection_metadata,
-                "reward_components": {
-                    "reward_mode": reward_info["reward_mode"],
-                    "esm_reward": raw_esm_score,
-                    "esm_gate_pass": reward_info["esm_gate_pass"],
-                    "functional_bridge_passes": reward_info["functional_bridge_passes"],
-                    "family_faithful_bridge_passes": reward_info["family_faithful_bridge_passes"],
-                    "family_reward": family_reward_info["family_reward"],
-                    "rl_family_reward": reward_info["rl_family_reward"],
-                    "dense_family_reward": reward_info["dense_family_reward"],
-                    "dense_reward_components": reward_info["dense_reward_components"],
-                    "template_penalty": reward_info["template_penalty"],
-                    "motif_spam_penalty": reward_info["motif_spam_penalty"],
-                    "tandem_repeat_penalty": reward_info["tandem_repeat_penalty"],
-                    "local_entropy_penalty": reward_info["local_entropy_penalty"],
-                    "kmer_uniqueness_ratio": reward_info["kmer_uniqueness_ratio"],
-                    "motif_count": reward_info["motif_count"],
-                    "max_tandem_repeat_similarity": reward_info["max_tandem_repeat_similarity"],
-                    "min_local_window_entropy": reward_info["min_local_window_entropy"],
-                    "family_reward_components": family_reward_info["family_reward_components"],
-                },
-                "sample_token_count": len(sampled_sequence.tokens),
-                "sample_attempts": attempts,
-                "sequence_quality": quality,
-                "family_evaluation": family_evaluation,
-                "training_skipped": False,
-                "update_performed": True,
-                "forward_backward_metrics": forward_backward_result.metrics,
-                "optim_step_metrics": optim_step_result.metrics,
-            }
+            build_step_record(
+                step=step,
+                prompt=prompt,
+                sampled_text=sampled_text,
+                extracted_sequence=extracted_sequence,
+                reward=reward,
+                selection_metadata=selection_metadata,
+                raw_esm_score=raw_esm_score,
+                reward_info=reward_info,
+                family_reward_info=family_reward_info,
+                quality=quality,
+                family_evaluation=family_evaluation,
+                sample_token_count=len(sampled_sequence.tokens),
+                sample_attempts=attempts,
+                training_skipped=False,
+                update_performed=True,
+                forward_backward_metrics=forward_backward_result.metrics,
+                optim_step_metrics=optim_step_result.metrics,
+            )
         )
         persist_progress(
             report_path=report_path,
@@ -607,6 +589,7 @@ def main() -> None:
             prompts=prompts,
             step_records=step_records,
             candidate_audit_records=candidate_audit_records,
+            context=REPORT_CONTEXT,
         )
         sampling_client_needs_refresh = True
 
@@ -627,6 +610,7 @@ def main() -> None:
         prompts=prompts,
         step_records=step_records,
         candidate_audit_records=candidate_audit_records,
+        context=REPORT_CONTEXT,
     )
     print(
         json.dumps(
@@ -775,6 +759,7 @@ def resolve_eval_sampling_target(
             expected_sampler_path=expected_sampler_path,
         )
         persist_sampler_checkpoint_mapping(
+            SAMPLER_CHECKPOINT_MAP_PATH,
             training_checkpoint_path=INIT_STATE_PATH,
             sampler_checkpoint_path=created_sampler_path,
         )
@@ -808,7 +793,7 @@ def get_mapped_sampler_checkpoint_path(
     service_client: tinker.ServiceClient,
     training_checkpoint_path: str,
 ) -> str | None:
-    checkpoint_map = load_sampler_checkpoint_map()
+    checkpoint_map = load_sampler_checkpoint_map(SAMPLER_CHECKPOINT_MAP_PATH)
     sampler_checkpoint_path = checkpoint_map.get(training_checkpoint_path)
     if sampler_checkpoint_path is None:
         return None
@@ -818,32 +803,6 @@ def get_mapped_sampler_checkpoint_path(
     ):
         return sampler_checkpoint_path
     return None
-
-
-def load_sampler_checkpoint_map() -> dict[str, str]:
-    if not SAMPLER_CHECKPOINT_MAP_PATH.exists():
-        return {}
-    try:
-        payload = json.loads(SAMPLER_CHECKPOINT_MAP_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
-    if not isinstance(payload, dict):
-        return {}
-    return {
-        str(training_path): str(sampler_path)
-        for training_path, sampler_path in payload.items()
-        if isinstance(training_path, str) and isinstance(sampler_path, str)
-    }
-
-
-def persist_sampler_checkpoint_mapping(
-    *,
-    training_checkpoint_path: str,
-    sampler_checkpoint_path: str,
-) -> None:
-    checkpoint_map = load_sampler_checkpoint_map()
-    checkpoint_map[training_checkpoint_path] = sampler_checkpoint_path
-    atomic_write_json(SAMPLER_CHECKPOINT_MAP_PATH, checkpoint_map)
 
 
 def sampler_checkpoint_exists(
@@ -1028,94 +987,6 @@ def combine_reward_scores(esm_reward: float, family_reward: float) -> float:
     return round((0.4 * esm_reward) + (0.6 * family_reward), 2)
 
 
-def persist_progress(
-    *,
-    report_path: Path,
-    candidate_audit_path: Path | None,
-    requested_model_name: str,
-    base_model: str,
-    supported_models: list[str],
-    checkpoint_name: str,
-    checkpoint_path: str | None,
-    reference_records_path: Path | None,
-    prompts: list[str],
-    step_records: list[dict[str, object]],
-    candidate_audit_records: list[dict[str, object]],
-) -> dict[str, Any]:
-    report = build_report_payload(
-        requested_model_name=requested_model_name,
-        base_model=base_model,
-        supported_models=supported_models,
-        checkpoint_name=checkpoint_name,
-        checkpoint_path=checkpoint_path,
-        reference_records_path=reference_records_path,
-        prompts=prompts,
-        step_records=step_records,
-    )
-    atomic_write_json(report_path, report)
-    if candidate_audit_path is not None:
-        atomic_write_json(
-            candidate_audit_path,
-            {
-                "checkpoint_name": checkpoint_name,
-                "checkpoint_path": checkpoint_path,
-                "init_state_path": INIT_STATE_PATH,
-                "eval_only": EVAL_ONLY,
-                "prompt_variant": PROMPT_VARIANT,
-                "candidate_sample_count": CANDIDATE_SAMPLE_COUNT,
-                "second_stage_top_k": SECOND_STAGE_TOP_K,
-                "plddt_gate_threshold": PLDDT_GATE_THRESHOLD,
-                "second_stage_esm_weight": SECOND_STAGE_ESM_WEIGHT,
-                "second_stage_motif_weight": SECOND_STAGE_MOTIF_WEIGHT,
-                "second_stage_geometry_weight": SECOND_STAGE_GEOMETRY_WEIGHT,
-                "second_stage_template_weight": SECOND_STAGE_TEMPLATE_WEIGHT,
-                "skip_stage2_esm": SKIP_STAGE2_ESM,
-                "records": candidate_audit_records,
-            },
-        )
-    return report
-
-
-def build_report_payload(
-    *,
-    requested_model_name: str,
-    base_model: str,
-    supported_models: list[str],
-    checkpoint_name: str,
-    checkpoint_path: str | None,
-    reference_records_path: Path | None,
-    prompts: list[str],
-    step_records: list[dict[str, object]],
-) -> dict[str, Any]:
-    average_reward = 0.0
-    if step_records:
-        average_reward = sum(record["reward"] for record in step_records) / len(step_records)
-    return {
-        "requested_model_name": requested_model_name,
-        "base_model": base_model,
-        "supported_models": supported_models,
-        "checkpoint_name": checkpoint_name,
-        "checkpoint_path": checkpoint_path,
-        "init_state_path": INIT_STATE_PATH,
-        "eval_only": EVAL_ONLY,
-        "steps": len(step_records),
-        "prompt_count": len(prompts),
-        "prompts_path": PROMPTS_PATH,
-        "reference_records_path": str(reference_records_path) if reference_records_path is not None else None,
-        "prompt_variant": PROMPT_VARIANT,
-        "candidate_sample_count": CANDIDATE_SAMPLE_COUNT,
-        "second_stage_top_k": SECOND_STAGE_TOP_K,
-        "plddt_gate_threshold": PLDDT_GATE_THRESHOLD,
-        "second_stage_esm_weight": SECOND_STAGE_ESM_WEIGHT,
-        "second_stage_motif_weight": SECOND_STAGE_MOTIF_WEIGHT,
-        "second_stage_geometry_weight": SECOND_STAGE_GEOMETRY_WEIGHT,
-        "second_stage_template_weight": SECOND_STAGE_TEMPLATE_WEIGHT,
-        "skip_stage2_esm": SKIP_STAGE2_ESM,
-        "average_reward": average_reward,
-        "records": step_records,
-    }
-
-
 def maybe_load_eval_resume_state(
     *,
     report_path: Path,
@@ -1132,7 +1003,12 @@ def maybe_load_eval_resume_state(
     report_payload = load_json_object(report_path)
     if report_payload is None:
         raise RuntimeError(f"Could not parse resume report: {report_path}")
-    validate_resume_report_payload(report_payload=report_payload, prompts=prompts, report_path=report_path)
+    validate_resume_report_payload(
+        report_payload=report_payload,
+        prompts=prompts,
+        report_path=report_path,
+        context=REPORT_CONTEXT,
+    )
     step_records = extract_contiguous_step_records(
         raw_records=report_payload.get("records"),
         prompt_count=len(prompts),
@@ -1161,151 +1037,6 @@ def maybe_load_eval_resume_state(
         flush=True,
     )
     return step_records, candidate_audit_records, len(step_records)
-
-
-def load_json_object(path: Path) -> dict[str, Any] | None:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-    if not isinstance(payload, dict):
-        return None
-    return payload
-
-
-def extract_contiguous_step_records(*, raw_records: Any, prompt_count: int) -> list[dict[str, object]]:
-    if not isinstance(raw_records, list):
-        return []
-    by_step: dict[int, dict[str, object]] = {}
-    for record in raw_records:
-        if not isinstance(record, dict):
-            continue
-        step_value = record.get("step")
-        try:
-            step = int(step_value)
-        except (TypeError, ValueError):
-            continue
-        if step < 0 or step >= prompt_count:
-            continue
-        by_step[step] = record
-
-    contiguous: list[dict[str, object]] = []
-    for step in range(prompt_count):
-        record = by_step.get(step)
-        if record is None:
-            break
-        contiguous.append(record)
-    return contiguous
-
-
-def validate_resume_report_payload(
-    *,
-    report_payload: dict[str, Any],
-    prompts: list[str],
-    report_path: Path,
-) -> None:
-    expected_prompt_count = len(prompts)
-    observed_prompt_count = report_payload.get("prompt_count")
-    if int(observed_prompt_count or -1) != expected_prompt_count:
-        raise RuntimeError(
-            f"Resume report prompt_count mismatch for {report_path}: "
-            f"expected {expected_prompt_count}, observed {observed_prompt_count}"
-        )
-
-    observed_eval_only = bool(report_payload.get("eval_only"))
-    if observed_eval_only != EVAL_ONLY:
-        raise RuntimeError(
-            f"Resume report eval_only mismatch for {report_path}: expected {EVAL_ONLY}, observed {observed_eval_only}"
-        )
-
-    observed_init_state_path = report_payload.get("init_state_path")
-    if observed_init_state_path is not None and str(observed_init_state_path) != str(INIT_STATE_PATH):
-        raise RuntimeError(
-            f"Resume report init_state_path mismatch for {report_path}: "
-            f"expected {INIT_STATE_PATH}, observed {observed_init_state_path}"
-        )
-
-    observed_prompt_variant = report_payload.get("prompt_variant")
-    if observed_prompt_variant is not None and str(observed_prompt_variant) != PROMPT_VARIANT:
-        raise RuntimeError(
-            f"Resume report prompt_variant mismatch for {report_path}: "
-            f"expected {PROMPT_VARIANT}, observed {observed_prompt_variant}"
-        )
-
-    observed_candidate_count = report_payload.get("candidate_sample_count")
-    if observed_candidate_count is not None and int(observed_candidate_count) != CANDIDATE_SAMPLE_COUNT:
-        raise RuntimeError(
-            f"Resume report candidate_sample_count mismatch for {report_path}: "
-            f"expected {CANDIDATE_SAMPLE_COUNT}, observed {observed_candidate_count}"
-        )
-
-    observed_top_k = report_payload.get("second_stage_top_k")
-    if observed_top_k is not None and int(observed_top_k) != SECOND_STAGE_TOP_K:
-        raise RuntimeError(
-            f"Resume report second_stage_top_k mismatch for {report_path}: "
-            f"expected {SECOND_STAGE_TOP_K}, observed {observed_top_k}"
-        )
-
-    observed_plddt = report_payload.get("plddt_gate_threshold")
-    if observed_plddt is not None and not math.isclose(float(observed_plddt), PLDDT_GATE_THRESHOLD, abs_tol=1e-9):
-        raise RuntimeError(
-            f"Resume report plddt_gate_threshold mismatch for {report_path}: "
-            f"expected {PLDDT_GATE_THRESHOLD}, observed {observed_plddt}"
-        )
-
-    validate_optional_weight(
-        report_path=report_path,
-        payload=report_payload,
-        field="second_stage_esm_weight",
-        expected=SECOND_STAGE_ESM_WEIGHT,
-    )
-    validate_optional_weight(
-        report_path=report_path,
-        payload=report_payload,
-        field="second_stage_motif_weight",
-        expected=SECOND_STAGE_MOTIF_WEIGHT,
-    )
-    validate_optional_weight(
-        report_path=report_path,
-        payload=report_payload,
-        field="second_stage_geometry_weight",
-        expected=SECOND_STAGE_GEOMETRY_WEIGHT,
-    )
-    validate_optional_weight(
-        report_path=report_path,
-        payload=report_payload,
-        field="second_stage_template_weight",
-        expected=SECOND_STAGE_TEMPLATE_WEIGHT,
-    )
-
-    observed_prompts_path = report_payload.get("prompts_path")
-    if observed_prompts_path and PROMPTS_PATH:
-        expected_path = str(Path(PROMPTS_PATH).expanduser().resolve())
-        observed_path = str(Path(str(observed_prompts_path)).expanduser().resolve())
-        if observed_path != expected_path:
-            raise RuntimeError(
-                f"Resume report prompts_path mismatch for {report_path}: "
-                f"expected {expected_path}, observed {observed_path}"
-            )
-
-
-def validate_optional_weight(*, report_path: Path, payload: dict[str, Any], field: str, expected: float) -> None:
-    observed = payload.get(field)
-    if observed is None:
-        return
-    if not math.isclose(float(observed), expected, abs_tol=1e-9):
-        raise RuntimeError(
-            f"Resume report {field} mismatch for {report_path}: expected {expected}, observed {observed}"
-        )
-
-
-def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(f"{path.suffix}.tmp.{os.getpid()}.{time.time_ns()}")
-    tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    tmp_path.replace(path)
-
-
 def sample_valid_sequence(
     *,
     step: int | None,

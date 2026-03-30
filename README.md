@@ -2,125 +2,53 @@
 
 PEARL stands for Protein Engineering Adapter via Reinforcement Learning.
 
-This repository explores computational sequence design for PETase-family proteins using remote generation/training through Tinker and local scoring/ranking logic. It is an experimental research codebase, not a validated protein-design product.
+This repository explores PETase-family sequence design through remote generation/training on Tinker plus local scoring, selection, mining, and evaluation logic. It is an experimental research codebase, not a validated product.
 
 ## Start Here
 
 - Sponsor-facing summary: [`WHITEPAPER.md`](WHITEPAPER.md)
-- Full experimental history and decisions: [`notes/LABNOTES.md`](notes/LABNOTES.md)
+- Repo structure and supported surface: [`docs/overview.md`](docs/overview.md)
+- Supported workflows: [`docs/workflows.md`](docs/workflows.md)
+- Operator notes: [`docs/operations.md`](docs/operations.md)
+- Current scientific status: [`docs/science.md`](docs/science.md)
+- Experiment configs: [`configs/experiments/README.md`](configs/experiments/README.md)
+- Full experimental history: [`notes/LABNOTES.md`](notes/LABNOTES.md)
+- Historical campaign wrapper inventory: [`archive/2026q1_topoff1m_a/README.md`](archive/2026q1_topoff1m_a/README.md)
 
-## Current State (March 30, 2026)
+## Current State
 
-- The full Tier-A Nebius A-stockpile is complete and local:
-  - `761,029` records evaluated
-  - `15,583` geometry passes
-  - `141` functional bridges
-  - `10` family-faithful bridges
-- The postprocess bundle for that run lives under:
-  - `reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/`
-- The repair lane is no longer hypothetical:
-  - H100 repair wave: `32` seeds -> `8,908` variants -> `446` raw survivors
-  - capped survivor set: `61`
-  - strict shortlist: `8`
-  - strict family-clean repairs: `2`
-- The retrain gate opened on repaired tier-1 proxies:
-  - see `reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/repair_survivor_readiness_wave1_h100_lineage_capped.json`
-- Historical retrain failures are now established:
-  - `ultra` failed durability:
-    - `reports/robustness/pearl-topoff1m-a-ultra-robustness-2phase-h100-p12p24p48-t08-s41s53s67/robustness_summary.json`
-  - `softmotif-lineage-conservative` failed durability:
-    - `reports/robustness/pearl-topoff1m-a-softmotif-lineage-conservative-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json`
-  - `strict-first-union` stage B failed durability, but showed nonzero `p48` signal:
-    - `reports/robustness/pearl-topoff1m-a-strict-first-union-stageb-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json`
-- The mining lane is now the real positive result:
-  - half-million softmotif tranche:
-    - `500,224` raw candidates -> `50` functional bridge steps -> `12` family-faithful bridge steps
-  - 1M `stage-b-lite` tranche:
-    - `1,000,192` raw candidates -> `134` functional bridge steps -> `37` family-faithful bridge steps
-  - `596,992`-candidate add-on tranche:
-    - `64` functional bridge steps -> `20` family-faithful bridge steps
-  - merged `1.6M` postprocess bundle:
-    - `179` exact-unique functional hits
-    - `54` exact-unique family-faithful hits
-    - `197` lineage clusters at `0.85` with largest cluster size `2`
-  - bundle/readiness:
-    - `reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/bundle_summary.json`
-    - `reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/retrain_readiness_selected_only.json`
-- The newest completed recipe cycle was `strict-core-v6`:
-  - stage A strict-only summary:
-    - `reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v6-stagea-lr1e6-ep3/summary.json`
-  - stage A `p48` smoke summary:
-    - `reports/robustness/pearl-topoff1m-a-strict-core-v6-stagea-smoke-p48-t08-s41s53s67/robustness_summary.json`
-  - stage B-lite summary:
-    - `reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v6-stageb-lite-lr5e7-ep1/summary.json`
-  - stage B-lite robustness summary:
-    - `reports/robustness/pearl-topoff1m-a-strict-core-v6-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json`
-- `strict-core-v6` still failed durability:
-  - stage-A smoke custom gate passed narrowly on `p48`:
-    - hits by seed `[0, 1, 0]`
-    - prompt coverage `1 / 48`
-  - full stage-B-lite robustness failed:
-    - `p12`: hits by seed `[1, 0, 0]`, prompt coverage `1 / 12`
-    - `p24`: hits by seed `[0, 1, 0]`, prompt coverage `1 / 24`
-    - `p48`: hits by seed `[0, 1, 1]`, prompt coverage `2 / 48`
-- Current execution focus is no longer recipe micro-tuning on the fixed `1.6M` pool.
-  - The next serious move is another mining-backed loop from the best available miner prior.
-- Wynton served as the bring-up path and validated the evaluator, but it is no longer the preferred production environment because scheduler latency dominated wall time.
-- The validated production runtime for the sequence-stockpile scorer is:
-  - `torch 2.5.1+cu121`
-  - `PREFILTER_EVAL_MODE=staged`
-  - `PREFILTER_CPU_WORKERS=8`
-  - `ESM2_BATCH_SIZE=256`
-  - `ESM2_SEQUENCE_BATCH_SIZE=1`
-  - `ESM2_PIPELINE_CHUNK_SIZE=128`
-- Final Nebius benchmark ladder:
-  - L40S baseline: `0.364412 s/record`
-  - tuned H100: `0.108953 s/record`
-  - tuned H200: `0.104376 s/record`
-- H200 is only `~4.4%` faster than H100 after tuning, so the current economic default is preemptible `8x H100`, not H200.
-- The current decision gate is:
-  - treat the merged `1.6M` `stage-b-lite` bundle as the live data engine
-  - treat `strict-core-v4`, `v5`, and `v6` as evidence that the current recipe family still does not buy enough prompt coverage
-  - stop spending on `v7`-style micro-variants of the same retrain recipe
-  - use the enlarged strict pool to justify the next mining-backed loop rather than more tiny recipe surgery
+As of March 30, 2026:
 
-## What The System Does
+- merged `stage-b-lite` mined pool:
+  - `1,597,184` raw candidates
+  - `179` exact-unique functional hits
+  - `54` exact-unique family-faithful hits
+  - `197` lineage clusters at `0.85`
+- latest completed strict branch:
+  - `strict-core-v6`
+  - stage-A smoke recovered narrow `p48` signal
+  - full stage-B-lite robustness still failed durability
+- current direction:
+  - stop `v7`-style micro-variants on the same retrain family
+  - run another mining-backed loop
+  - keep the reranker lane as a diagnostic track until it clearly beats scalar reward baselines on harder held-out splits
 
-1. Sample candidate sequences from a remote model.
-2. Evaluate local sequence quality, family plausibility, motif structure, novelty, and catalytic geometry.
-3. Run second-stage ranking with ESM proxy and selector weights.
-4. Mine positives and near-misses.
-5. Build compact repair/retrain datasets and rerun fixed robustness suites.
-6. When robustness fails but mining improves, pivot toward a stockpile-first mining flywheel instead of forcing more branches through the old durability path.
+See [`docs/science.md`](docs/science.md) for the current research readout and primary artifact links.
 
-## Core Files
+## Supported Surface
 
-- `main.py`: generation/eval loop, scoring, selection, resume-safe report writing
-- `petase_family.py`: family scoring, motif/geometry checks, novelty logic
-- `local_proxy.py`: ESM-2 pseudo-pLDDT scorer (torch backend)
-- `scripts/run_ablation.py`: reproducible single-run launcher over prompt subsets
-- `scripts/run_robustness_suite.py`: frozen `12/24/48` suite + durability gate summary
-- `scripts/run_robustness_two_phase.py`: stockpile-first robustness runner for H100 (`stage1` Tinker sampling in parallel, then batched ESM finalization)
-- `scripts/finalize_ablation_from_candidate_audit.py`: H100 second-stage rescoring/finalization from a `candidate_audit.json`
-- `scripts/finalize_raft_wave.py`: finalize a stage1-only mining wave on CUDA/MPS after the stockpile is complete
-- `scripts/run_backward_lane.py`: precompute miss-bank + repair-pool + retrain-readiness while other shards are still running
-- `scripts/check_retrain_readiness.py`: automatic retrain-go/no-go checks on mined pools
-- `scripts/check_repair_survivor_readiness.py`: retrain-go/no-go checks after adding repair survivors to a base run pool
-- `scripts/build_diversity_capped_repair_pool.py`: caps repair pools by source run + sequence identity cluster before repair generation
-- `scripts/build_strict_first_union_curricula.py`: builds strict-first union stage-A/stage-B curricula from old and new family-faithful pools plus a small anchor set
-- `scripts/build_topoff1m_a_stageb_lite_1p6m_postprocess.sh`: merges the 1M and add-on `stage-b-lite` waves into the `1.6M` lineage bundle
-- `scripts/build_topoff1m_a_strict_core_v6_datasets.sh`: builds the merged-pool `strict-core-v6` stage-A / stage-B-lite datasets
-- `scripts/run_raft_wave.py`: detached mining waves with stage1-only stockpiling, prompt offsets, and a safety cap on parallel workers
-- `scripts/rebalance_stage1_wave.py`: stop/relaunch unfinished stage1 prompt subsets as more shards when a wave is too coarse
-- `scripts/launch_detached_job.py`: robust detached process launcher with metadata/logs
-- `scripts/launch_topoff1m_a_warmstart.sh`: detached warmstart launcher for the `ultra` and `balanced` A-run curricula
-- `scripts/launch_topoff1m_a_strict_first_union.sh`: detached warmstart launcher for the strict-first union stage-A / stage-B recipe
-- `scripts/launch_topoff1m_a_strict_first_union_robustness.sh`: detached two-phase robustness launcher for the strict-first union checkpoints
-- `scripts/launch_topoff1m_a_strict_core_v6.sh`: detached warmstart launcher for the merged-pool `strict-core-v6` stage-A / stage-B-lite recipe
-- `scripts/launch_topoff1m_a_strict_core_v6_smoke.sh`: detached `p48` smoke launcher for the `strict-core-v6` stage-A checkpoint
-- `scripts/launch_topoff1m_a_strict_core_v6_robustness.sh`: detached two-phase robustness launcher for the `strict-core-v6` stage-B-lite checkpoint
-- `scripts/sync_topoff1m_a_eval_bundle.sh`: pushes the H100 eval bundle to a Nebius VM
-- `scripts/launch_topoff1m_a_robustness_h100.sh`: detached H100 launcher for the two-phase `ultra`/`balanced` robustness suites
+The supported reusable workflows are:
+
+1. `mine`
+2. `postprocess`
+3. `build-dataset`
+4. `train`
+5. `robustness`
+6. `reranker`
+
+The details and entrypoints for those workflows live in [`docs/workflows.md`](docs/workflows.md).
+
+Versioned `strict_core_*` and `strict_first_union` wrappers now live under the archive and are exposed at their old `scripts/` paths through symlinks for continuity with the historical record. They are not the supported workflow surface anymore.
 
 ## Installation
 
@@ -130,93 +58,25 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Requirements are pinned in [`requirements.txt`](requirements.txt) and include:
+Pinned local/dev requirements are in [`requirements.txt`](requirements.txt):
 
 - `tinker==0.16.1`
 - `torch==2.10.0`
 - `transformers==5.2.0`
 - `numpy==2.4.2`
 
-Note: the production shard-scoring runtime used on Nebius/Wynton is a separate CUDA environment (`torch 2.5.1+cu121`) rather than the local/dev `requirements.txt` baseline.
+Production CUDA environments used on Nebius are separate from the local/dev baseline.
 
-## Runtime Requirements
+## Repo Landmarks
 
-- Valid `TINKER_API_KEY`
-- Access to a Tinker backend with the target model
-- Local hardware for ESM scoring (Apple Silicon `mps` or CUDA/CPU fallback)
+- `main.py`: current monolithic generation/eval engine
+- `petase_family.py`: family scoring and catalytic geometry checks
+- `local_proxy.py`: local ESM proxy scorer
+- `scripts/`: workflow entrypoints and helpers
+- `reports/`: local run artifacts
+- `data/`: prompts, records, and family datasets
 
-Example:
-
-```bash
-export TINKER_API_KEY=...
-export ESM2_DEVICE=mps
-```
-
-## Current Validated Nebius Path
-
-For production stockpile scoring, the repository now has a validated Nebius execution path that differs from the local/dev defaults:
-
-- Python env: `~/venvs/pearl-eval-cu121`
-- PyTorch: `2.5.1+cu121`
-- evaluator mode:
-  - `PREFILTER_EVAL_MODE=staged`
-  - `PREFILTER_CPU_WORKERS=8`
-  - `ESM2_BATCH_SIZE=256`
-  - `ESM2_SEQUENCE_BATCH_SIZE=1`
-  - `ESM2_PIPELINE_CHUNK_SIZE=128`
-- outputs should be written directly to persistent storage under `reports/nebius_benchmarks/...` during benchmarking and under the production output root during full stockpile runs
-- current benchmark artifacts live under:
-  - `reports/nebius_benchmarks/`
-
-Current validated benchmark outcomes:
-
-- L40S tuned baseline:
-  - `0.364412 s/record`
-  - `9878.93 records/hour`
-- H100 tuned rerun:
-  - `0.108953 s/record`
-  - `33041.77 records/hour`
-- H200 tuned best:
-  - `0.104376 s/record`
-  - `34490.69 records/hour`
-
-Operational implication:
-
-- a `10,000`-record shard is now about `17-18 minutes` on the final tuned path
-- the full `761,029` Tier-A pool is about `22.1 GPU-hours`
-- an `8x H100` node can clear the full Tier-A pool in roughly `2.9 hours`, before additional overhead
-- at current Nebius pricing, preemptible H100 is the economic default because H200 does not outperform it by enough to justify the price premium
-
-## Legacy Wynton Bring-Up
-
-Wynton is now a historical bring-up and fallback path, not the primary production target.
-
-What Wynton proved:
-
-- the shard evaluator ran correctly on real UCSF GPUs
-- durable direct-to-storage outputs worked
-- healthy pools were:
-  - `qb3-iogpu*` (A100)
-  - `qb3-atgpu*` (A40)
-- unhealthy pool:
-  - `qb3-idgpu*`
-
-Legacy validated artifacts:
-
-- A-shard smoke on A100 (`250` records, CUDA path, durable output):
-  - [`reports/hpc_sequence_eval/topoff1m-a-smoke-a100-cu121-20260321b/runs/topoff1m-a-smoke-a100-cu121-20260321b-hpc_ready_A_shard_0001/summary.json`](reports/hpc_sequence_eval/topoff1m-a-smoke-a100-cu121-20260321b/runs/topoff1m-a-smoke-a100-cu121-20260321b-hpc_ready_A_shard_0001/summary.json)
-- B-shard full run on A100 (`958` records, CUDA path, durable output):
-  - [`reports/hpc_sequence_eval/topoff1m-b-a100-cu121-20260321/runs/topoff1m-b-a100-cu121-20260321-hpc_ready_B_shard_0001/summary.json`](reports/hpc_sequence_eval/topoff1m-b-a100-cu121-20260321/runs/topoff1m-b-a100-cu121-20260321-hpc_ready_B_shard_0001/summary.json)
-
-## Data And Artifacts
-
-The repository is intentionally code-first. Large datasets and run artifacts are mostly excluded from version control.
-
-Common local paths:
-
-- prompts and family records: `data/petase_family_expanded/`
-- run outputs: `reports/ablations/`, `reports/robustness/`, `reports/raft/`
-- detached logs and metadata: `reports/logs/`
+The point of the current cleanup pass is to keep the reusable workflows small and boring, while treating historical experiment wrappers as archive surface rather than core code.
 
 ## Typical Workflows
 

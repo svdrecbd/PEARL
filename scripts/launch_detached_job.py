@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import subprocess
 import sys
-import time
 from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent.parent
+SRC_ROOT = ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from pearl.detached_jobs import launch_detached, parse_env_overrides
 
 
 def main() -> None:
@@ -17,54 +22,14 @@ def main() -> None:
     if not command:
         raise SystemExit("launch_detached_job.py requires a command after '--'")
 
-    metadata_path = Path(args.metadata_path).expanduser().resolve()
-    metadata_path.parent.mkdir(parents=True, exist_ok=True)
-
-    existing = load_existing_metadata(metadata_path)
-    if existing is not None:
-        existing_pid = int(existing.get("pid") or 0)
-        if existing_pid and process_is_alive(existing_pid):
-            raise SystemExit(
-                f"Refusing to launch duplicate job '{existing.get('job_name', args.job_name)}'; "
-                f"PID {existing_pid} is still running."
-            )
-
-    log_path = Path(args.log_path).expanduser().resolve() if args.log_path else None
-    if log_path is not None:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-
-    env = os.environ.copy()
-    env.update(parse_env_overrides(args.env))
-
-    stdout_handle = open(log_path, "ab", buffering=0) if log_path is not None else subprocess.DEVNULL
-    try:
-        process = subprocess.Popen(
-            command,
-            cwd=args.cwd,
-            env=env,
-            stdin=subprocess.DEVNULL,
-            stdout=stdout_handle,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-            close_fds=True,
-        )
-    finally:
-        if log_path is not None:
-            stdout_handle.close()
-
-    metadata = {
-        "job_name": args.job_name,
-        "pid": process.pid,
-        "process_group_id": os.getpgid(process.pid),
-        "session_id": os.getsid(process.pid),
-        "cwd": args.cwd,
-        "command": command,
-        "log_path": str(log_path) if log_path is not None else None,
-        "launched_at": int(time.time()),
-        "launcher_pid": os.getpid(),
-        "env_overrides": redact_env_overrides(parse_env_overrides(args.env)),
-    }
-    metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    metadata = launch_detached(
+        job_name=args.job_name,
+        cwd=args.cwd,
+        metadata_path=Path(args.metadata_path),
+        log_path=Path(args.log_path) if args.log_path else None,
+        env_overrides=parse_env_overrides(args.env),
+        command=command,
+    )
     print(json.dumps(metadata, indent=2))
 
 
@@ -82,67 +47,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     return parser.parse_args()
-
-
-def parse_env_overrides(values: list[str]) -> dict[str, str]:
-    overrides: dict[str, str] = {}
-    for value in values:
-        if "=" not in value:
-            raise SystemExit(f"Invalid --env value '{value}'. Expected KEY=VALUE.")
-        key, raw = value.split("=", 1)
-        key = key.strip()
-        if not key:
-            raise SystemExit(f"Invalid --env value '{value}'. Empty key.")
-        overrides[key] = raw
-    return overrides
-
-
-def redact_env_overrides(overrides: dict[str, str]) -> dict[str, str]:
-    redacted: dict[str, str] = {}
-    for key, value in overrides.items():
-        upper = key.upper()
-        if any(token in upper for token in ("KEY", "TOKEN", "SECRET", "PASSWORD")):
-            redacted[key] = "***REDACTED***" if value else ""
-        else:
-            redacted[key] = value
-    return redacted
-
-
-def load_existing_metadata(path: Path) -> dict[str, object] | None:
-    if not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-
-
-def process_is_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return not process_is_zombie(pid)
-    return not process_is_zombie(pid)
-
-
-def process_is_zombie(pid: int) -> bool:
-    try:
-        completed = subprocess.run(
-            ["ps", "-o", "stat=", "-p", str(pid)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError):
-        return False
-    state = completed.stdout.strip()
-    if not state:
-        return False
-    return "Z" in state
 
 
 if __name__ == "__main__":

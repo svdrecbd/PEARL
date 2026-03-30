@@ -10,6 +10,15 @@ This document is meant to do three jobs:
 
 This is a living document. It should be updated whenever we change the search regime, reward/eval definition, or operational workflow.
 
+Supported operator docs now live under:
+
+- [/Users/svdr/tinker/docs/overview.md](/Users/svdr/tinker/docs/overview.md)
+- [/Users/svdr/tinker/docs/workflows.md](/Users/svdr/tinker/docs/workflows.md)
+- [/Users/svdr/tinker/docs/operations.md](/Users/svdr/tinker/docs/operations.md)
+- [/Users/svdr/tinker/docs/science.md](/Users/svdr/tinker/docs/science.md)
+
+This file remains the long-form experimental and engineering fossil record.
+
 ## Latest Canonical Status (as of March 30, 2026)
 
 - active mined-data engine:

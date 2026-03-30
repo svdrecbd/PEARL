@@ -1,0 +1,27 @@
+{
+  "name": "topoff1m-a-stageb-lite-even-million",
+  "model": "moonshotai/Kimi-K2.5",
+  "reference_records_path": "data/petase_family_expanded/petase_records.jsonl",
+  "prompts_path": "data/petase_family_expanded/train_prompts_relevance_ge10.jsonl",
+  "output_dir": "reports/raft",
+  "default_variant_key": "stageb-lite",
+  "variants": {
+    "stageb-lite": {
+      "init_state_path": "tinker://f95b13f5-4c21-5851-85d6-f6196bbe2779:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v2-stageb-lite-lr5e7-ep1",
+      "wave_name_template": "pearl-topoff1m-a-stageb-lite-raft-stage1-p{total_prompts}-c{candidate_sample_count}-{date_tag}"
+    }
+  },
+  "stage1": {
+    "variant_key": "stageb-lite",
+    "total_prompt_count": 3906,
+    "prompt_offset": 3907,
+    "shard_count": 12,
+    "candidate_sample_count": 256,
+    "second_stage_top_k": 8,
+    "temperature": 0.8,
+    "esm2_device": "mps",
+    "prompt_variant": "motif_prior_soft_v2",
+    "date_tag": "20260329b-next3907",
+    "seed": 37
+  }
+}
