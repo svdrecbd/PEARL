@@ -21,6 +21,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from pearl.checkpoints import load_sampler_checkpoint_map, persist_sampler_checkpoint_mapping
 from pearl.io_utils import load_json_object
+from pearl.openai_compat_sampler import OpenAICompatibleSamplingClient
 from pearl.reports import (
     ReportContext,
     extract_contiguous_step_records,
@@ -57,6 +58,14 @@ FALLBACK_MODEL_NAMES = (
     "Qwen/Qwen3-8B-Base",
     "meta-llama/Llama-3.2-1B",
 )
+SAMPLER_BACKEND = os.environ.get("PEARL_SAMPLER_BACKEND", "tinker").strip().lower() or "tinker"
+OPENAI_BASE_URL = os.environ.get("PEARL_OPENAI_BASE_URL", "").strip()
+OPENAI_API_KEY = os.environ.get("PEARL_OPENAI_API_KEY", "").strip()
+OPENAI_MODEL_NAME = os.environ.get("PEARL_OPENAI_MODEL", "").strip()
+OPENAI_TOKENIZER_NAME = os.environ.get("PEARL_OPENAI_TOKENIZER", "").strip()
+OPENAI_TIMEOUT_SECONDS = float(os.environ.get("PEARL_OPENAI_TIMEOUT_SECONDS", "120.0"))
+OPENAI_MAX_RETRIES = max(1, int(os.environ.get("PEARL_OPENAI_MAX_RETRIES", "3")))
+OPENAI_TRUST_REMOTE_CODE = os.environ.get("PEARL_OPENAI_TRUST_REMOTE_CODE", "1").strip().lower() not in {"0", "false", "no"}
 CHECKPOINT_NAME = os.environ.get("CHECKPOINT_NAME", "dry_run_lora_v1")
 REPORT_PATH = os.environ.get("REPORT_PATH")
 CANDIDATE_AUDIT_PATH = os.environ.get("CANDIDATE_AUDIT_PATH")
@@ -253,20 +262,32 @@ def emit_timing_event(
 
 def main() -> None:
     startup_started_at = time.perf_counter()
-    phase_started_at = time.perf_counter()
-    emit_timing_event(phase="service_client_init", status="start")
-    service_client = tinker.ServiceClient()
-    emit_timing_event(phase="service_client_init", status="end", started_at=phase_started_at)
+    service_client: tinker.ServiceClient | None = None
+    if using_openai_compatible_sampler():
+        phase_started_at = time.perf_counter()
+        emit_timing_event(phase="resolve_base_model", status="start")
+        base_model, supported_models = resolve_local_base_model()
+        emit_timing_event(
+            phase="resolve_base_model",
+            status="end",
+            started_at=phase_started_at,
+            extra={"supported_model_count": len(supported_models), "sampler_backend": SAMPLER_BACKEND},
+        )
+    else:
+        phase_started_at = time.perf_counter()
+        emit_timing_event(phase="service_client_init", status="start")
+        service_client = tinker.ServiceClient()
+        emit_timing_event(phase="service_client_init", status="end", started_at=phase_started_at)
 
-    phase_started_at = time.perf_counter()
-    emit_timing_event(phase="resolve_base_model", status="start")
-    base_model, supported_models = resolve_base_model(service_client)
-    emit_timing_event(
-        phase="resolve_base_model",
-        status="end",
-        started_at=phase_started_at,
-        extra={"supported_model_count": len(supported_models)},
-    )
+        phase_started_at = time.perf_counter()
+        emit_timing_event(phase="resolve_base_model", status="start")
+        base_model, supported_models = resolve_base_model(service_client)
+        emit_timing_event(
+            phase="resolve_base_model",
+            status="end",
+            started_at=phase_started_at,
+            extra={"supported_model_count": len(supported_models)},
+        )
     runtime = initialize_runtime(
         service_client=service_client,
         base_model=base_model,
@@ -637,10 +658,38 @@ def create_training_client(
 
 def initialize_runtime(
     *,
-    service_client: tinker.ServiceClient,
+    service_client: tinker.ServiceClient | None,
     base_model: str,
 ) -> dict[str, tinker.TrainingClient | tinker.SamplingClient | object | None]:
+    if using_openai_compatible_sampler():
+        if not EVAL_ONLY:
+            raise RuntimeError("PEARL_SAMPLER_BACKEND=openai_compatible only supports eval-only runs")
+        phase_started_at = time.perf_counter()
+        emit_timing_event(phase="create_eval_sampling_client", status="start")
+        sampling_client = OpenAICompatibleSamplingClient(
+            base_url=OPENAI_BASE_URL,
+            model_name=base_model,
+            tokenizer_name=OPENAI_TOKENIZER_NAME or base_model,
+            api_key=OPENAI_API_KEY or None,
+            timeout_seconds=OPENAI_TIMEOUT_SECONDS,
+            max_retries=OPENAI_MAX_RETRIES,
+            trust_remote_code=OPENAI_TRUST_REMOTE_CODE,
+        )
+        emit_timing_event(
+            phase="create_eval_sampling_client",
+            status="end",
+            started_at=phase_started_at,
+            extra={"source": "openai_compatible", "base_url": OPENAI_BASE_URL},
+        )
+        tokenizer = sampling_client.get_tokenizer()
+        return {
+            "training_client": None,
+            "sampling_client": sampling_client,
+            "tokenizer": tokenizer,
+        }
+
     if EVAL_ONLY:
+        assert service_client is not None
         sampling_client = create_eval_sampling_client(
             service_client=service_client,
             base_model=base_model,
@@ -655,6 +704,7 @@ def initialize_runtime(
 
     phase_started_at = time.perf_counter()
     emit_timing_event(phase="create_training_client", status="start")
+    assert service_client is not None
     training_client = create_training_client(service_client=service_client, base_model=base_model)
     emit_timing_event(phase="create_training_client", status="end", started_at=phase_started_at)
     tokenizer = get_training_tokenizer(training_client=training_client)
@@ -933,6 +983,17 @@ def resolve_base_model(service_client: tinker.ServiceClient) -> tuple[str, list[
     raise RuntimeError("No supported fallback base model is available for the dry run")
 
 
+def using_openai_compatible_sampler() -> bool:
+    return SAMPLER_BACKEND in {"openai", "openai_compatible", "local_openai"}
+
+
+def resolve_local_base_model() -> tuple[str, list[str]]:
+    if not OPENAI_BASE_URL:
+        raise RuntimeError("PEARL_OPENAI_BASE_URL is required for PEARL_SAMPLER_BACKEND=openai_compatible")
+    base_model = OPENAI_MODEL_NAME or os.environ.get("TINKER_BASE_MODEL", "").strip() or REQUESTED_MODEL_NAME
+    return base_model, [base_model]
+
+
 def load_prompts() -> list[str]:
     if not PROMPTS_PATH:
         return ["Generate thermophilic PETase sequence:"] * PROMPT_COUNT
@@ -1041,7 +1102,7 @@ def sample_valid_sequence(
     *,
     step: int | None,
     tokenizer: object,
-    sampling_client: tinker.SamplingClient,
+    sampling_client: Any,
     sampling_params: types.SamplingParams,
     sequence_prompt: str,
     reference_records: list[dict[str, Any]],
@@ -1060,30 +1121,40 @@ def sample_valid_sequence(
     candidates: list[dict[str, Any]] = []
     phase_started_at = time.perf_counter()
     emit_timing_event(phase="sample_prepare_prompt_input", status="start", step=step)
-    prompt_input = types.ModelInput.from_ints(
-        tokenizer.encode(sequence_prompt, add_special_tokens=False)
-    )
+    prompt_input = None
+    if not isinstance(sampling_client, OpenAICompatibleSamplingClient):
+        prompt_input = types.ModelInput.from_ints(
+            tokenizer.encode(sequence_prompt, add_special_tokens=False)
+        )
     emit_timing_event(phase="sample_prepare_prompt_input", status="end", started_at=phase_started_at, step=step)
 
     phase_started_at = time.perf_counter()
     emit_timing_event(phase="sample_remote_sequences", status="start", step=step)
-    sample_result = sampling_client.sample(
-        prompt=prompt_input,
-        num_samples=CANDIDATE_SAMPLE_COUNT,
-        sampling_params=sampling_params,
-    ).result()
+    if isinstance(sampling_client, OpenAICompatibleSamplingClient):
+        sample_result = sampling_client.sample_text(
+            prompt=sequence_prompt,
+            num_samples=CANDIDATE_SAMPLE_COUNT,
+            sampling_params=sampling_params,
+        ).result()
+    else:
+        assert prompt_input is not None
+        sample_result = sampling_client.sample(
+            prompt=prompt_input,
+            num_samples=CANDIDATE_SAMPLE_COUNT,
+            sampling_params=sampling_params,
+        ).result()
     emit_timing_event(
         phase="sample_remote_sequences",
         status="end",
         started_at=phase_started_at,
         step=step,
-        extra={"sampled_sequence_count": len(sample_result.sequences)},
+        extra={"sampled_sequence_count": len(sample_result.sequences), "sampler_backend": SAMPLER_BACKEND},
     )
 
     phase_started_at = time.perf_counter()
     emit_timing_event(phase="evaluate_stage1_candidates", status="start", step=step)
     for sampled_sequence in sample_result.sequences:
-        if sampled_sequence.logprobs is None:
+        if sampled_sequence.logprobs is None and not EVAL_ONLY:
             raise RuntimeError("Tinker sampling response did not include token logprobs")
 
         sampled_text = tokenizer.decode(sampled_sequence.tokens, skip_special_tokens=True).strip()

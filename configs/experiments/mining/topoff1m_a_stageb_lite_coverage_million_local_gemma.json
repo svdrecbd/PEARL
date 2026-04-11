@@ -1,0 +1,31 @@
+{
+  "name": "topoff1m-a-stageb-lite-coverage-million-local-gemma",
+  "model": "gemma-local",
+  "reference_records_path": "data/petase_family_expanded/petase_records.jsonl",
+  "prompts_path": "reports/raft_prompt_packs/topoff1m-a-stageb-lite-20260330c-coverage1m/prompts.jsonl",
+  "output_dir": "reports/raft",
+  "default_variant_key": "gemma-local-stage1",
+  "sampler_backend": "openai_compatible",
+  "sampler_base_url": "http://127.0.0.1:8000",
+  "variants": {
+    "gemma-local-stage1": {
+      "wave_name_template": "pearl-topoff1m-a-stageb-lite-gemma-local-raft-stage1-p{total_prompts}-c{candidate_sample_count}-{date_tag}"
+    }
+  },
+  "stage1": {
+    "variant_key": "gemma-local-stage1",
+    "prompt_offset": 0,
+    "shard_count": 24,
+    "candidate_sample_count": 256,
+    "second_stage_top_k": 8,
+    "temperature": 0.8,
+    "esm2_device": "cuda",
+    "prompt_variant": "motif_prior_soft_v2",
+    "date_tag": "20260402a-localgemma",
+    "seed": 37,
+    "total_prompt_count": 3907,
+    "sampler_timeout_seconds": 180.0,
+    "sampler_max_retries": 4,
+    "sampler_trust_remote_code": true
+  }
+}

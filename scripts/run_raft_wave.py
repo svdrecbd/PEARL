@@ -101,14 +101,31 @@ def main() -> None:
             str(args.second_stage_top_k),
             "--plddt-gate-threshold",
             str(args.plddt_gate_threshold),
-            "--init-state-path",
-            args.init_state_path,
             "--eval-only",
             "--capture-candidate-audit",
             "--seed",
             str(args.seed + shard_index),
             "--preserve-order",
+            "--sampler-backend",
+            args.sampler_backend,
         ]
+        if args.init_state_path:
+            command.extend(["--init-state-path", args.init_state_path])
+        if args.sampler_base_url:
+            command.extend(["--sampler-base-url", args.sampler_base_url])
+        if args.sampler_api_key:
+            command.extend(["--sampler-api-key", args.sampler_api_key])
+        if args.sampler_tokenizer:
+            command.extend(["--sampler-tokenizer", args.sampler_tokenizer])
+        command.extend(
+            [
+                "--sampler-timeout-seconds",
+                str(args.sampler_timeout_seconds),
+                "--sampler-max-retries",
+                str(args.sampler_max_retries),
+                "--sampler-trust-remote-code" if args.sampler_trust_remote_code else "--no-sampler-trust-remote-code",
+            ]
+        )
         if args.stage1_only:
             command.extend(["--stage1-only", "--resume"])
 
@@ -153,6 +170,12 @@ def main() -> None:
         "temperature": args.temperature,
         "stage1_only": args.stage1_only,
         "seed": args.seed,
+        "sampler_backend": args.sampler_backend,
+        "sampler_base_url": args.sampler_base_url,
+        "sampler_tokenizer": args.sampler_tokenizer,
+        "sampler_timeout_seconds": args.sampler_timeout_seconds,
+        "sampler_max_retries": args.sampler_max_retries,
+        "sampler_trust_remote_code": args.sampler_trust_remote_code,
         "jobs": launched_jobs,
         "prompts_dir": str(prompts_dir),
         "runs_dir": str(runs_dir),
@@ -165,7 +188,7 @@ def main() -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Launch a detached RAFT / Expert Iteration mining wave")
     parser.add_argument("--name", required=True)
-    parser.add_argument("--init-state-path", required=True)
+    parser.add_argument("--init-state-path")
     parser.add_argument(
         "--prompts-path",
         default=str(ROOT / "data" / "petase_family_expanded" / "train_prompts_relevance_ge10.jsonl"),
@@ -192,6 +215,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stage1-only", action="store_true")
     parser.add_argument("--seed", type=int, default=37)
     parser.add_argument("--api-key")
+    parser.add_argument(
+        "--sampler-backend",
+        choices=("tinker", "openai_compatible", "openai", "local_openai"),
+        default=os.environ.get("PEARL_SAMPLER_BACKEND", "tinker"),
+    )
+    parser.add_argument("--sampler-base-url", default=os.environ.get("PEARL_OPENAI_BASE_URL"))
+    parser.add_argument("--sampler-api-key", default=os.environ.get("PEARL_OPENAI_API_KEY"))
+    parser.add_argument("--sampler-tokenizer", default=os.environ.get("PEARL_OPENAI_TOKENIZER"))
+    parser.add_argument(
+        "--sampler-timeout-seconds",
+        type=float,
+        default=float(os.environ.get("PEARL_OPENAI_TIMEOUT_SECONDS", "120.0")),
+    )
+    parser.add_argument(
+        "--sampler-max-retries",
+        type=int,
+        default=int(os.environ.get("PEARL_OPENAI_MAX_RETRIES", "3")),
+    )
+    parser.add_argument(
+        "--sampler-trust-remote-code",
+        action=argparse.BooleanOptionalAction,
+        default=os.environ.get("PEARL_OPENAI_TRUST_REMOTE_CODE", "1").strip().lower() not in {"0", "false", "no"},
+    )
     return parser.parse_args()
 
 
@@ -203,17 +249,29 @@ def validate_args(args: argparse.Namespace) -> None:
             f"--shard-count={args.shard_count} exceeds the safety cap of {MAX_SAFE_PARALLEL_JOBS}. "
             "Split into multiple waves instead."
         )
+    if args.sampler_backend == "tinker":
+        if not args.init_state_path:
+            raise SystemExit("--init-state-path is required for the Tinker sampler backend")
+    else:
+        if not args.sampler_base_url:
+            raise SystemExit("--sampler-base-url is required for the local sampler backend")
+        if args.sampler_timeout_seconds <= 0:
+            raise SystemExit("--sampler-timeout-seconds must be positive")
+        if args.sampler_max_retries <= 0:
+            raise SystemExit("--sampler-max-retries must be positive")
 
 
 def build_env_overrides(args: argparse.Namespace) -> list[str]:
-    api_key = args.api_key or os.environ.get("TINKER_API_KEY")
-    if not api_key:
-        raise SystemExit("TINKER_API_KEY is required via --api-key or environment")
-    return [
-        f"TINKER_API_KEY={api_key}",
+    overrides = [
         f"SAMPLING_TEMPERATURE={args.temperature}",
         f"ESM2_DEVICE={args.esm2_device}",
     ]
+    if args.sampler_backend == "tinker":
+        api_key = args.api_key or os.environ.get("TINKER_API_KEY")
+        if not api_key:
+            raise SystemExit("TINKER_API_KEY is required via --api-key or environment")
+        overrides.insert(0, f"TINKER_API_KEY={api_key}")
+    return overrides
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:

@@ -43,6 +43,13 @@ def parse_args() -> argparse.Namespace:
     launch_stage1.add_argument("--esm2-device")
     launch_stage1.add_argument("--prompt-variant")
     launch_stage1.add_argument("--date-tag")
+    launch_stage1.add_argument("--sampler-backend")
+    launch_stage1.add_argument("--sampler-base-url")
+    launch_stage1.add_argument("--sampler-api-key")
+    launch_stage1.add_argument("--sampler-tokenizer")
+    launch_stage1.add_argument("--sampler-timeout-seconds", type=float)
+    launch_stage1.add_argument("--sampler-max-retries", type=int)
+    launch_stage1.add_argument("--sampler-trust-remote-code", action=argparse.BooleanOptionalAction)
     launch_stage1.add_argument("--dry-run", action="store_true")
 
     launch = subparsers.add_parser("launch", help="Build prompt pack if configured, then launch stage1")
@@ -57,6 +64,13 @@ def parse_args() -> argparse.Namespace:
     launch.add_argument("--esm2-device")
     launch.add_argument("--prompt-variant")
     launch.add_argument("--date-tag")
+    launch.add_argument("--sampler-backend")
+    launch.add_argument("--sampler-base-url")
+    launch.add_argument("--sampler-api-key")
+    launch.add_argument("--sampler-tokenizer")
+    launch.add_argument("--sampler-timeout-seconds", type=float)
+    launch.add_argument("--sampler-max-retries", type=int)
+    launch.add_argument("--sampler-trust-remote-code", action=argparse.BooleanOptionalAction)
     launch.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -79,8 +93,10 @@ def config_path_value(config: dict[str, Any], key: str, default: str | None = No
     return resolve_value(str(raw))
 
 
-def require_api_key(dry_run: bool) -> None:
+def require_api_key(*, dry_run: bool, sampler_backend: str) -> None:
     if dry_run:
+        return
+    if sampler_backend != "tinker":
         return
     if not os.environ.get("TINKER_API_KEY"):
         raise SystemExit("TINKER_API_KEY is not set")
@@ -115,6 +131,12 @@ def prompt_pack_config(config: dict[str, Any]) -> dict[str, Any] | None:
     if not payload:
         return None
     return dict(payload)
+
+
+def config_scalar(config: dict[str, Any], stage1: dict[str, Any], key: str, default: Any) -> Any:
+    if key in stage1:
+        return stage1[key]
+    return config.get(key, default)
 
 
 def build_prompt_pack(config: dict[str, Any], *, dry_run: bool) -> None:
@@ -173,8 +195,9 @@ def effective_total_prompts(config: dict[str, Any], override: int | None) -> int
 
 
 def launch_stage1(config: dict[str, Any], args: argparse.Namespace) -> None:
-    require_api_key(args.dry_run)
     stage1 = stage1_config(config)
+    sampler_backend = str(args.sampler_backend or config_scalar(config, stage1, "sampler_backend", "tinker"))
+    require_api_key(dry_run=args.dry_run, sampler_backend=sampler_backend)
     selected_variant_key = variant_key(config, args.variant_key)
     variant = variant_config(config, selected_variant_key)
     total_prompts = effective_total_prompts(config, args.total_prompts)
@@ -190,8 +213,6 @@ def launch_stage1(config: dict[str, Any], args: argparse.Namespace) -> None:
         str(ROOT / "scripts" / "run_raft_wave.py"),
         "--name",
         wave_name,
-        "--init-state-path",
-        str(variant["init_state_path"]),
         "--prompts-path",
         effective_prompts_path(config, args.prompts_path),
         "--reference-records-path",
@@ -220,10 +241,42 @@ def launch_stage1(config: dict[str, Any], args: argparse.Namespace) -> None:
         str(args.temperature if args.temperature is not None else stage1["temperature"]),
         "--esm2-device",
         str(args.esm2_device or stage1.get("esm2_device", "mps")),
+        "--sampler-backend",
+        sampler_backend,
         "--seed",
         str(stage1.get("seed", 37)),
         "--stage1-only",
     ]
+    init_state_path = variant.get("init_state_path")
+    if init_state_path:
+        command.extend(["--init-state-path", str(init_state_path)])
+    sampler_base_url = args.sampler_base_url or config_scalar(config, stage1, "sampler_base_url", None)
+    sampler_api_key = args.sampler_api_key or config_scalar(config, stage1, "sampler_api_key", None)
+    sampler_tokenizer = args.sampler_tokenizer or config_scalar(config, stage1, "sampler_tokenizer", None)
+    sampler_timeout_seconds = args.sampler_timeout_seconds
+    if sampler_timeout_seconds is None:
+        sampler_timeout_seconds = float(config_scalar(config, stage1, "sampler_timeout_seconds", 120.0))
+    sampler_max_retries = args.sampler_max_retries
+    if sampler_max_retries is None:
+        sampler_max_retries = int(config_scalar(config, stage1, "sampler_max_retries", 3))
+    sampler_trust_remote_code = args.sampler_trust_remote_code
+    if sampler_trust_remote_code is None:
+        sampler_trust_remote_code = bool(config_scalar(config, stage1, "sampler_trust_remote_code", True))
+    if sampler_base_url:
+        command.extend(["--sampler-base-url", str(sampler_base_url)])
+    if sampler_api_key:
+        command.extend(["--sampler-api-key", str(sampler_api_key)])
+    if sampler_tokenizer:
+        command.extend(["--sampler-tokenizer", str(sampler_tokenizer)])
+    command.extend(
+        [
+            "--sampler-timeout-seconds",
+            str(sampler_timeout_seconds),
+            "--sampler-max-retries",
+            str(sampler_max_retries),
+            "--sampler-trust-remote-code" if sampler_trust_remote_code else "--no-sampler-trust-remote-code",
+        ]
+    )
 
     if args.dry_run:
         print(json.dumps({"launch_stage1_command": command}, indent=2))
@@ -233,6 +286,7 @@ def launch_stage1(config: dict[str, Any], args: argparse.Namespace) -> None:
 
 
 def describe(config: dict[str, Any], *, pretty: bool) -> None:
+    stage1 = stage1_config(config)
     payload: dict[str, Any] = {
         "config_path": config["_config_path"],
         "name": config["name"],
@@ -242,8 +296,14 @@ def describe(config: dict[str, Any], *, pretty: bool) -> None:
             "reference_records_path",
             str(ROOT / "data" / "petase_family_expanded" / "petase_records.jsonl"),
         ),
-        "stage1": stage1_config(config),
+        "stage1": stage1,
         "variants": config.get("variants") or {},
+        "sampler_backend": config_scalar(config, stage1, "sampler_backend", "tinker"),
+        "sampler_base_url": config_scalar(config, stage1, "sampler_base_url", None),
+        "sampler_tokenizer": config_scalar(config, stage1, "sampler_tokenizer", None),
+        "sampler_timeout_seconds": config_scalar(config, stage1, "sampler_timeout_seconds", 120.0),
+        "sampler_max_retries": config_scalar(config, stage1, "sampler_max_retries", 3),
+        "sampler_trust_remote_code": config_scalar(config, stage1, "sampler_trust_remote_code", True),
     }
     pack = prompt_pack_config(config)
     if pack:

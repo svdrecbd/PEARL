@@ -17,7 +17,7 @@ This repository explores PETase-family sequence design through remote generation
 
 ## Current State
 
-As of March 30, 2026:
+As of April 11, 2026:
 
 - merged `stage-b-lite` mined pool:
   - `1,597,184` raw candidates
@@ -28,11 +28,21 @@ As of March 30, 2026:
   - `strict-core-v6`
   - stage-A smoke recovered narrow `p48` signal
   - full stage-B-lite robustness still failed durability
+- local Gemma mining trial:
+  - half-wave `525,568`-candidate ESM check came back `0` functional / `0` family-faithful
+  - treat the current local Gemma path as failed unless the serving/prompting path is corrected first
+- historical local-exploit audit:
+  - finalized-hit universe and widened finalized-report near-miss universe both came back with no usable anchor neighborhoods
+  - current “no free lunch” read: there is no passive challenge-style local basin already sitting in the saved finalized corpus
+- candidate-audit local-repair pilot:
+  - `48` parents -> `13,033` evaluated variants -> `577` survivors
+  - validation kept `192` strict shortlist rows and `122` strict-bridge consensus rows
+  - readiness passed with `406` deduped tier-2 positives, `243` tier-1 proxy positives, and `228` clusters
 - current direction:
   - optimize for reproducible cross-prompt coverage, not existence of isolated strict hits
+  - treat the candidate-audit local-repair lane as the next gated branch
+  - do not spend another broad million-candidate mine until repair scale-up either passes or fails its concentration gate
   - stop `v7`-style micro-variants on the same retrain family
-  - run a coverage-aware next `1.0M` mining tranche from the best current miner prior, with an adversarial prompt slice for historically weak-conversion buckets
-  - test one constrained strict prototype with prompt-first / prompt-bucket / cluster diversity and a stricter `p48` smoke gate that requires `2` seeds and `2` prompts
   - keep the reranker lane reranker-first and diagnostic-only until it clearly beats scalar reward baselines on harder held-out prompt / bucket / cluster splits
 
 See [`docs/science.md`](docs/science.md) for the current research readout and primary artifact links.
@@ -43,10 +53,11 @@ The supported reusable workflows are:
 
 1. `mine`
 2. `postprocess`
-3. `build-dataset`
-4. `train`
-5. `robustness`
-6. `reranker`
+3. `analyze`
+4. `build-dataset`
+5. `train`
+6. `robustness`
+7. `reranker`
 
 The details and entrypoints for those workflows live in [`docs/workflows.md`](docs/workflows.md).
 

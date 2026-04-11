@@ -38,7 +38,9 @@ These docs describe the small set of workflows the repo should actively support:
 
 - `mine`
 - `postprocess`
+- `analyze`
 - `build-dataset`
+- `repair`
 - `train`
 - `robustness`
 - `reranker`

@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 
 def main() -> None:
     args = parse_args()
+    validate_args(args)
     python_executable = resolve_python_executable()
     output_dir = Path(args.output_dir) / sanitize_name(args.name)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -59,10 +60,26 @@ def main() -> None:
         "report_path": str(report_path),
         "summary_path": str(summary_path),
         "candidate_audit_path": str(candidate_audit_path) if candidate_audit_path is not None else None,
+        "sampler_backend": args.sampler_backend,
+        "sampler_base_url": args.sampler_base_url,
+        "sampler_tokenizer": args.sampler_tokenizer,
+        "sampler_timeout_seconds": args.sampler_timeout_seconds,
+        "sampler_max_retries": args.sampler_max_retries,
+        "sampler_trust_remote_code": args.sampler_trust_remote_code,
     }
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     env = os.environ.copy()
+    for key in (
+        "PEARL_SAMPLER_BACKEND",
+        "PEARL_OPENAI_BASE_URL",
+        "PEARL_OPENAI_API_KEY",
+        "PEARL_OPENAI_MODEL",
+        "PEARL_OPENAI_TOKENIZER",
+        "PEARL_OPENAI_TIMEOUT_SECONDS",
+        "PEARL_OPENAI_MAX_RETRIES",
+    ):
+        env.pop(key, None)
     env.update(
         {
             "PROMPTS_PATH": str(subset_path),
@@ -92,6 +109,17 @@ def main() -> None:
         env["TINKER_RESUME_PROGRESS"] = "1"
     if candidate_audit_path is not None:
         env["CANDIDATE_AUDIT_PATH"] = str(candidate_audit_path)
+    if args.sampler_backend != "tinker":
+        env["PEARL_SAMPLER_BACKEND"] = args.sampler_backend
+        env["PEARL_OPENAI_BASE_URL"] = args.sampler_base_url
+        env["PEARL_OPENAI_MODEL"] = args.model
+        env["PEARL_OPENAI_TIMEOUT_SECONDS"] = str(args.sampler_timeout_seconds)
+        env["PEARL_OPENAI_MAX_RETRIES"] = str(args.sampler_max_retries)
+        env["PEARL_OPENAI_TRUST_REMOTE_CODE"] = "1" if args.sampler_trust_remote_code else "0"
+        if args.sampler_api_key:
+            env["PEARL_OPENAI_API_KEY"] = args.sampler_api_key
+        if args.sampler_tokenizer:
+            env["PEARL_OPENAI_TOKENIZER"] = args.sampler_tokenizer
 
     subprocess.run([python_executable, str(ROOT / "main.py")], check=True, env=env, cwd=ROOT)
 
@@ -115,6 +143,12 @@ def main() -> None:
     summary["subset_path"] = str(subset_path)
     summary["report_path"] = str(report_path)
     summary["candidate_audit_path"] = str(candidate_audit_path) if candidate_audit_path is not None else None
+    summary["sampler_backend"] = args.sampler_backend
+    summary["sampler_base_url"] = args.sampler_base_url
+    summary["sampler_tokenizer"] = args.sampler_tokenizer
+    summary["sampler_timeout_seconds"] = args.sampler_timeout_seconds
+    summary["sampler_max_retries"] = args.sampler_max_retries
+    summary["sampler_trust_remote_code"] = args.sampler_trust_remote_code
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
 
@@ -163,7 +197,42 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--capture-candidate-audit", action="store_true")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--preserve-order", action="store_true")
+    parser.add_argument(
+        "--sampler-backend",
+        choices=("tinker", "openai_compatible", "openai", "local_openai"),
+        default=os.environ.get("PEARL_SAMPLER_BACKEND", "tinker"),
+    )
+    parser.add_argument("--sampler-base-url", default=os.environ.get("PEARL_OPENAI_BASE_URL"))
+    parser.add_argument("--sampler-api-key", default=os.environ.get("PEARL_OPENAI_API_KEY"))
+    parser.add_argument("--sampler-tokenizer", default=os.environ.get("PEARL_OPENAI_TOKENIZER"))
+    parser.add_argument(
+        "--sampler-timeout-seconds",
+        type=float,
+        default=float(os.environ.get("PEARL_OPENAI_TIMEOUT_SECONDS", "120.0")),
+    )
+    parser.add_argument(
+        "--sampler-max-retries",
+        type=int,
+        default=int(os.environ.get("PEARL_OPENAI_MAX_RETRIES", "3")),
+    )
+    parser.add_argument(
+        "--sampler-trust-remote-code",
+        action=argparse.BooleanOptionalAction,
+        default=os.environ.get("PEARL_OPENAI_TRUST_REMOTE_CODE", "1").strip().lower() not in {"0", "false", "no"},
+    )
     return parser.parse_args()
+
+
+def validate_args(args: argparse.Namespace) -> None:
+    if args.sampler_backend != "tinker":
+        if not args.eval_only:
+            raise SystemExit("Local sampler backend currently supports eval-only / stage1 paths only")
+        if not args.sampler_base_url:
+            raise SystemExit("--sampler-base-url is required for the local sampler backend")
+        if args.sampler_timeout_seconds <= 0:
+            raise SystemExit("--sampler-timeout-seconds must be positive")
+        if args.sampler_max_retries <= 0:
+            raise SystemExit("--sampler-max-retries must be positive")
 
 
 def resolve_python_executable() -> str:

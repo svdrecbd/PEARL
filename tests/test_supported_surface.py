@@ -24,6 +24,8 @@ SUPPORTED_CODE_PATHS = [
     ROOT / "main.py",
     ROOT / "scripts" / "strict_experiment.py",
     ROOT / "scripts" / "mining_experiment.py",
+    ROOT / "scripts" / "analysis_experiment.py",
+    ROOT / "scripts" / "repair_experiment.py",
     ROOT / "scripts" / "run_sft_warmstart.py",
     ROOT / "scripts" / "run_sequence_shard_eval.py",
     ROOT / "scripts" / "build_finalized_hit_lineage_bundle.py",

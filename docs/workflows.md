@@ -16,12 +16,23 @@ Primary entrypoints:
 - [scripts/launch_mining_experiment.sh](../scripts/launch_mining_experiment.sh)
 - [scripts/launch_topoff1m_a_targeted_raft.sh](../scripts/launch_topoff1m_a_targeted_raft.sh)
 - [scripts/launch_topoff1m_a_stageb_lite_coverage_million.sh](../scripts/launch_topoff1m_a_stageb_lite_coverage_million.sh)
+- [scripts/launch_topoff1m_a_stageb_lite_coverage_million_local.sh](../scripts/launch_topoff1m_a_stageb_lite_coverage_million_local.sh)
 - [scripts/build_topoff1m_a_stageb_lite_next_million_prompt_pack.py](../scripts/build_topoff1m_a_stageb_lite_next_million_prompt_pack.py)
 
 Config-driven mining examples:
 - [configs/experiments/mining/topoff1m_a_targeted_raft.json](../configs/experiments/mining/topoff1m_a_targeted_raft.json)
 - [configs/experiments/mining/topoff1m_a_stageb_lite_even_million.json](../configs/experiments/mining/topoff1m_a_stageb_lite_even_million.json)
 - [configs/experiments/mining/topoff1m_a_stageb_lite_coverage_million.json](../configs/experiments/mining/topoff1m_a_stageb_lite_coverage_million.json)
+- [configs/experiments/mining/topoff1m_a_stageb_lite_coverage_million_local_gemma.json](../configs/experiments/mining/topoff1m_a_stageb_lite_coverage_million_local_gemma.json)
+
+Local-hosted stage1 trial path:
+- use the same coverage-aware prompt pack, but point stage1 sampling at a local OpenAI-compatible server on an H200-class box
+- this path is stage1 / eval-only only; training and warmstarts still remain Tinker-backed
+- operational helpers:
+  - [scripts/setup_nebius_h200_local_stage1_env.sh](../scripts/setup_nebius_h200_local_stage1_env.sh)
+  - [scripts/launch_local_vllm_server.sh](../scripts/launch_local_vllm_server.sh)
+  - [scripts/check_local_openai_sampler.py](../scripts/check_local_openai_sampler.py)
+  - [scripts/sync_local_stage1_bundle.sh](../scripts/sync_local_stage1_bundle.sh)
 
 Outputs:
 - `reports/raft/...`
@@ -42,7 +53,39 @@ Outputs:
 - `reports/raft/.../finalization_summary.json`
 - `reports/raft/.../bundle_summary.json`
 
-## 3. Build Dataset
+## 3. Analyze
+
+Purpose:
+- inventory the broader finalized historical mining universe, not just the current canonical retrain bundle
+- measure anchor neighborhoods around strict and bridge-only hits before dedup/clustering compresses local structure away
+- build a local-exploit shortlist for a future anchor-centered repair lane
+
+Primary entrypoints:
+- [scripts/analysis_experiment.py](../scripts/analysis_experiment.py)
+- [scripts/launch_analysis_experiment.sh](../scripts/launch_analysis_experiment.sh)
+- [scripts/build_historical_hit_universe.py](../scripts/build_historical_hit_universe.py)
+- [scripts/build_anchor_neighborhood_report.py](../scripts/build_anchor_neighborhood_report.py)
+- [scripts/build_local_exploit_shortlist.py](../scripts/build_local_exploit_shortlist.py)
+
+Config-driven analysis example:
+- [configs/experiments/analysis/petase_historical_local_exploit.json](../configs/experiments/analysis/petase_historical_local_exploit.json)
+- [configs/experiments/analysis/petase_historical_local_exploit_wide.json](../configs/experiments/analysis/petase_historical_local_exploit_wide.json)
+
+Operational rule:
+- this workflow is safe to stage on a dry-run launch pad first
+- do not process the historical corpus until you explicitly launch it
+
+Current scientific read:
+- finalized-hit surfaces came back sparse
+- widening to screened finalized-report winners also came back sparse
+- so the analysis workflow now supports a real negative result as well as a discovery pass
+
+Outputs:
+- `reports/analysis/.../universe`
+- `reports/analysis/.../neighborhoods`
+- `reports/analysis/.../shortlist`
+
+## 4. Build Dataset
 
 Purpose:
 - build strict retrain curricula from old strict hits, mined strict reps, purebreds, and optional small anchors
@@ -58,7 +101,44 @@ Important current behavior:
   - [scripts/strict_experiment.py](../scripts/strict_experiment.py)
   - [configs/experiments/strict/topoff1m_a_strict_core_v6.json](../configs/experiments/strict/topoff1m_a_strict_core_v6.json)
 
-## 4. Train
+## 5. Repair
+
+Purpose:
+- build a repair pool from candidate-audit surfaces
+- run same-length native repair around the strongest geometry-positive anchors
+- validate strict survivors and check whether they materially improve retrain readiness
+
+Primary entrypoints:
+- [scripts/repair_experiment.py](../scripts/repair_experiment.py)
+- [scripts/launch_repair_experiment.sh](../scripts/launch_repair_experiment.sh)
+- [scripts/build_repair_pool_dataset.py](../scripts/build_repair_pool_dataset.py)
+- [scripts/build_kimi_native_repair_dataset.py](../scripts/build_kimi_native_repair_dataset.py)
+- [scripts/validate_repair_survivors.py](../scripts/validate_repair_survivors.py)
+- [scripts/check_repair_survivor_readiness.py](../scripts/check_repair_survivor_readiness.py)
+
+Config-driven repair example:
+- [configs/experiments/repair/topoff1m_a_local_repair_pilot_20260410.json](../configs/experiments/repair/topoff1m_a_local_repair_pilot_20260410.json)
+
+Operational rule:
+- treat this as a cheap local-exploit pilot, not a broad mining replacement
+- scale it only if it produces real strict survivors or meaningfully improves retrain readiness
+
+Current result:
+- the April 10 pilot succeeded:
+  - `48` parents
+  - `13,033` evaluated variants
+  - `577` survivors
+  - `192` strict shortlist rows
+  - `122` strict-bridge consensus rows
+  - readiness passed
+- this means the repair workflow is now a validated branch, not a hypothetical one
+
+Next scaling rule:
+- do not jump straight from the pilot to a new million-candidate mining wave
+- first run one bounded repair scale-up with concentration caps across parent runs and source waves
+- only promote to a repair-augmented retrain dataset if the scale-up still passes readiness without collapsing into a few parent families
+
+## 6. Train
 
 Purpose:
 - run SFT warmstarts from a dataset and base checkpoint
@@ -72,7 +152,7 @@ Primary entrypoints:
 For strict experiment chains, the supported path is now config-driven:
 - [configs/experiments/strict/topoff1m_a_strict_core_v6.json](../configs/experiments/strict/topoff1m_a_strict_core_v6.json)
 
-## 5. Robustness
+## 7. Robustness
 
 Purpose:
 - run fixed `p12/p24/p48` robustness suites
@@ -87,7 +167,7 @@ Primary entrypoints:
 - [scripts/evaluate_strict_core_smoke_gate.py](../scripts/evaluate_strict_core_smoke_gate.py)
 - [scripts/strict_experiment.py](../scripts/strict_experiment.py)
 
-## 6. Reranker
+## 8. Reranker
 
 Purpose:
 - build prompt-matched preference pairs from mined outputs

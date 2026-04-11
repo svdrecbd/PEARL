@@ -15,6 +15,11 @@ Runtime requirements:
 - access to a Tinker backend
 - local `mps` or CUDA hardware for ESM-heavy paths when not offloaded
 
+Local-hosted mining trials additionally need:
+- a CUDA box large enough to serve the local sampler model
+- an OpenAI-compatible inference server such as `vllm`
+- a tokenizer id resolvable through Hugging Face for the served model
+
 Minimal validation suite:
 
 ```bash
@@ -112,9 +117,86 @@ bash scripts/launch_mining_experiment.sh \
   launch-stage1
 ```
 
+Local OpenAI-compatible stage1 trial:
+
+```bash
+bash scripts/sync_local_stage1_bundle.sh <vm-host-or-ip>
+bash scripts/setup_nebius_h200_local_stage1_env.sh
+export MODEL=google/gemma-4-31b-it
+export SAMPLER_TOKENIZER=google/gemma-4-31b-it
+bash scripts/launch_local_vllm_server.sh
+$HOME/venvs/pearl-local-stage1-cu124/bin/python scripts/check_local_openai_sampler.py \
+  --base-url http://127.0.0.1:8000 \
+  --model gemma-local \
+  --tokenizer "$SAMPLER_TOKENIZER"
+bash scripts/launch_topoff1m_a_stageb_lite_coverage_million_local.sh
+```
+
+Notes:
+- the local-hosted path is stage1 / eval-only only
+- it reuses the existing coverage-aware prompt pack under `reports/raft_prompt_packs/...`
+- training and robustness stay on the existing Tinker-backed path
+
 The generic runners now share the same repo-root and detached-job helpers:
 - [scripts/strict_experiment.py](../scripts/strict_experiment.py)
 - [scripts/mining_experiment.py](../scripts/mining_experiment.py)
+- [scripts/analysis_experiment.py](../scripts/analysis_experiment.py)
+- [scripts/repair_experiment.py](../scripts/repair_experiment.py)
+
+## Config-Driven Historical Analysis
+
+The supported historical-analysis staging path is now:
+
+```bash
+bash scripts/launch_analysis_experiment.sh \
+  --config configs/experiments/analysis/petase_historical_local_exploit.json \
+  describe --pretty
+```
+
+```bash
+bash scripts/launch_analysis_experiment.sh \
+  --config configs/experiments/analysis/petase_historical_local_exploit.json \
+  launch-pad --dry-run
+```
+
+Supported subcommands are:
+- `describe`
+- `build-universe`
+- `build-neighborhoods`
+- `build-shortlist`
+- `launch-pad`
+
+Operator rule:
+- the dry-run launch pad is the staging surface
+- do not actually process the historical corpus until you explicitly launch it
+
+## Config-Driven Repair / Local Exploit
+
+The supported repair pilot path is now:
+
+```bash
+bash scripts/launch_repair_experiment.sh \
+  --config configs/experiments/repair/topoff1m_a_local_repair_pilot_20260410.json \
+  describe --pretty
+```
+
+```bash
+bash scripts/launch_repair_experiment.sh \
+  --config configs/experiments/repair/topoff1m_a_local_repair_pilot_20260410.json \
+  launch-pad --dry-run
+```
+
+Supported subcommands are:
+- `describe`
+- `build-pool`
+- `run-native-repair`
+- `validate`
+- `check-readiness`
+- `launch-pad`
+
+Operator rule:
+- this is the cheap local-repair pilot lane
+- do not spend a larger Tinker mining budget on follow-up until the repair pilot shows real survivors or a better retrain-readiness profile
 
 ## Historical Scripts
 

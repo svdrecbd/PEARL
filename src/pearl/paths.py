@@ -10,6 +10,7 @@ REPORTS_DIR = Path(os.environ.get("PEARL_REPORTS_DIR", REPO_ROOT / "reports")).e
 LOGS_DIR = REPORTS_DIR / "logs"
 WARMSTART_DIR = REPORTS_DIR / "warmstart"
 ROBUSTNESS_DIR = REPORTS_DIR / "robustness"
+ANALYSIS_DIR = REPORTS_DIR / "analysis"
 
 
 def resolve_repo_path(value: str | None) -> str | None:
@@ -37,4 +38,3 @@ def detached_metadata_path(job_name: str) -> Path:
 
 def detached_log_path(job_name: str) -> Path:
     return LOGS_DIR / f"{job_name}.log"
-

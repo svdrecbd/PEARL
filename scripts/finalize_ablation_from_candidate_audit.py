@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from src.pearl.io_utils import atomic_write_json
+
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -125,13 +127,13 @@ def finalize_ablation_dir(
         reference_records_path=reference_records_path,
         step_records=step_records,
     )
-    tinker_main.atomic_write_json(report_path, report_payload)
+    atomic_write_json(report_path, report_payload)
 
     candidate_audit_payload["skip_stage2_esm"] = False
     candidate_audit_payload["rescored_esm_device"] = esm2_device
     candidate_audit_payload["rescored_at_epoch"] = int(time.time())
     candidate_audit_payload["records"] = updated_candidate_audit_records
-    tinker_main.atomic_write_json(candidate_audit_path, candidate_audit_payload)
+    atomic_write_json(candidate_audit_path, candidate_audit_payload)
 
     summary_payload = run_ablation.summarize_report(report_payload)
     summary_payload["name"] = str(metadata["name"])
@@ -156,7 +158,7 @@ def finalize_ablation_dir(
     summary_payload["subset_path"] = prompts_path
     summary_payload["report_path"] = str(report_path)
     summary_payload["candidate_audit_path"] = str(candidate_audit_path)
-    tinker_main.atomic_write_json(summary_path, summary_payload)
+    atomic_write_json(summary_path, summary_payload)
 
     return {
         "status": "finalized",

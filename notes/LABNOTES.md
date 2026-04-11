@@ -19,7 +19,7 @@ Supported operator docs now live under:
 
 This file remains the long-form experimental and engineering fossil record.
 
-## Latest Canonical Status (as of March 30, 2026)
+## Latest Canonical Status (as of April 11, 2026)
 
 - active mined-data engine:
   - merged `stage-b-lite` `1.6M` pool
@@ -37,18 +37,48 @@ This file remains the long-form experimental and engineering fossil record.
     - `p12`: hits by seed `[1, 0, 0]`, prompt coverage `1 / 12`
     - `p24`: hits by seed `[0, 1, 0]`, prompt coverage `1 / 24`
     - `p48`: hits by seed `[0, 1, 1]`, prompt coverage `2 / 48`
-- current phase:
+- local Gemma H200 trial:
+  - half-wave frozen at `2053` prompts / `525,568` raw candidates
+  - ESM finalization retained:
+    - `0` functional bridge steps
+    - `0` family-faithful bridge steps
+  - this was not a silent finalization failure
+  - saved reports showed motif and ESM-gate activity but essentially no catalytic geometry and zero retained bridge hits
+  - current interpretation:
+    - the local Gemma path as run (`google/gemma-4-31b-it` through the raw completions path) is not a valid production miner
+    - do not continue it unchanged
+- historical local-exploit audit:
+  - initial finalized-hit universe:
+    - `249` exact-unique finalized hit steps
+    - `66` exact-unique family-faithful
+    - `248` clusters at `0.85`
+    - largest cluster size `2`
+  - widened finalized-report universe:
+    - `10,306` finalized report records
+    - `9,090` exact-unique report records
+    - `2,747` screened exact-unique near-miss candidates
+  - anchor-neighborhood result:
+    - `24` strict anchors checked
+    - `24` bridge-only anchors checked
+    - all `48` anchors classified `red`
+    - shortlist `0`
+    - no neighbors even at `0.85` whole-sequence identity in the widened pass
+  - current phase:
   - governing objective: reproducible cross-prompt coverage, not existence of isolated strict hits
   - stop `v7`-style micro-tweaks on the current recipe family
   - treat the enlarged strict pool as validated mining output, not as a failed data engine
-  - next main branch: another coverage-aware mining-backed loop from the best available miner prior, with an adversarial prompt slice for historically weak-conversion buckets
+  - next gated branch: bounded candidate-audit local-repair scale-up before buying another broad mining tranche
   - next strict prototype: prompt-first / prompt-bucket / cluster-constrained stage A, with no silent fallback and a stricter `p48` smoke gate that requires `2` seeds and `2` prompts
+  - passive local exploit is not available in the saved finalized corpus
+  - candidate-audit local repair is now validated as a real lane
+  - next decision gate is scale discipline, not lane existence
   - parallel branch: keep the reranker lane reranker-first and diagnostic until it clearly beats scalar reward baselines on harder held-out prompt / bucket / cluster splits
 - currently ruled-out paths:
   - resumed PPO
   - another loose-heavy SFT mix
   - another tiny strict-core variant before buying more data
   - treating the `1.6M` merged mine as a failure
+  - treating the external local-optimization lesson as proof that the current finalized corpus already contains a free local-exploit lane
   - using Wynton as the primary production runtime
   - AlphaFold-scale downstream triage
 
@@ -57,6 +87,130 @@ Supported engine state:
 - reusable engine logic now lives under [src/pearl](../src/pearl)
 - supported workflow identity now lives under [configs/experiments](../configs/experiments)
 - historical PETase wrapper families now live under [archive/2026q1_topoff1m_a/scripts](../archive/2026q1_topoff1m_a/scripts) with compatibility symlinks left behind in `scripts/`
+
+## April 2026: External Local-Optimization Lesson
+
+An external constrained optimization exercise outside this repo materially changed the project read.
+
+What that exercise showed:
+
+- broad exploration can stop being the right move once a real basin exists
+- a basin that looks exhausted can still have real headroom if the operator changes
+- same-length substitution-only repair, role-aware mutation maps, and closure scans can outperform another broad search loop
+
+What transferred back to PEARL:
+
+- a “dead” branch can mean dead search policy, not dead basin
+- local repair is a real lane worth considering
+- but the PETase question is now different:
+  - not “does local exploit matter?”
+  - but “where do we source local neighborhoods from?”
+
+The historical-corpus audit answered that question negatively for the current saved finalized surfaces:
+
+- not from finalized hit representatives
+- not from widened finalized-report winners
+
+This is the current no-free-lunch result:
+
+> There is no passive challenge-style local basin already sitting in the saved finalized corpus.
+
+If a PETase local-repair lane exists, we will have to build it ourselves from:
+
+- candidate-audit / lower-level near-miss material
+- or deliberate perturbation generation around anchors
+
+not harvest it from the already finalized surfaces.
+
+## April 10-11, 2026: Candidate-Audit Local-Repair Pilot
+
+After the negative finalized-corpus audit, we ran the first deliberate local-repair pilot against candidate-audit surfaces instead of finalized representatives.
+
+Artifacts:
+
+- [reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_summary.json](../reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_summary.json)
+- [reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_validation_summary.json](../reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_validation_summary.json)
+- [reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_readiness.json](../reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_readiness.json)
+
+What the pilot actually did:
+
+- native repair on `48` parent hits
+- `13,033` evaluated variants
+- `577` repair survivors
+- validation retained:
+  - `192` strict shortlist rows
+  - `122` strict-bridge consensus rows
+  - `192` strict-family rows
+  - `13` unique parent runs in the strict shortlist
+- readiness passed:
+  - `406` deduped tier-2 positives
+  - `243` deduped tier-1 proxy positives
+  - `228` clusters
+  - `largest_cluster_share = 0.032`
+  - `max_source_share = 0.1158`
+
+What it means:
+
+- the pessimistic read was too strong
+- there is no passive local basin in the finalized representative surfaces
+- but there is enough local structure in the candidate-audit layer to manufacture a retrain-ready strict pool
+
+Important caveat:
+
+- the pilot is promising, but not yet broad
+- the retained strict set is concentrated:
+  - top parent run contributed `36 / 192`
+  - second parent run contributed `24 / 192`
+- the whole validated strict set is still only `1`- or `2`-mutation repairs
+
+So the lesson is:
+
+> the lane exists, but the next question is concentration control, not whether local repair is real at all.
+
+Updated action plan after the pilot:
+
+1. run one bounded repair scale-up with explicit caps per parent run and source wave
+2. require the scaled set to preserve low cluster share and low source concentration
+3. if that passes, build one repair-augmented strict dataset and run one strict branch
+4. only fall back to another broad million-candidate mining tranche if repair scale-up flattens or collapses into a few parent families
+
+## April 2026: Historical Locality Audit
+
+To test whether the broader historical mined universe already contained exploitable local neighborhoods, we added a config-driven analysis workflow and ran two passes.
+
+Pass 1: finalized hit universe
+
+- config:
+  - [configs/experiments/analysis/petase_historical_local_exploit.json](../configs/experiments/analysis/petase_historical_local_exploit.json)
+- result:
+  - [reports/analysis/petase_historical_local_exploit/universe/universe_summary.json](../reports/analysis/petase_historical_local_exploit/universe/universe_summary.json)
+  - [reports/analysis/petase_historical_local_exploit/neighborhoods/anchor_neighborhood_summary.json](../reports/analysis/petase_historical_local_exploit/neighborhoods/anchor_neighborhood_summary.json)
+  - [reports/analysis/petase_historical_local_exploit/shortlist/local_exploit_shortlist_summary.json](../reports/analysis/petase_historical_local_exploit/shortlist/local_exploit_shortlist_summary.json)
+- interpretation:
+  - current canonical hit surfaces are too sparse for passive local exploitation
+
+Pass 2: widened finalized-report near-miss universe
+
+- config:
+  - [configs/experiments/analysis/petase_historical_local_exploit_wide.json](../configs/experiments/analysis/petase_historical_local_exploit_wide.json)
+- result:
+  - [reports/analysis/petase_historical_local_exploit_wide/universe/report_universe_summary.json](../reports/analysis/petase_historical_local_exploit_wide/universe/report_universe_summary.json)
+  - [reports/analysis/petase_historical_local_exploit_wide/neighborhoods/anchor_neighborhood_summary.json](../reports/analysis/petase_historical_local_exploit_wide/neighborhoods/anchor_neighborhood_summary.json)
+  - [reports/analysis/petase_historical_local_exploit_wide/shortlist/local_exploit_shortlist_summary.json](../reports/analysis/petase_historical_local_exploit_wide/shortlist/local_exploit_shortlist_summary.json)
+- interpretation:
+  - widening the saved surface to screened finalized-report winners still did not produce local anchor families
+  - the selected anchors had no whole-sequence neighbors even at `0.85`
+
+This audit did reveal one real thing operationally:
+
+- if we keep the analysis lane, the neighborhood builder needs a cheap prefilter before full Levenshtein so it does not waste time on impossible comparisons
+
+More importantly, it gave a clear scientific bearing:
+
+- the right next widening step is not “more finalization summaries”
+- it is either:
+  - lower-level candidate-audit material
+  - or new deliberate perturbation generation
 
 ## March 24, 2026: Post-Wynton Nebius Pivot
 
