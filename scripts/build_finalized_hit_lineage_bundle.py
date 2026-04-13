@@ -15,7 +15,7 @@ if str(SRC_ROOT) not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from pearl.family import levenshtein
+from pearl.family import passes_normalized_identity
 
 
 def parse_args() -> argparse.Namespace:
@@ -208,7 +208,7 @@ def cluster_rows(rows: list[dict[str, Any]], *, identity_threshold: float) -> li
         left_sequence = rows[left]["sequence"]
         for right in range(left + 1, len(rows)):
             right_sequence = rows[right]["sequence"]
-            if normalized_identity(left_sequence, right_sequence) >= identity_threshold:
+            if passes_normalized_identity(left_sequence, right_sequence, identity_threshold):
                 union(left, right)
 
     grouped: dict[int, list[dict[str, Any]]] = {}
@@ -247,11 +247,6 @@ def row_priority(row: dict[str, Any]) -> tuple[float, ...]:
         novelty_bonus,
         -int(row.get("length") or 0),
     )
-
-
-def normalized_identity(left: str, right: str) -> float:
-    denominator = max(len(left), len(right), 1)
-    return 1.0 - (levenshtein(left, right) / denominator)
 
 
 def summarize_row(row: dict[str, Any]) -> dict[str, Any]:

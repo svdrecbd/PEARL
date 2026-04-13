@@ -1,8 +1,8 @@
 # Science Status
 
-## Current State (April 11, 2026)
+## Current State (April 12, 2026)
 
-Mining works. Retrain durability still does not. The newest evidence also says there is no passive “challenge-style” local-exploit lane already sitting in the saved finalized corpus.
+Mining works. Repair is real. Retrain durability improved materially on the repair-augmented branch, but full robustness still fails on prompt coverage. The newest evidence still says there is no passive “challenge-style” local-exploit lane already sitting in the saved finalized corpus.
 
 Current canonical merged `stage-b-lite` mined pool:
 - `1,597,184` raw candidates across the first `1.0M` tranche plus the `596,992` add-on tranche
@@ -14,25 +14,67 @@ Core references:
 - [reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/bundle_summary.json](../reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/bundle_summary.json)
 - [reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/retrain_readiness_selected_only.json](../reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/retrain_readiness_selected_only.json)
 
-Latest completed strict branch:
-- `strict-core-v6`
-- stage-A checkpoint:
-  - `tinker://d8ec4eaf-9037-5a5e-854a-734c57f590af:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v6-stagea-lr1e6-ep3`
-- stage-B-lite checkpoint:
-  - `tinker://241de107-2843-5038-9584-4ffa8949f43c:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v6-stageb-lite-lr5e7-ep1`
-
-Results:
-- stage-A `p48` smoke passed narrowly:
-  - hits by seed `[0, 1, 0]`
-  - prompt coverage `1 / 48`
-- full stage-B-lite robustness failed:
-  - `p12`: `[1, 0, 0]`, coverage `1 / 12`
-  - `p24`: `[0, 1, 0]`, coverage `1 / 24`
-  - `p48`: `[0, 1, 1]`, coverage `2 / 48`
+Current candidate-audit local-repair lane:
+- pilot:
+  - `48` parents
+  - `13,033` evaluated variants
+  - `577` survivors
+  - `192` strict shortlist rows
+  - `122` strict-bridge consensus rows
+  - readiness passed
+- diversity-capped scale-up:
+  - `96` parents
+  - `28,030` evaluated variants
+  - `1,071` survivors
+  - `231` strict shortlist rows
+  - `128` strict-bridge consensus rows
+  - `18` unique parent runs represented in the strict shortlist
+  - `ready_for_retrain: true`
+  - `443` deduped tier-2 positives
+  - `280` deduped tier-1 proxy positives
+  - `228` clusters
+  - `largest_cluster_share: 0.0293`
+  - `max_source_share: 0.0655`
 
 References:
-- [reports/robustness/pearl-topoff1m-a-strict-core-v6-stagea-smoke-p48-t08-s41s53s67/robustness_summary.json](../reports/robustness/pearl-topoff1m-a-strict-core-v6-stagea-smoke-p48-t08-s41s53s67/robustness_summary.json)
-- [reports/robustness/pearl-topoff1m-a-strict-core-v6-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json](../reports/robustness/pearl-topoff1m-a-strict-core-v6-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json)
+- [reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_summary.json](../reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_summary.json)
+- [reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_validation_summary.json](../reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_validation_summary.json)
+- [reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_readiness.json](../reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_readiness.json)
+- [reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_summary.json](../reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_summary.json)
+- [reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_validation_summary.json](../reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_validation_summary.json)
+- [reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_readiness.json](../reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_readiness.json)
+
+Latest completed strict branch:
+- `strict-core-v7-repair`
+- stage-A dataset:
+  - `160` pairs
+  - `24` mined new strict uniques repeated `4x`
+  - `18` repair strict uniques repeated `2x`
+  - `10` old strict uniques repeated `2x`
+  - `4` canonical purebreds repeated `2x`
+- stage-A checkpoint:
+  - `tinker://59c10b59-45ec-5ed4-92a9-7c06e4241d0b:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stagea-lr1e6-ep3`
+- stage-A `p48` smoke passed the stricter promotion gate:
+  - hits by seed `[0, 2, 1]`
+  - prompt coverage `3 / 48`
+  - pass thresholds were `2` seeds and `2` prompts
+- stage-B-lite dataset:
+  - `162` pairs
+  - `2` bridge anchors added on top of the stage-A core
+- stage-B-lite checkpoint:
+  - `tinker://7bb7b832-45c0-5ac0-8cea-1c3bc3f1d7ea:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stageb-lite-lr5e7-ep1`
+- full stage-B-lite robustness failed durability:
+  - `p12`: `[0, 0, 0]`, coverage `0 / 12`
+  - `p24`: `[0, 2, 0]`, coverage `2 / 24`
+  - `p48`: `[0, 3, 1]`, coverage `4 / 48`
+
+References:
+- [reports/raft/topoff1m-a-strict-core-v7-repair-20260412/strict_core_v7_stage_a_summary.json](../reports/raft/topoff1m-a-strict-core-v7-repair-20260412/strict_core_v7_stage_a_summary.json)
+- [reports/raft/topoff1m-a-strict-core-v7-repair-20260412/strict_core_v7_stage_b_lite_summary.json](../reports/raft/topoff1m-a-strict-core-v7-repair-20260412/strict_core_v7_stage_b_lite_summary.json)
+- [reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stagea-lr1e6-ep3/summary.json](../reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stagea-lr1e6-ep3/summary.json)
+- [reports/robustness/pearl-topoff1m-a-strict-core-v7-repair-stagea-smoke-p48-t08-s41s53s67/smoke_gate_decision.json](../reports/robustness/pearl-topoff1m-a-strict-core-v7-repair-stagea-smoke-p48-t08-s41s53s67/smoke_gate_decision.json)
+- [reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stageb-lite-lr5e7-ep1/summary.json](../reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stageb-lite-lr5e7-ep1/summary.json)
+- [reports/robustness/pearl-topoff1m-a-strict-core-v7-repair-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json](../reports/robustness/pearl-topoff1m-a-strict-core-v7-repair-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json)
 
 Local Gemma stage1 trial:
 - frozen half-wave:
@@ -75,44 +117,20 @@ References:
 - [reports/analysis/petase_historical_local_exploit_wide/neighborhoods/anchor_neighborhood_summary.json](../reports/analysis/petase_historical_local_exploit_wide/neighborhoods/anchor_neighborhood_summary.json)
 - [reports/analysis/petase_historical_local_exploit_wide/shortlist/local_exploit_shortlist_summary.json](../reports/analysis/petase_historical_local_exploit_wide/shortlist/local_exploit_shortlist_summary.json)
 
-Candidate-audit local-repair pilot:
-- native repair pilot:
-  - `48` parent hits
-  - `13,033` evaluated variants
-  - `577` repair survivors
-  - elapsed about `5.24h`
-- validation:
-  - `192` strict shortlist rows
-  - `122` strict-bridge consensus rows
-  - `192` strict-family rows
-  - `13` unique parent runs represented in the strict shortlist
-- readiness:
-  - `ready_for_retrain: true`
-  - `406` deduped tier-2 positives
-  - `243` deduped tier-1 proxy positives
-  - `228` clusters
-  - `largest_cluster_share: 0.032`
-  - `max_source_share: 0.1158`
-
-References:
-- [reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_summary.json](../reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_summary.json)
-- [reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_validation_summary.json](../reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_validation_summary.json)
-- [reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_readiness.json](../reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_readiness.json)
-
 ## Current Read
 
 - mining/data engine: working
 - eval/finalization engine: working
 - constrained strict selection: implemented
-- stricter smoke gate: implemented
+- stricter smoke gate: implemented and now cleared by the repair-augmented `v7` branch
 - reranker lane: exists as a diagnostic track
-- retrain recipe family: still not converting mined strict signal into enough cross-prompt coverage
-- local-repair lane: scientifically real at the candidate-audit layer
+- retrain recipe family: improved materially with repair-derived strict data, but still not converting into enough cross-prompt coverage at `p12/p24/p48`
+- local-repair lane: validated through both the candidate-audit scale-up and the repair-augmented retrain branch
 - passive local-exploit lane in the finalized corpus: still absent
 
 Current governing objective:
 
-> We are no longer optimizing for existence of strict hits; we are optimizing for reproducible cross-prompt coverage.
+> We are no longer optimizing for existence of strict hits; we are optimizing for reproducible prompt coverage breadth across fixed held-out suites.
 
 Current negative result:
 
@@ -120,7 +138,7 @@ Current negative result:
 
 Current positive result:
 
-> The candidate-audit layer does contain enough local structure to manufacture a retrain-ready strict pool through same-length repair. The lane is real; the remaining question is scale discipline, not existence.
+> Repair-derived strict data transfers. It produced the first branch that cleared the stricter smoke gate and promoted cleanly to `stage-b-lite`. The remaining issue is coverage breadth, not whether the signal is real.
 
 ## External Lesson
 
@@ -143,22 +161,22 @@ to:
 ## Current Research Direction
 
 Primary branch:
-- treat local repair as the next gated experiment, not a side hypothesis
-- do not buy another broad million-candidate mine until the repair lane either scales cleanly or collapses under concentration control
-- keep strict promotion tied to the stricter `p48` smoke rule
+- freeze `strict-core-v7-repair` as the current best retrain baseline
+- analyze the `p12/p24/p48` prompt gaps before paying for another full durability sweep
+- keep strict promotion tied to the stricter `p48` smoke rule, but do not confuse smoke success with full durability
 
 Repair branch:
-- source from candidate-audit / near-miss material, not finalized representatives
+- keep sourcing from candidate-audit / near-miss material, not finalized representatives
 - keep same-length substitution-only repair as the core operator
-- scale carefully because the pilot shortlist is still concentrated:
-  - top parent run contributed `36 / 192`
-  - second parent run contributed `24 / 192`
-  - current strict set is entirely `1`- or `2`-mutation repairs
-- treat concentration control as a first-class gating rule, not post-hoc cleanup
+- preserve the scale-up caps that kept the lane healthy:
+  - low largest-cluster share
+  - low max-source share
+  - broad parent-run representation
+- use repair-derived strict rows to cover underrepresented prompt and bucket regimes, not just to add more near-duplicate positives
 
 Mining branch:
-- keep the coverage-aware adversarial-slice million plan as the fallback mainline if repair scale-up collapses
-- do not discard the mining plan; defer it behind the next repair decision gate
+- keep the coverage-aware adversarial-slice million plan as the fallback mainline if a coverage-targeted `v8` still collapses
+- do not discard the mining plan; defer it behind the next coverage decision gate
 
 Gemma branch:
 - do not continue the current local Gemma path unchanged
@@ -171,34 +189,26 @@ Parallel branch:
 
 ## Next Action Plan
 
-1. Run a bounded repair scale-up, not a broad mining tranche.
-- Target shape:
-  - expand from `48` parents to a diversity-capped parent set
-  - keep source caps per parent run and per source wave
-  - prefer anchors from underrepresented successful parent runs before adding more variants from the top two parents
-- Operational goal:
-  - larger than the pilot, but still bounded enough to validate concentration behavior before paying for more mining
+1. Run prompt-gap analysis on the completed `v7` robustness outputs.
+- Identify which prompt buckets collapse at `p12` and `p24`.
+- Separate “signal exists at `p48`” from “coverage is actually broad enough to survive smaller prompt budgets.”
 
-2. Add concentration-aware validation gates.
-- Require the scaled repair set to preserve:
-  - low largest-cluster share
-  - low max-source share
-  - broad parent-run representation
-- Fail the branch if growth comes mostly from the same dominant parent families.
+2. Build one coverage-focused `v8` strict dataset.
+- Keep the repair-derived strict signal.
+- Add more examples aimed at under-covered prompt / bucket / cluster regimes.
+- Do not train directly on the held-out robustness prompts if evaluation integrity needs to stay clean.
 
-3. If the scaled repair lane still passes readiness, build one repair-augmented strict dataset.
-- Use repair survivors as a new strict ingredient, not as a replacement for mined anchors.
-- Then run one strict branch through:
-  - stage A
-  - stricter `p48` smoke
-  - stage B only if smoke clears `2` seeds and `2` prompts
+3. Re-gate cheaper before another full nine-run durability sweep.
+- Run stage A.
+- Re-run the supported stricter `p48` smoke gate.
+- If that improves, then pay for the full `p12/p24/p48` robustness suite again.
 
-4. Only fall back to the next broad million if the scale-up fails.
+4. Only fall back to another broad mining tranche if `v8` repeats the same failure mode.
 - Failure conditions:
-  - concentration gets ugly
-  - repair survivors stop growing materially
-  - retrain-readiness gains flatten
-  - strict smoke does not improve after adding repair-derived stricts
+  - `p12` remains dead
+  - `p24` remains carried by a single seed
+  - `p48` still lacks prompt breadth
+  - repair additions stop broadening support across prompt regimes
 
 ## Repo / Engine State
 

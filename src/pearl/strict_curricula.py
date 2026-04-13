@@ -6,6 +6,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from pearl.family import passes_normalized_identity
+
 
 PROMPT_BUCKET_NUMBER_RE = re.compile(r"\d+")
 PROMPT_BUCKET_WS_RE = re.compile(r"\s+")
@@ -91,6 +93,97 @@ def normalize_row(
     return enriched
 
 
+def normalize_repair_strict_row(row: dict[str, Any]) -> dict[str, Any]:
+    family_eval = row.get("family_evaluation") or {}
+    catalytic_geometry = family_eval.get("catalytic_geometry") or row.get("geometry") or {}
+    source_run = str(row.get("source_parent_run") or row.get("source_run") or "").strip()
+    source_step = int(row.get("source_step") or -1)
+    sequence = str(row.get("sequence") or "").strip()
+    if not sequence:
+        raise ValueError("repair strict row is missing sequence")
+
+    return {
+        "sequence": sequence,
+        "prompt": str(row.get("prompt") or row.get("source_prompt") or "").strip(),
+        "source_prompt": str(row.get("source_prompt") or row.get("prompt") or "").strip(),
+        "source_run": source_run,
+        "source_step": source_step,
+        "wave_name": str(row.get("source_blueprint") or "repair_scaleup"),
+        "family_faithful_bridge_passes": bool(row.get("strict_family")),
+        "functional_bridge_passes": bool(row.get("strict_bridge") or row.get("strict_family")),
+        "passes_core_screen": bool(row.get("validated_passes_core_screen")),
+        "catalytic_geometry_passes": bool(row.get("validated_geometry_passes")),
+        "has_family_serine_motif": bool(row.get("validated_family_motif")),
+        "motif_count": len(family_eval.get("serine_motifs") or []),
+        "serine_motifs": list(family_eval.get("serine_motifs") or []),
+        "best_gap_error": catalytic_geometry.get("best_gap_error"),
+        "reward": float(row.get("esm_score") or 0.0),
+        "esm_reward": float(row.get("esm_score") or 0.0),
+        "esm_score": float(row.get("esm_score") or 0.0),
+        "stage1_rank": None,
+        "stage2_rank": None,
+        "stage2_score": 0.0,
+        "closest_edit_identity": float(row.get("validated_novelty_identity") or 0.0),
+        "length": int(family_eval.get("length") or len(sequence)),
+        "source_mutation_count": int(row.get("source_mutation_count") or 0),
+        "strict_bridge": bool(row.get("strict_bridge")),
+        "strict_family": bool(row.get("strict_family")),
+        "strict_consensus": bool(row.get("strict_consensus")),
+        "raw_record": dict(row),
+    }
+
+
+def cluster_rows_by_identity(rows: list[dict[str, Any]], *, identity_threshold: float) -> list[list[dict[str, Any]]]:
+    if not rows:
+        return []
+
+    parent = list(range(len(rows)))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def union(left: int, right: int) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parent[right_root] = left_root
+
+    for left in range(len(rows)):
+        left_sequence = str(rows[left].get("sequence") or "")
+        for right in range(left + 1, len(rows)):
+            right_sequence = str(rows[right].get("sequence") or "")
+            if passes_normalized_identity(left_sequence, right_sequence, identity_threshold):
+                union(left, right)
+
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    for index, row in enumerate(rows):
+        grouped.setdefault(find(index), []).append(row)
+
+    clusters = list(grouped.values())
+    for cluster_index, cluster in enumerate(clusters, start=1):
+        cluster.sort(key=strict_sort_key)
+        for row in cluster:
+            row["cluster_id"] = cluster_index
+            row["cluster_size"] = len(cluster)
+    clusters.sort(key=lambda cluster: (-len(cluster), strict_sort_key(cluster[0])))
+    return clusters
+
+
+def prepare_repair_strict_rows(
+    rows: list[dict[str, Any]],
+    *,
+    identity_threshold: float,
+) -> list[dict[str, Any]]:
+    normalized = [normalize_repair_strict_row(row) for row in rows if bool(row.get("strict_family"))]
+    ranked = ranked_strict_rows(normalized)
+    cluster_rows_by_identity(ranked, identity_threshold=identity_threshold)
+    ranked.sort(key=strict_sort_key)
+    return ranked
+
+
 def dedupe_by_sequence(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[str] = set()
     deduped: list[dict[str, Any]] = []
@@ -118,6 +211,10 @@ def cluster_key(row: dict[str, Any]) -> str:
     return str(cluster_id)
 
 
+def source_key(row: dict[str, Any]) -> str:
+    return str(row.get("source_run") or row.get("source_parent_run") or "unknown")
+
+
 def canonical_purebreds(rows: list[dict[str, Any]], allowed_motifs: set[str]) -> list[dict[str, Any]]:
     selected: list[dict[str, Any]] = []
     for row in rows:
@@ -131,35 +228,39 @@ def canonical_purebreds(rows: list[dict[str, Any]], allowed_motifs: set[str]) ->
     return dedupe_by_sequence(selected)
 
 
+def anchor_sort_key(row: dict[str, Any]) -> tuple[float, ...]:
+    return (
+        -float(row.get("reward", 0.0)),
+        -float(row.get("esm_reward", row.get("esm_score", 0.0))),
+        float(row.get("best_gap_error", 999.0) or 999.0),
+        len(str(row.get("sequence", ""))),
+    )
+
+
 def ranked_anchor_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ranked = dedupe_by_sequence(rows)
-    ranked.sort(
-        key=lambda row: (
-            -float(row.get("reward", 0.0)),
-            -float(row.get("esm_reward", row.get("esm_score", 0.0))),
-            float(row.get("best_gap_error", 999.0) or 999.0),
-            len(str(row.get("sequence", ""))),
-        )
-    )
+    ranked.sort(key=anchor_sort_key)
     return ranked
+
+
+def strict_sort_key(row: dict[str, Any]) -> tuple[float, ...]:
+    return (
+        -int(bool(row.get("family_faithful_bridge_passes"))),
+        -int(bool(row.get("passes_core_screen"))),
+        -int(bool(row.get("catalytic_geometry_passes"))),
+        -float(row.get("reward", 0.0)),
+        -float(row.get("esm_reward", row.get("esm_score", 0.0) or 0.0)),
+        float(row.get("best_gap_error", 999.0) or 999.0),
+        int(row.get("stage2_rank", 9999) or 9999),
+        int(row.get("stage1_rank", 9999) or 9999),
+        int(row.get("cluster_size", 9999) or 9999),
+        len(str(row.get("sequence", ""))),
+    )
 
 
 def ranked_strict_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ranked = dedupe_by_sequence(rows)
-    ranked.sort(
-        key=lambda row: (
-            -int(bool(row.get("family_faithful_bridge_passes"))),
-            -int(bool(row.get("passes_core_screen"))),
-            -int(bool(row.get("catalytic_geometry_passes"))),
-            -float(row.get("reward", 0.0)),
-            -float(row.get("esm_reward", row.get("esm_score", 0.0) or 0.0)),
-            float(row.get("best_gap_error", 999.0) or 999.0),
-            int(row.get("stage2_rank", 9999) or 9999),
-            int(row.get("stage1_rank", 9999) or 9999),
-            int(row.get("cluster_size", 9999) or 9999),
-            len(str(row.get("sequence", ""))),
-        )
-    )
+    ranked.sort(key=strict_sort_key)
     return ranked
 
 
@@ -238,6 +339,76 @@ def select_top_ranked_rows(
     raise ValueError(f"unknown selection mode: {selection_mode}")
 
 
+def select_source_cluster_diverse_rows(
+    rows: list[dict[str, Any]],
+    *,
+    top_k: int,
+    ranker: str,
+    label: str,
+    max_per_source: int,
+    max_per_cluster: int,
+) -> list[dict[str, Any]]:
+    ranked = ranked_strict_rows(rows) if ranker == "strict" else ranked_anchor_rows(rows)
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in ranked:
+        grouped.setdefault(source_key(row), []).append(row)
+
+    for source_rows in grouped.values():
+        source_rows.sort(key=strict_sort_key if ranker == "strict" else anchor_sort_key)
+
+    source_names = sorted(grouped)
+    source_indexes = {name: 0 for name in source_names}
+    source_counts = {name: 0 for name in source_names}
+    cluster_counts: Counter[str] = Counter()
+    seen_sequences: set[str] = set()
+    selected: list[dict[str, Any]] = []
+
+    while len(selected) < top_k:
+        progress_made = False
+        for source_name in source_names:
+            if source_counts[source_name] >= max_per_source:
+                continue
+
+            rows_for_source = grouped[source_name]
+            index = source_indexes[source_name]
+            chosen: dict[str, Any] | None = None
+
+            while index < len(rows_for_source):
+                row = rows_for_source[index]
+                index += 1
+                sequence = str(row.get("sequence") or "")
+                cluster = cluster_key(row)
+                if not sequence or sequence in seen_sequences:
+                    continue
+                if cluster_counts[cluster] >= max_per_cluster:
+                    continue
+                chosen = row
+                break
+
+            source_indexes[source_name] = index
+            if chosen is None:
+                continue
+
+            selected.append(chosen)
+            seen_sequences.add(str(chosen.get("sequence") or ""))
+            cluster_counts[cluster_key(chosen)] += 1
+            source_counts[source_name] += 1
+            progress_made = True
+            if len(selected) == top_k:
+                return selected
+
+        if not progress_made:
+            break
+
+    pool_stats = coverage_stats(ranked)
+    raise SystemExit(
+        f"{label} selection shortfall: needed {top_k}, selected {len(selected)} under source/cluster caps. "
+        f"pool_prompt_count={pool_stats['prompt_count']} "
+        f"pool_prompt_bucket_count={pool_stats['prompt_bucket_count']} "
+        f"pool_cluster_count={pool_stats['cluster_count']}"
+    )
+
+
 def repeated_rows(
     rows: list[dict[str, Any]],
     *,
@@ -265,9 +436,11 @@ def build_stage_a_dataset(
     *,
     old_rows: list[dict[str, Any]],
     new_rows: list[dict[str, Any]],
+    repair_rows: list[dict[str, Any]],
     pure_rows: list[dict[str, Any]],
     old_repeat: int,
     new_repeat: int,
+    repair_repeat: int,
     pure_repeat: int,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     dataset = (
@@ -286,6 +459,13 @@ def build_stage_a_dataset(
             recipe_stage="strict_stage_a",
         )
         + repeated_rows(
+            repair_rows,
+            repeat_count=repair_repeat,
+            curriculum_source="repair_family_faithful",
+            strict_bucket="repair_family_faithful",
+            recipe_stage="strict_stage_a",
+        )
+        + repeated_rows(
             pure_rows,
             repeat_count=pure_repeat,
             curriculum_source="purebred_canonical",
@@ -301,6 +481,7 @@ def build_stage_a_dataset(
         "repeat_config": {
             "old_family_faithful_repeat": old_repeat,
             "new_family_faithful_repeat": new_repeat,
+            "repair_family_faithful_repeat": repair_repeat,
             "canonical_purebred_repeat": pure_repeat,
         },
     }

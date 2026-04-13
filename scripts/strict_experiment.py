@@ -311,10 +311,18 @@ def build_datasets(config: dict[str, Any], *, dry_run: bool, overrides: dict[str
         str(build["anchor_count"]),
     ]
     optional_args = [
+        ("repair_strict_path", "--repair-strict-path"),
         ("new_top_k", "--new-top-k"),
+        ("repair_top_k", "--repair-top-k"),
         ("strict_selection_mode", "--strict-selection-mode"),
+        ("repair_selection_mode", "--repair-selection-mode"),
         ("anchor_selection_mode", "--anchor-selection-mode"),
+        ("repair_repeat", "--repair-repeat"),
+        ("repair_identity_threshold", "--repair-identity-threshold"),
+        ("repair_max_per_source_run", "--repair-max-per-source-run"),
+        ("repair_max_per_cluster", "--repair-max-per-cluster"),
         ("selected_new_output_path", "--selected-new-output-path"),
+        ("selected_repair_output_path", "--selected-repair-output-path"),
         ("selected_anchor_output_path", "--selected-anchor-output-path"),
     ]
     for key, flag in optional_args:

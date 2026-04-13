@@ -19,6 +19,8 @@ from pearl.strict_curricula import (
     coverage_stats,
     dedupe_by_sequence,
     load_jsonl,
+    prepare_repair_strict_rows,
+    select_source_cluster_diverse_rows,
     select_top_ranked_rows,
     write_jsonl,
 )
@@ -28,6 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build strict-first union curricula from old/new family-faithful hits")
     parser.add_argument("--old-strict-path", required=True)
     parser.add_argument("--new-strict-path", required=True)
+    parser.add_argument("--repair-strict-path")
     parser.add_argument("--purebred-path", required=True)
     parser.add_argument("--anchor-path", required=True)
     parser.add_argument("--stage-a-output-path", required=True)
@@ -37,12 +40,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--allowed-motifs", default="GYSLG,GYSQG")
     parser.add_argument("--old-repeat", type=int, default=2)
     parser.add_argument("--new-repeat", type=int, default=2)
+    parser.add_argument("--repair-repeat", type=int, default=0)
     parser.add_argument("--pure-repeat", type=int, default=1)
     parser.add_argument("--anchor-count", type=int, default=12)
     parser.add_argument("--new-top-k", type=int)
+    parser.add_argument("--repair-top-k", type=int)
     parser.add_argument("--strict-selection-mode", choices=["rank", "prompt_cluster"], default="rank")
+    parser.add_argument(
+        "--repair-selection-mode",
+        choices=["rank", "prompt_cluster", "source_cluster"],
+        default="source_cluster",
+    )
     parser.add_argument("--anchor-selection-mode", choices=["rank", "prompt_cluster"], default="rank")
+    parser.add_argument("--repair-identity-threshold", type=float, default=0.85)
+    parser.add_argument("--repair-max-per-source-run", type=int, default=1)
+    parser.add_argument("--repair-max-per-cluster", type=int, default=1)
     parser.add_argument("--selected-new-output-path")
+    parser.add_argument("--selected-repair-output-path")
     parser.add_argument("--selected-anchor-output-path")
     return parser.parse_args()
 
@@ -59,6 +73,32 @@ def main() -> None:
         ranker="strict",
         label="strict",
     )
+    repair_rows_all: list[dict[str, object]] = []
+    repair_rows: list[dict[str, object]] = []
+    if args.repair_strict_path:
+        repair_rows_all = prepare_repair_strict_rows(
+            load_jsonl(Path(args.repair_strict_path)),
+            identity_threshold=args.repair_identity_threshold,
+        )
+        if args.repair_selection_mode == "source_cluster":
+            if not args.repair_top_k or args.repair_top_k <= 0:
+                raise SystemExit("--repair-top-k is required when --repair-selection-mode=source_cluster")
+            repair_rows = select_source_cluster_diverse_rows(
+                repair_rows_all,
+                top_k=args.repair_top_k,
+                ranker="strict",
+                label="repair_strict",
+                max_per_source=args.repair_max_per_source_run,
+                max_per_cluster=args.repair_max_per_cluster,
+            )
+        else:
+            repair_rows = select_top_ranked_rows(
+                repair_rows_all,
+                args.repair_top_k,
+                selection_mode=args.repair_selection_mode,
+                ranker="strict",
+                label="repair_strict",
+            )
     pure_rows = canonical_purebreds(load_jsonl(Path(args.purebred_path)), allowed_motifs)
     anchor_rows_all = dedupe_by_sequence(load_jsonl(Path(args.anchor_path)))
     anchor_rows = select_top_ranked_rows(
@@ -72,9 +112,11 @@ def main() -> None:
     stage_a_rows, stage_a_summary = build_stage_a_dataset(
         old_rows=old_rows,
         new_rows=new_rows,
+        repair_rows=repair_rows,
         pure_rows=pure_rows,
         old_repeat=args.old_repeat,
         new_repeat=args.new_repeat,
+        repair_repeat=args.repair_repeat,
         pure_repeat=args.pure_repeat,
     )
     stage_b_rows, stage_b_summary = build_stage_b_dataset(
@@ -87,6 +129,8 @@ def main() -> None:
     write_jsonl(Path(args.stage_b_output_path), stage_b_rows)
     if args.selected_new_output_path:
         write_jsonl(Path(args.selected_new_output_path), new_rows)
+    if args.selected_repair_output_path:
+        write_jsonl(Path(args.selected_repair_output_path), repair_rows)
     if args.selected_anchor_output_path:
         write_jsonl(Path(args.selected_anchor_output_path), anchor_rows)
 
@@ -98,10 +142,16 @@ def main() -> None:
             "new_top_k": args.new_top_k,
             "strict_selection_mode": args.strict_selection_mode,
             "new_selected_coverage": coverage_stats(new_rows),
+            "repair_unique_count": len(repair_rows),
+            "repair_unique_count_raw": len(repair_rows_all),
+            "repair_top_k": args.repair_top_k,
+            "repair_selection_mode": args.repair_selection_mode,
+            "repair_selected_coverage": coverage_stats(repair_rows),
             "canonical_purebred_unique_count": len(pure_rows),
             "allowed_motifs": sorted(allowed_motifs),
             "output_path": args.stage_a_output_path,
             "selected_new_output_path": args.selected_new_output_path,
+            "selected_repair_output_path": args.selected_repair_output_path,
         }
     )
     Path(args.stage_a_summary_path).write_text(json.dumps(stage_a_summary, indent=2) + "\n")

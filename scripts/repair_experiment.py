@@ -33,6 +33,12 @@ def parse_args() -> argparse.Namespace:
     build_pool.add_argument("--max-total", type=int)
     build_pool.add_argument("--dry-run", action="store_true")
 
+    cap_pool = subparsers.add_parser(
+        "cap-pool",
+        help="Apply optional diversity caps to the merged repair pool before native repair",
+    )
+    cap_pool.add_argument("--dry-run", action="store_true")
+
     native_repair = subparsers.add_parser("run-native-repair", help="Run same-length native repair on the repair pool")
     native_repair.add_argument("--max-hits", type=int)
     native_repair.add_argument("--proposal-device")
@@ -97,11 +103,21 @@ def repair_root(config: dict[str, Any]) -> Path:
 
 def repair_paths(config: dict[str, Any]) -> dict[str, Path]:
     root = repair_root(config)
+    diversity_cap = repair_pool_diversity_cap(config)
+    raw_pool_path = root / "repair_pool_selected_raw.jsonl"
+    raw_pool_audit_path = root / "repair_pool_selected_raw_audit.json"
+    raw_pool_summary_path = root / "repair_pool_selected_raw_summary.json"
+    final_pool_path = root / "repair_pool_selected.jsonl"
+    final_pool_audit_path = root / "repair_pool_selected_audit.json"
+    final_pool_summary_path = root / "repair_pool_selected_summary.json"
     return {
         "root": root,
-        "repair_pool_path": root / "repair_pool_selected.jsonl",
-        "repair_pool_audit_path": root / "repair_pool_selected_audit.json",
-        "repair_pool_summary_path": root / "repair_pool_selected_summary.json",
+        "repair_pool_raw_path": raw_pool_path if diversity_cap else final_pool_path,
+        "repair_pool_raw_audit_path": raw_pool_audit_path if diversity_cap else final_pool_audit_path,
+        "repair_pool_raw_summary_path": raw_pool_summary_path if diversity_cap else final_pool_summary_path,
+        "repair_pool_path": final_pool_path,
+        "repair_pool_audit_path": final_pool_audit_path,
+        "repair_pool_summary_path": final_pool_summary_path,
         "repair_survivors_path": root / "repair_survivors.jsonl",
         "repair_best_attempts_path": root / "repair_best_attempts.jsonl",
         "repair_summary_path": root / "repair_summary.json",
@@ -112,6 +128,15 @@ def repair_paths(config: dict[str, Any]) -> dict[str, Path]:
         "validation_summary_path": root / "repair_validation_summary.json",
         "readiness_path": root / "repair_readiness.json",
     }
+
+
+def repair_pool_diversity_cap(config: dict[str, Any]) -> dict[str, Any]:
+    repair_pool = dict(config.get("repair_pool") or {})
+    payload = dict(repair_pool.get("diversity_cap") or {})
+    enabled = payload.pop("enabled", True)
+    if not payload or not bool(enabled):
+        return {}
+    return payload
 
 
 def resolve_audit_paths(config: dict[str, Any]) -> list[Path]:
@@ -148,11 +173,11 @@ def build_pool_command(config: dict[str, Any], *, max_total_override: int | None
         "--audit-paths",
         ",".join(str(path) for path in audit_paths),
         "--output-path",
-        str(paths["repair_pool_path"]),
+        str(paths["repair_pool_raw_path"]),
         "--output-audit-path",
-        str(paths["repair_pool_audit_path"]),
+        str(paths["repair_pool_raw_audit_path"]),
         "--summary-path",
-        str(paths["repair_pool_summary_path"]),
+        str(paths["repair_pool_raw_summary_path"]),
         "--max-geometry-per-step",
         str(payload.get("max_geometry_per_step", 1)),
     ]
@@ -161,6 +186,39 @@ def build_pool_command(config: dict[str, Any], *, max_total_override: int | None
     max_total = max_total_override if max_total_override is not None else payload.get("max_total")
     if max_total is not None:
         command.extend(["--max-total", str(max_total)])
+    return command
+
+
+def cap_pool_command(config: dict[str, Any]) -> list[str]:
+    payload = repair_pool_diversity_cap(config)
+    if not payload:
+        raise SystemExit(f"No repair_pool.diversity_cap block configured in {config['_config_path']}")
+
+    paths = repair_paths(config)
+    command = execution_prefix(config) + [
+        str(ROOT / "scripts" / "build_diversity_capped_repair_pool.py"),
+        "--input-path",
+        str(paths["repair_pool_raw_path"]),
+        "--output-path",
+        str(paths["repair_pool_path"]),
+        "--output-audit-path",
+        str(paths["repair_pool_audit_path"]),
+        "--summary-path",
+        str(paths["repair_pool_summary_path"]),
+    ]
+
+    option_flags = {
+        "max_total": "--max-total",
+        "max_per_source_run": "--max-per-source-run",
+        "max_per_cluster": "--max-per-cluster",
+        "cluster_mode": "--cluster-mode",
+        "cluster_identity_threshold": "--cluster-identity-threshold",
+    }
+    for key, flag in option_flags.items():
+        value = payload.get(key)
+        if value is None:
+            continue
+        command.extend([flag, str(value)])
     return command
 
 
@@ -248,6 +306,24 @@ def readiness_command(config: dict[str, Any]) -> list[str]:
     ]
     if bool(payload.get("selected_only", True)):
         command.append("--selected-only")
+    threshold_flags = {
+        "cluster_identity_threshold": "--cluster-identity-threshold",
+        "holdout_fraction": "--holdout-fraction",
+        "min_tier2": "--min-tier2",
+        "min_tier1_proxy": "--min-tier1-proxy",
+        "min_cluster_count": "--min-cluster-count",
+        "max_cluster_share": "--max-cluster-share",
+        "min_train_tier2": "--min-train-tier2",
+        "min_train_tier1_proxy": "--min-train-tier1-proxy",
+        "max_source_share": "--max-source-share",
+    }
+    for key, flag in threshold_flags.items():
+        value = payload.get(key)
+        if value is None:
+            continue
+        command.extend([flag, str(value)])
+    if bool(payload.get("require_ready", False)):
+        command.append("--require-ready")
     return command
 
 
@@ -258,7 +334,7 @@ def command_bundle(
     max_hits_override: int | None = None,
     proposal_device_override: str | None = None,
 ) -> dict[str, list[str]]:
-    return {
+    commands = {
         "build_pool": build_pool_command(config, max_total_override=max_total_override),
         "run_native_repair": native_repair_command(
             config,
@@ -268,6 +344,9 @@ def command_bundle(
         "validate": validate_command(config),
         "check_readiness": readiness_command(config),
     }
+    if repair_pool_diversity_cap(config):
+        commands["cap_pool"] = cap_pool_command(config)
+    return commands
 
 
 def run_command(command: list[str], *, dry_run: bool) -> None:
@@ -289,6 +368,7 @@ def describe_payload(config: dict[str, Any]) -> dict[str, Any]:
         "source_audits_preview": [str(path) for path in audits[:8]],
         "source_audit_preview_truncated": len(audits) > 8,
         "repair_pool": dict(config["repair_pool"]),
+        "repair_pool_diversity_cap": repair_pool_diversity_cap(config) or None,
         "native_repair": dict(config["native_repair"]),
         "validation": dict(config["validation"]),
         "readiness": dict(config.get("readiness") or {}),
@@ -318,6 +398,11 @@ def main() -> None:
     if args.command == "build-pool":
         run_command(commands["build_pool"], dry_run=args.dry_run)
         return
+    if args.command == "cap-pool":
+        if "cap_pool" not in commands:
+            raise SystemExit(f"No repair_pool.diversity_cap block configured in {config['_config_path']}")
+        run_command(commands["cap_pool"], dry_run=args.dry_run)
+        return
     if args.command == "run-native-repair":
         run_command(commands["run_native_repair"], dry_run=args.dry_run)
         return
@@ -332,6 +417,8 @@ def main() -> None:
             print(json.dumps(commands, indent=2))
             return
         run_command(commands["build_pool"], dry_run=False)
+        if "cap_pool" in commands:
+            run_command(commands["cap_pool"], dry_run=False)
         run_command(commands["run_native_repair"], dry_run=False)
         run_command(commands["validate"], dry_run=False)
         run_command(commands["check_readiness"], dry_run=False)

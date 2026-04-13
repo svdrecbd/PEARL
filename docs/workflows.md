@@ -9,7 +9,8 @@ Purpose:
 
 Current scientific default:
 - use mining to increase cross-prompt strict coverage, not just raw strict-hit count
-- current next-tranche path is the coverage-aware `stageb-lite` million with an adversarial prompt slice for historically weak-conversion buckets
+- broad mining is currently the fallback branch, not the immediate next move
+- the prepared fallback tranche is still the coverage-aware `stageb-lite` million with an adversarial prompt slice for historically weak-conversion buckets
 
 Primary entrypoints:
 - [scripts/mining_experiment.py](../scripts/mining_experiment.py)
@@ -58,7 +59,7 @@ Outputs:
 Purpose:
 - inventory the broader finalized historical mining universe, not just the current canonical retrain bundle
 - measure anchor neighborhoods around strict and bridge-only hits before dedup/clustering compresses local structure away
-- build a local-exploit shortlist for a future anchor-centered repair lane
+- test whether saved historical surfaces already contain a usable anchor-centered repair lane
 
 Primary entrypoints:
 - [scripts/analysis_experiment.py](../scripts/analysis_experiment.py)
@@ -79,6 +80,7 @@ Current scientific read:
 - finalized-hit surfaces came back sparse
 - widening to screened finalized-report winners also came back sparse
 - so the analysis workflow now supports a real negative result as well as a discovery pass
+- current conclusion: no passive local basin exists in the saved finalized corpus; repair has to come from candidate-audit surfaces or deliberate perturbation generation
 
 Outputs:
 - `reports/analysis/.../universe`
@@ -118,10 +120,12 @@ Primary entrypoints:
 
 Config-driven repair example:
 - [configs/experiments/repair/topoff1m_a_local_repair_pilot_20260410.json](../configs/experiments/repair/topoff1m_a_local_repair_pilot_20260410.json)
+- [configs/experiments/repair/topoff1m_a_local_repair_scaleup_20260412.json](../configs/experiments/repair/topoff1m_a_local_repair_scaleup_20260412.json)
 
 Operational rule:
-- treat this as a cheap local-exploit pilot, not a broad mining replacement
-- scale it only if it produces real strict survivors or meaningfully improves retrain readiness
+- treat this as the current gated branch, not as an unproven side experiment
+- scale it only with explicit concentration caps across parent runs and source waves
+- use a capped parent pool before native repair instead of trusting the raw merged pool order
 
 Current result:
 - the April 10 pilot succeeded:
@@ -131,12 +135,19 @@ Current result:
   - `192` strict shortlist rows
   - `122` strict-bridge consensus rows
   - readiness passed
-- this means the repair workflow is now a validated branch, not a hypothetical one
+- the April 12 diversity-capped scale-up also succeeded:
+  - `96` parents
+  - `28,030` evaluated variants
+  - `1,071` survivors
+  - `231` strict shortlist rows
+  - `128` strict-bridge consensus rows
+  - readiness passed with `443` deduped tier-2 positives, `280` tier-1 proxy positives, `largest_cluster_share = 0.0293`, and `max_source_share = 0.0655`
+- the repair-derived strict set was then promoted into `strict-core-v7-repair`, which passed the stricter `p48` smoke gate and reached `stage-b-lite`
 
-Next scaling rule:
-- do not jump straight from the pilot to a new million-candidate mining wave
-- first run one bounded repair scale-up with concentration caps across parent runs and source waves
-- only promote to a repair-augmented retrain dataset if the scale-up still passes readiness without collapsing into a few parent families
+Current operating rule:
+- repair is now a supported retrain ingredient, not just a standalone readiness exercise
+- keep explicit source and cluster caps when selecting repair parents and repair-derived strict rows
+- use repair to broaden coverage, not to stuff the strict dataset with near-duplicate parents
 
 ## 6. Train
 
@@ -151,6 +162,7 @@ Primary entrypoints:
 
 For strict experiment chains, the supported path is now config-driven:
 - [configs/experiments/strict/topoff1m_a_strict_core_v6.json](../configs/experiments/strict/topoff1m_a_strict_core_v6.json)
+- [configs/experiments/strict/topoff1m_a_strict_core_v7_repair_20260412.json](../configs/experiments/strict/topoff1m_a_strict_core_v7_repair_20260412.json)
 
 ## 7. Robustness
 

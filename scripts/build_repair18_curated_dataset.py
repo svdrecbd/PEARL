@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from petase_family import levenshtein
+from petase_family import passes_normalized_identity
 
 
 SOURCE_TYPE_SURVIVOR = "repair_survivor"
@@ -201,7 +201,7 @@ def cluster_rows(rows: list[dict[str, Any]], identity_threshold: float) -> list[
         left_sequence = rows[left]["sequence"]
         for right in range(left + 1, len(rows)):
             right_sequence = rows[right]["sequence"]
-            if normalized_identity(left_sequence, right_sequence) >= identity_threshold:
+            if passes_normalized_identity(left_sequence, right_sequence, identity_threshold):
                 union(left, right)
 
     grouped: dict[int, list[dict[str, Any]]] = {}
@@ -342,11 +342,6 @@ def build_summary(
             "identity_threshold": args.identity_threshold,
         },
     }
-
-
-def normalized_identity(left: str, right: str) -> float:
-    denominator = max(len(left), len(right), 1)
-    return 1.0 - (levenshtein(left, right) / denominator)
 
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:

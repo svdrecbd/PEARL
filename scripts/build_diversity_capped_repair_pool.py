@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from petase_family import levenshtein
+from petase_family import passes_normalized_identity
 from scripts.build_repair_pool_dataset import build_merged_candidate_audit, write_jsonl
 
 
@@ -181,7 +181,7 @@ def cluster_rows_exact(rows: list[dict[str, Any]], *, identity_threshold: float)
         left_sequence = str(rows[left].get("sequence") or "")
         for right in range(left + 1, len(rows)):
             right_sequence = str(rows[right].get("sequence") or "")
-            if normalized_identity(left_sequence, right_sequence) >= identity_threshold:
+            if passes_normalized_identity(left_sequence, right_sequence, identity_threshold):
                 union(left, right)
 
     grouped: dict[int, list[dict[str, Any]]] = {}
@@ -207,11 +207,6 @@ def heuristic_cluster_key(row: dict[str, Any]) -> tuple[Any, ...]:
         sequence[midpoint : midpoint + window],
         sequence[-window:],
     )
-
-
-def normalized_identity(left: str, right: str) -> float:
-    denominator = max(len(left), len(right), 1)
-    return 1.0 - (levenshtein(left, right) / denominator)
 
 
 def assign_cluster_ids(*, deduped_rows: list[dict[str, Any]], clusters: list[list[dict[str, Any]]]) -> None:

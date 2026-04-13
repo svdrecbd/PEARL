@@ -19,7 +19,7 @@ Supported operator docs now live under:
 
 This file remains the long-form experimental and engineering fossil record.
 
-## Latest Canonical Status (as of April 11, 2026)
+## Latest Canonical Status (as of April 12, 2026)
 
 - active mined-data engine:
   - merged `stage-b-lite` `1.6M` pool
@@ -28,15 +28,40 @@ This file remains the long-form experimental and engineering fossil record.
     - `179` exact-unique functional hits
     - `54` exact-unique family-faithful hits
     - `197` lineage clusters at `0.85`, largest cluster size `2`
+- candidate-audit local-repair lane:
+  - pilot:
+    - `48` parents
+    - `13,033` evaluated variants
+    - `577` survivors
+    - `192` strict shortlist rows
+    - `122` strict-bridge consensus rows
+    - readiness passed
+  - diversity-capped scale-up:
+    - `96` parents
+    - `28,030` evaluated variants
+    - `1,071` survivors
+    - `231` strict shortlist rows
+    - `128` strict-bridge consensus rows
+    - `18` unique parent runs in the strict shortlist
+    - readiness passed with `443` deduped tier-2 positives, `280` tier-1 proxy positives, `228` clusters, `largest_cluster_share = 0.0293`, and `max_source_share = 0.0655`
 - latest completed strict branch:
-  - `tinker://241de107-2843-5038-9584-4ffa8949f43c:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v6-stageb-lite-lr5e7-ep1`
-  - stage-A smoke custom gate passed narrowly on `p48`:
-    - hits by seed `[0, 1, 0]`
-    - prompt coverage `1 / 48`
+  - `strict-core-v7-repair`
+  - stage-A checkpoint:
+    - `tinker://59c10b59-45ec-5ed4-92a9-7c06e4241d0b:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stagea-lr1e6-ep3`
+  - stage-A smoke custom gate passed on `p48`:
+    - hits by seed `[0, 2, 1]`
+    - prompt coverage `3 / 48`
+    - pass thresholds were `2` seeds and `2` prompts
+  - stage-B-lite checkpoint:
+    - `tinker://7bb7b832-45c0-5ac0-8cea-1c3bc3f1d7ea:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stageb-lite-lr5e7-ep1`
   - full robustness still failed:
-    - `p12`: hits by seed `[1, 0, 0]`, prompt coverage `1 / 12`
-    - `p24`: hits by seed `[0, 1, 0]`, prompt coverage `1 / 24`
-    - `p48`: hits by seed `[0, 1, 1]`, prompt coverage `2 / 48`
+    - `p12`: hits by seed `[0, 0, 0]`, prompt coverage `0 / 12`
+    - `p24`: hits by seed `[0, 2, 0]`, prompt coverage `2 / 24`
+    - `p48`: hits by seed `[0, 3, 1]`, prompt coverage `4 / 48`
+  - interpretation:
+    - this is the first repair-augmented branch that actually cleared the stricter smoke gate and promoted cleanly to `stage-b-lite`
+    - the project has turned a corner
+    - but the full durability problem is still prompt coverage breadth, not hit existence
 - local Gemma H200 trial:
   - half-wave frozen at `2053` prompts / `525,568` raw candidates
   - ESM finalization retained:
@@ -63,15 +88,14 @@ This file remains the long-form experimental and engineering fossil record.
     - all `48` anchors classified `red`
     - shortlist `0`
     - no neighbors even at `0.85` whole-sequence identity in the widened pass
-  - current phase:
+- current phase:
   - governing objective: reproducible cross-prompt coverage, not existence of isolated strict hits
-  - stop `v7`-style micro-tweaks on the current recipe family
+  - freeze `strict-core-v7-repair` as the best current retrain baseline
   - treat the enlarged strict pool as validated mining output, not as a failed data engine
-  - next gated branch: bounded candidate-audit local-repair scale-up before buying another broad mining tranche
-  - next strict prototype: prompt-first / prompt-bucket / cluster-constrained stage A, with no silent fallback and a stricter `p48` smoke gate that requires `2` seeds and `2` prompts
+  - next gated branch: coverage-focused `v8`, informed by the `p12/p24/p48` prompt gaps
   - passive local exploit is not available in the saved finalized corpus
-  - candidate-audit local repair is now validated as a real lane
-  - next decision gate is scale discipline, not lane existence
+  - candidate-audit local repair is validated as a real lane and remains part of the next strict mix
+  - broad mining is now fallback only if coverage-targeted retrain still stalls
   - parallel branch: keep the reranker lane reranker-first and diagnostic until it clearly beats scalar reward baselines on harder held-out prompt / bucket / cluster splits
 - currently ruled-out paths:
   - resumed PPO
@@ -87,6 +111,57 @@ Supported engine state:
 - reusable engine logic now lives under [src/pearl](../src/pearl)
 - supported workflow identity now lives under [configs/experiments](../configs/experiments)
 - historical PETase wrapper families now live under [archive/2026q1_topoff1m_a/scripts](../archive/2026q1_topoff1m_a/scripts) with compatibility symlinks left behind in `scripts/`
+
+## April 12, 2026: Repair scale-up, `strict-core-v7-repair`, and the first real turn
+
+Artifacts:
+
+- [reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_summary.json](../reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_summary.json)
+- [reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_validation_summary.json](../reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_validation_summary.json)
+- [reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_readiness.json](../reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_readiness.json)
+- [reports/raft/topoff1m-a-strict-core-v7-repair-20260412/strict_core_v7_stage_a_summary.json](../reports/raft/topoff1m-a-strict-core-v7-repair-20260412/strict_core_v7_stage_a_summary.json)
+- [reports/raft/topoff1m-a-strict-core-v7-repair-20260412/strict_core_v7_stage_b_lite_summary.json](../reports/raft/topoff1m-a-strict-core-v7-repair-20260412/strict_core_v7_stage_b_lite_summary.json)
+- [reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stagea-lr1e6-ep3/summary.json](../reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stagea-lr1e6-ep3/summary.json)
+- [reports/robustness/pearl-topoff1m-a-strict-core-v7-repair-stagea-smoke-p48-t08-s41s53s67/smoke_gate_decision.json](../reports/robustness/pearl-topoff1m-a-strict-core-v7-repair-stagea-smoke-p48-t08-s41s53s67/smoke_gate_decision.json)
+- [reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stageb-lite-lr5e7-ep1/summary.json](../reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stageb-lite-lr5e7-ep1/summary.json)
+- [reports/robustness/pearl-topoff1m-a-strict-core-v7-repair-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json](../reports/robustness/pearl-topoff1m-a-strict-core-v7-repair-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json)
+
+What happened:
+
+- the bounded repair scale-up worked
+  - `96` parents
+  - `28,030` evaluated variants
+  - `1,071` survivors
+  - `231` strict shortlist rows
+  - `128` strict-bridge consensus rows
+  - readiness passed with low concentration and broad parent-run support
+- that made it possible to build `strict-core-v7-repair`
+  - stage A used `160` pairs
+  - repair stricts were included as a real training ingredient, not as a side audit
+- stage A then passed the stricter `p48` smoke gate
+  - hits by seed `[0, 2, 1]`
+  - `3 / 48` prompts hit across seeds
+  - this was the first branch in the current recipe family to clear the newer `2 seeds / 2 prompts` rule
+- `stage-b-lite` then trained cleanly on `162` pairs
+
+Why this mattered:
+
+- this was the first end-to-end sign that repair-derived strict signal transfers into model behavior
+- the old question was “is the repair lane real at all?”
+- after this run, that question is settled enough to move on
+
+What full robustness then said:
+
+- `p12` died completely: `[0, 0, 0]`
+- `p24` stayed narrow: `[0, 2, 0]`
+- `p48` kept seed support but still lacked prompt breadth: `[0, 3, 1]` with only `4 / 48` prompts hit
+- so the branch turned the corner, but it did not finish the job
+
+Updated read after the full suite:
+
+> Repair-derived strict data is now proven as a real retrain ingredient. The remaining failure mode is prompt coverage breadth, especially at smaller prompt budgets.
+
+This is why the next branch should be coverage-focused `v8`, not another blind broad mining purchase and not another no-op micro-variant of the old strict recipe.
 
 ## April 2026: External Local-Optimization Lesson
 

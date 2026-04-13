@@ -34,6 +34,8 @@ The supported workflows are documented in:
 - [operations.md](operations.md)
 - [science.md](science.md)
 
+For onboarding, treat those three docs as authoritative before reading the white paper or the long-form labnotes. The white paper is useful background, but it is not the current-state operator document.
+
 These docs describe the small set of workflows the repo should actively support:
 
 - `mine`

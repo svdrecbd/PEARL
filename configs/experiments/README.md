@@ -51,6 +51,7 @@ Analysis config:
 
 Repair config:
 - [repair/topoff1m_a_local_repair_pilot_20260410.json](repair/topoff1m_a_local_repair_pilot_20260410.json)
+- [repair/topoff1m_a_local_repair_scaleup_20260412.json](repair/topoff1m_a_local_repair_scaleup_20260412.json)
 
 Current repair read:
 - the April 10 pilot validated the repair lane as a real branch:
@@ -60,6 +61,7 @@ Current repair read:
   - `192` strict shortlist rows
   - readiness passed
 - next use of the repair workflow should be a bounded scale-up with explicit concentration caps, not an immediate jump to a broad mining replacement
+- the scale-up config now expresses those caps directly through `repair_pool.diversity_cap` and tighter `readiness` gates
 
 The historical-analysis path is intended to answer a narrower question than the retrain bundle builders:
 - inventory the full finalized historical mining universe

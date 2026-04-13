@@ -15,7 +15,7 @@ if str(SRC_ROOT) not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from pearl.family import levenshtein
+from pearl.family import passes_normalized_identity
 
 
 DEFAULT_CLUSTER_IDENTITY_THRESHOLD = 0.85
@@ -239,7 +239,7 @@ def cluster_candidates(
         left_sequence = deduped_candidates[left]["sequence"]
         for right in range(left + 1, len(deduped_candidates)):
             right_sequence = deduped_candidates[right]["sequence"]
-            if normalized_identity(left_sequence, right_sequence) >= identity_threshold:
+            if passes_normalized_identity(left_sequence, right_sequence, identity_threshold):
                 union(left, right)
 
     grouped: dict[int, list[dict[str, Any]]] = {}
@@ -423,11 +423,6 @@ def source_contribution_counts(candidates: list[dict[str, Any]]) -> dict[str, in
         source = str(candidate["primary_source"])
         counts[source] = counts.get(source, 0) + 1
     return counts
-
-
-def normalized_identity(left: str, right: str) -> float:
-    denominator = max(len(left), len(right), 1)
-    return 1.0 - (levenshtein(left, right) / denominator)
 
 
 def safe_ratio(numerator: int, denominator: int) -> float:

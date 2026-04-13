@@ -6,7 +6,7 @@ This repository explores PETase-family sequence design through remote generation
 
 ## Start Here
 
-- Sponsor-facing summary: [`WHITEPAPER.md`](WHITEPAPER.md)
+- Historical sponsor-facing summary: [`WHITEPAPER.md`](WHITEPAPER.md)
 - Repo structure and supported surface: [`docs/overview.md`](docs/overview.md)
 - Supported workflows: [`docs/workflows.md`](docs/workflows.md)
 - Operator notes: [`docs/operations.md`](docs/operations.md)
@@ -17,32 +17,38 @@ This repository explores PETase-family sequence design through remote generation
 
 ## Current State
 
-As of April 11, 2026:
+As of April 12, 2026:
 
 - merged `stage-b-lite` mined pool:
   - `1,597,184` raw candidates
   - `179` exact-unique functional hits
   - `54` exact-unique family-faithful hits
   - `197` lineage clusters at `0.85`
+- candidate-audit local-repair lane:
+  - diversity-capped scale-up succeeded:
+    - `96` parents -> `28,030` evaluated variants -> `1,071` survivors
+    - validation kept `231` strict shortlist rows and `128` strict-bridge consensus rows
+    - readiness passed with `443` deduped tier-2 positives, `280` tier-1 proxy positives, `228` clusters, `largest_cluster_share = 0.0293`, and `max_source_share = 0.0655`
 - latest completed strict branch:
-  - `strict-core-v6`
-  - stage-A smoke recovered narrow `p48` signal
-  - full stage-B-lite robustness still failed durability
+  - `strict-core-v7-repair`
+  - stage-A trained cleanly on `160` pairs and passed the stricter `p48` smoke gate with `2 / 3` seeds and `3 / 48` prompts
+  - `stage-b-lite` trained cleanly on `162` pairs
+  - full robustness still failed durability:
+    - `p12`: `[0, 0, 0]`
+    - `p24`: `[0, 2, 0]`
+    - `p48`: `[0, 3, 1]`
+    - the main miss was prompt coverage breadth, with only `4 / 48` prompts hit at `p48`
 - local Gemma mining trial:
   - half-wave `525,568`-candidate ESM check came back `0` functional / `0` family-faithful
   - treat the current local Gemma path as failed unless the serving/prompting path is corrected first
 - historical local-exploit audit:
   - finalized-hit universe and widened finalized-report near-miss universe both came back with no usable anchor neighborhoods
   - current “no free lunch” read: there is no passive challenge-style local basin already sitting in the saved finalized corpus
-- candidate-audit local-repair pilot:
-  - `48` parents -> `13,033` evaluated variants -> `577` survivors
-  - validation kept `192` strict shortlist rows and `122` strict-bridge consensus rows
-  - readiness passed with `406` deduped tier-2 positives, `243` tier-1 proxy positives, and `228` clusters
 - current direction:
   - optimize for reproducible cross-prompt coverage, not existence of isolated strict hits
-  - treat the candidate-audit local-repair lane as the next gated branch
-  - do not spend another broad million-candidate mine until repair scale-up either passes or fails its concentration gate
-  - stop `v7`-style micro-variants on the same retrain family
+  - treat `strict-core-v7-repair` as the best current retrain baseline, not the final winner
+  - build a coverage-focused `v8` branch before buying another blind broad mining tranche
+  - keep the candidate-audit local-repair lane as a core ingredient in that next branch
   - keep the reranker lane reranker-first and diagnostic-only until it clearly beats scalar reward baselines on harder held-out prompt / bucket / cluster splits
 
 See [`docs/science.md`](docs/science.md) for the current research readout and primary artifact links.
@@ -55,9 +61,10 @@ The supported reusable workflows are:
 2. `postprocess`
 3. `analyze`
 4. `build-dataset`
-5. `train`
-6. `robustness`
-7. `reranker`
+5. `repair`
+6. `train`
+7. `robustness`
+8. `reranker`
 
 The details and entrypoints for those workflows live in [`docs/workflows.md`](docs/workflows.md).
 

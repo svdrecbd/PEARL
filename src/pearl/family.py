@@ -8,6 +8,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+try:
+    from rapidfuzz.distance.Levenshtein import distance as _rapidfuzz_levenshtein
+except ImportError:
+    _rapidfuzz_levenshtein = None
+
 
 AA_PATTERN = re.compile(r"^[ACDEFGHIKLMNPQRSTVWY]+$")
 AA_ALPHABET = "ACDEFGHIKLMNPQRSTVWY"
@@ -261,24 +266,89 @@ def kmer_mask(sequence: str, k: int) -> int:
     return mask
 
 
-def levenshtein(left: str, right: str) -> int:
+def levenshtein(left: str, right: str, *, max_distance: int | None = None) -> int:
     if left == right:
         return 0
     if not left:
-        return len(right)
+        distance = len(right)
+        if max_distance is not None and distance > max_distance:
+            return max_distance + 1
+        return distance
     if not right:
-        return len(left)
+        distance = len(left)
+        if max_distance is not None and distance > max_distance:
+            return max_distance + 1
+        return distance
+
+    if max_distance is not None:
+        max_distance = int(max_distance)
+        if max_distance < 0:
+            return 0
+        if abs(len(left) - len(right)) > max_distance:
+            return max_distance + 1
+
+    if _rapidfuzz_levenshtein is not None:
+        kwargs: dict[str, int] = {}
+        if max_distance is not None:
+            kwargs["score_cutoff"] = max_distance
+        return int(_rapidfuzz_levenshtein(left, right, **kwargs))
 
     previous = list(range(len(right) + 1))
+    if max_distance is None:
+        for i, left_char in enumerate(left, start=1):
+            current = [i]
+            for j, right_char in enumerate(right, start=1):
+                insert_cost = current[j - 1] + 1
+                delete_cost = previous[j] + 1
+                replace_cost = previous[j - 1] + (left_char != right_char)
+                current.append(min(insert_cost, delete_cost, replace_cost))
+            previous = current
+        return previous[-1]
+
+    inf = max_distance + 1
+    previous = [inf] * (len(right) + 1)
+    for index in range(min(len(right), max_distance) + 1):
+        previous[index] = index
+
     for i, left_char in enumerate(left, start=1):
-        current = [i]
-        for j, right_char in enumerate(right, start=1):
+        start = max(1, i - max_distance)
+        end = min(len(right), i + max_distance)
+        if start > end:
+            return inf
+
+        current = [inf] * (len(right) + 1)
+        if start == 1:
+            current[0] = i
+
+        for j in range(start, end + 1):
             insert_cost = current[j - 1] + 1
             delete_cost = previous[j] + 1
-            replace_cost = previous[j - 1] + (left_char != right_char)
-            current.append(min(insert_cost, delete_cost, replace_cost))
+            replace_cost = previous[j - 1] + (left_char != right[j - 1])
+            current[j] = min(insert_cost, delete_cost, replace_cost)
+
+        if min(current[start : end + 1]) > max_distance:
+            return inf
         previous = current
+
     return previous[-1]
+
+
+def normalized_identity(left: str, right: str) -> float:
+    denominator = max(len(left), len(right), 1)
+    return 1.0 - (levenshtein(left, right) / denominator)
+
+
+def passes_normalized_identity(left: str, right: str, threshold: float) -> bool:
+    if threshold <= 0.0:
+        return True
+    if threshold > 1.0:
+        return False
+
+    denominator = max(len(left), len(right), 1)
+    max_distance = math.floor(((1.0 - threshold) * denominator) + 1e-9)
+    if abs(len(left) - len(right)) > max_distance:
+        return False
+    return levenshtein(left, right, max_distance=max_distance) <= max_distance
 
 
 def _get_cached_kmers(record: dict[str, Any]) -> set[str]:

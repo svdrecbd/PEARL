@@ -5,6 +5,33 @@
 **Status Date:** March 24, 2026  
 **Repository:** `tinker`
 
+## Status Note (April 12, 2026)
+
+This white paper is now historical background, not the authoritative current-state document.
+
+For onboarding and current operator state, read these first:
+
+- [docs/science.md](docs/science.md)
+- [docs/workflows.md](docs/workflows.md)
+- [docs/operations.md](docs/operations.md)
+
+Important updates since this paper's March 24 snapshot:
+
+- the merged `stage-b-lite` mined pool reached `1,597,184` raw candidates with `179` exact-unique functional hits and `54` exact-unique family-faithful hits
+- the candidate-audit local-repair scale-up succeeded:
+  - `96` parents
+  - `28,030` evaluated variants
+  - `1,071` survivors
+  - `231` strict shortlist rows
+  - retrain readiness passed cleanly with low source and cluster concentration
+- `strict-core-v7-repair` then became the new best strict branch:
+  - `stage-a` passed the stricter `p48` smoke gate with `2` seeds and `3` prompts
+  - `stage-b-lite` completed successfully
+  - full `p12/p24/p48` robustness still failed durability because prompt coverage stayed too narrow
+- the local Gemma half-wave trial failed completely as run and should not be resumed unchanged
+- historical finalized-corpus locality scans came back negative: there is no passive local basin waiting in saved finalized representatives
+- the current next branch is coverage-focused retrain work on top of the repair signal, not another blind broad mining tranche
+
 ## Abstract
 
 PEARL is a computational protein design program focused on generating PETase/cutinase-like sequences that satisfy a strict intersection: single catalytic motif, geometry plausibility, and high sequence-level foldability proxy (`ESM >= 85`).

@@ -186,17 +186,28 @@ bash scripts/launch_repair_experiment.sh \
   launch-pad --dry-run
 ```
 
+Bounded scale-up path:
+
+```bash
+bash scripts/launch_repair_experiment.sh \
+  --config configs/experiments/repair/topoff1m_a_local_repair_scaleup_20260412.json \
+  launch-pad --dry-run
+```
+
 Supported subcommands are:
 - `describe`
 - `build-pool`
+- `cap-pool`
 - `run-native-repair`
 - `validate`
 - `check-readiness`
 - `launch-pad`
 
 Operator rule:
-- this is the cheap local-repair pilot lane
-- do not spend a larger Tinker mining budget on follow-up until the repair pilot shows real survivors or a better retrain-readiness profile
+- this is now the active gated local-repair branch
+- the pilot already succeeded; the next supported step is a bounded scale-up with concentration caps
+- use `cap-pool` when the config carries a `repair_pool.diversity_cap` block
+- do not spend a larger Tinker mining budget on follow-up unless that scale-up fails or collapses into a few parent families
 
 ## Historical Scripts
 

@@ -5,7 +5,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from pearl.family import levenshtein
+from pearl.family import normalized_identity, passes_normalized_identity
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -193,11 +193,6 @@ def screen_report_rows(rows: list[dict[str, Any]], *, mode: str) -> list[dict[st
     return screened
 
 
-def normalized_identity(left: str, right: str) -> float:
-    denominator = max(len(left), len(right), 1)
-    return 1.0 - (levenshtein(left, right) / denominator)
-
-
 def cluster_rows(rows: list[dict[str, Any]], *, identity_threshold: float) -> list[list[dict[str, Any]]]:
     if not rows:
         return []
@@ -220,7 +215,7 @@ def cluster_rows(rows: list[dict[str, Any]], *, identity_threshold: float) -> li
         left_sequence = str(rows[left].get("sequence") or "")
         for right in range(left + 1, len(rows)):
             right_sequence = str(rows[right].get("sequence") or "")
-            if normalized_identity(left_sequence, right_sequence) >= identity_threshold:
+            if passes_normalized_identity(left_sequence, right_sequence, identity_threshold):
                 union(left, right)
 
     grouped: dict[int, list[dict[str, Any]]] = {}
