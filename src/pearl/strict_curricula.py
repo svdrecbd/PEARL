@@ -321,6 +321,58 @@ def select_prompt_cluster_diverse_rows(
     )
 
 
+def select_bucket_capped_rows(
+    rows: list[dict[str, Any]],
+    *,
+    top_k: int,
+    ranker: str,
+    label: str,
+    max_per_prompt_bucket: int,
+    max_per_cluster: int = 0,
+) -> list[dict[str, Any]]:
+    if max_per_prompt_bucket <= 0:
+        raise ValueError("max_per_prompt_bucket must be positive for bucket-capped selection")
+
+    if ranker == "strict":
+        ranked = ranked_strict_rows(rows)
+    elif ranker == "anchor":
+        ranked = ranked_anchor_rows(rows)
+    else:
+        raise ValueError(f"unknown ranker: {ranker}")
+
+    selected: list[dict[str, Any]] = []
+    prompt_bucket_counts: Counter[str] = Counter()
+    cluster_counts: Counter[str] = Counter()
+    seen_sequences: set[str] = set()
+
+    for row in ranked:
+        sequence = str(row.get("sequence") or "")
+        prompt_bucket = prompt_bucket_key(row)
+        cluster = cluster_key(row)
+        if not sequence or sequence in seen_sequences:
+            continue
+        if prompt_bucket_counts[prompt_bucket] >= max_per_prompt_bucket:
+            continue
+        if max_per_cluster > 0 and cluster_counts[cluster] >= max_per_cluster:
+            continue
+        selected.append(row)
+        seen_sequences.add(sequence)
+        prompt_bucket_counts[prompt_bucket] += 1
+        cluster_counts[cluster] += 1
+        if len(selected) == top_k:
+            return selected
+
+    pool_stats = coverage_stats(ranked)
+    raise SystemExit(
+        f"{label} selection shortfall: needed {top_k}, selected {len(selected)} under "
+        f"prompt-bucket caps. "
+        f"pool_prompt_count={pool_stats['prompt_count']} "
+        f"pool_prompt_bucket_count={pool_stats['prompt_bucket_count']} "
+        f"pool_cluster_count={pool_stats['cluster_count']} "
+        f"max_per_prompt_bucket={max_per_prompt_bucket}"
+    )
+
+
 def select_top_ranked_rows(
     rows: list[dict[str, Any]],
     top_k: int | None,
@@ -328,6 +380,8 @@ def select_top_ranked_rows(
     selection_mode: str,
     ranker: str,
     label: str,
+    max_per_prompt_bucket: int | None = None,
+    max_per_cluster: int | None = None,
 ) -> list[dict[str, Any]]:
     ranked = ranked_strict_rows(rows) if ranker == "strict" else ranked_anchor_rows(rows)
     if top_k is None or top_k <= 0:
@@ -336,6 +390,17 @@ def select_top_ranked_rows(
         return ranked[:top_k]
     if selection_mode == "prompt_cluster":
         return select_prompt_cluster_diverse_rows(rows, top_k=top_k, ranker=ranker, label=label)
+    if selection_mode == "bucket_cap":
+        if max_per_prompt_bucket is None:
+            raise ValueError(f"{label} bucket_cap selection requires max_per_prompt_bucket")
+        return select_bucket_capped_rows(
+            rows,
+            top_k=top_k,
+            ranker=ranker,
+            label=label,
+            max_per_prompt_bucket=max_per_prompt_bucket,
+            max_per_cluster=max_per_cluster or 0,
+        )
     raise ValueError(f"unknown selection mode: {selection_mode}")
 
 
@@ -406,6 +471,87 @@ def select_source_cluster_diverse_rows(
         f"pool_prompt_count={pool_stats['prompt_count']} "
         f"pool_prompt_bucket_count={pool_stats['prompt_bucket_count']} "
         f"pool_cluster_count={pool_stats['cluster_count']}"
+    )
+
+
+def select_source_bucket_cluster_diverse_rows(
+    rows: list[dict[str, Any]],
+    *,
+    top_k: int,
+    ranker: str,
+    label: str,
+    max_per_source: int,
+    max_per_cluster: int,
+    max_per_prompt_bucket: int,
+) -> list[dict[str, Any]]:
+    if max_per_prompt_bucket <= 0:
+        raise ValueError("max_per_prompt_bucket must be positive for source_bucket_cluster selection")
+
+    ranked = ranked_strict_rows(rows) if ranker == "strict" else ranked_anchor_rows(rows)
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in ranked:
+        grouped.setdefault(source_key(row), []).append(row)
+
+    for source_rows in grouped.values():
+        source_rows.sort(key=strict_sort_key if ranker == "strict" else anchor_sort_key)
+
+    source_names = sorted(grouped)
+    source_indexes = {name: 0 for name in source_names}
+    source_counts = {name: 0 for name in source_names}
+    cluster_counts: Counter[str] = Counter()
+    prompt_bucket_counts: Counter[str] = Counter()
+    seen_sequences: set[str] = set()
+    selected: list[dict[str, Any]] = []
+
+    while len(selected) < top_k:
+        progress_made = False
+        for source_name in source_names:
+            if source_counts[source_name] >= max_per_source:
+                continue
+
+            rows_for_source = grouped[source_name]
+            index = source_indexes[source_name]
+            chosen: dict[str, Any] | None = None
+
+            while index < len(rows_for_source):
+                row = rows_for_source[index]
+                index += 1
+                sequence = str(row.get("sequence") or "")
+                cluster = cluster_key(row)
+                prompt_bucket = prompt_bucket_key(row)
+                if not sequence or sequence in seen_sequences:
+                    continue
+                if cluster_counts[cluster] >= max_per_cluster:
+                    continue
+                if prompt_bucket_counts[prompt_bucket] >= max_per_prompt_bucket:
+                    continue
+                chosen = row
+                break
+
+            source_indexes[source_name] = index
+            if chosen is None:
+                continue
+
+            selected.append(chosen)
+            seen_sequences.add(str(chosen.get("sequence") or ""))
+            cluster_counts[cluster_key(chosen)] += 1
+            prompt_bucket_counts[prompt_bucket_key(chosen)] += 1
+            source_counts[source_name] += 1
+            progress_made = True
+            if len(selected) == top_k:
+                return selected
+
+        if not progress_made:
+            break
+
+    pool_stats = coverage_stats(ranked)
+    raise SystemExit(
+        f"{label} selection shortfall: needed {top_k}, selected {len(selected)} under "
+        f"source/prompt-bucket/cluster caps. "
+        f"pool_prompt_count={pool_stats['prompt_count']} "
+        f"pool_prompt_bucket_count={pool_stats['prompt_bucket_count']} "
+        f"pool_cluster_count={pool_stats['cluster_count']} "
+        f"max_per_prompt_bucket={max_per_prompt_bucket}"
     )
 
 

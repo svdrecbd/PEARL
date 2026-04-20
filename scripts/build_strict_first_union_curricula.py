@@ -20,6 +20,7 @@ from pearl.strict_curricula import (
     dedupe_by_sequence,
     load_jsonl,
     prepare_repair_strict_rows,
+    select_source_bucket_cluster_diverse_rows,
     select_source_cluster_diverse_rows,
     select_top_ranked_rows,
     write_jsonl,
@@ -45,14 +46,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--anchor-count", type=int, default=12)
     parser.add_argument("--new-top-k", type=int)
     parser.add_argument("--repair-top-k", type=int)
-    parser.add_argument("--strict-selection-mode", choices=["rank", "prompt_cluster"], default="rank")
+    parser.add_argument("--strict-selection-mode", choices=["rank", "prompt_cluster", "bucket_cap"], default="rank")
     parser.add_argument(
         "--repair-selection-mode",
-        choices=["rank", "prompt_cluster", "source_cluster"],
+        choices=["rank", "prompt_cluster", "source_cluster", "bucket_cap"],
         default="source_cluster",
     )
     parser.add_argument("--anchor-selection-mode", choices=["rank", "prompt_cluster"], default="rank")
+    parser.add_argument("--strict-max-per-prompt-bucket", type=int)
+    parser.add_argument("--strict-max-per-cluster", type=int, default=0)
     parser.add_argument("--repair-identity-threshold", type=float, default=0.85)
+    parser.add_argument("--repair-max-per-prompt-bucket", type=int)
     parser.add_argument("--repair-max-per-source-run", type=int, default=1)
     parser.add_argument("--repair-max-per-cluster", type=int, default=1)
     parser.add_argument("--selected-new-output-path")
@@ -72,6 +76,8 @@ def main() -> None:
         selection_mode=args.strict_selection_mode,
         ranker="strict",
         label="strict",
+        max_per_prompt_bucket=args.strict_max_per_prompt_bucket,
+        max_per_cluster=args.strict_max_per_cluster,
     )
     repair_rows_all: list[dict[str, object]] = []
     repair_rows: list[dict[str, object]] = []
@@ -91,6 +97,22 @@ def main() -> None:
                 max_per_source=args.repair_max_per_source_run,
                 max_per_cluster=args.repair_max_per_cluster,
             )
+        elif args.repair_selection_mode == "bucket_cap":
+            if not args.repair_top_k or args.repair_top_k <= 0:
+                raise SystemExit("--repair-top-k is required when --repair-selection-mode=bucket_cap")
+            if not args.repair_max_per_prompt_bucket or args.repair_max_per_prompt_bucket <= 0:
+                raise SystemExit(
+                    "--repair-max-per-prompt-bucket is required when --repair-selection-mode=bucket_cap"
+                )
+            repair_rows = select_source_bucket_cluster_diverse_rows(
+                repair_rows_all,
+                top_k=args.repair_top_k,
+                ranker="strict",
+                label="repair_strict",
+                max_per_source=args.repair_max_per_source_run,
+                max_per_cluster=args.repair_max_per_cluster,
+                max_per_prompt_bucket=args.repair_max_per_prompt_bucket,
+            )
         else:
             repair_rows = select_top_ranked_rows(
                 repair_rows_all,
@@ -98,6 +120,8 @@ def main() -> None:
                 selection_mode=args.repair_selection_mode,
                 ranker="strict",
                 label="repair_strict",
+                max_per_prompt_bucket=args.repair_max_per_prompt_bucket,
+                max_per_cluster=args.repair_max_per_cluster,
             )
     pure_rows = canonical_purebreds(load_jsonl(Path(args.purebred_path)), allowed_motifs)
     anchor_rows_all = dedupe_by_sequence(load_jsonl(Path(args.anchor_path)))
@@ -141,11 +165,14 @@ def main() -> None:
             "new_unique_count_raw": len(new_rows_all),
             "new_top_k": args.new_top_k,
             "strict_selection_mode": args.strict_selection_mode,
+            "strict_max_per_prompt_bucket": args.strict_max_per_prompt_bucket,
+            "strict_max_per_cluster": args.strict_max_per_cluster,
             "new_selected_coverage": coverage_stats(new_rows),
             "repair_unique_count": len(repair_rows),
             "repair_unique_count_raw": len(repair_rows_all),
             "repair_top_k": args.repair_top_k,
             "repair_selection_mode": args.repair_selection_mode,
+            "repair_max_per_prompt_bucket": args.repair_max_per_prompt_bucket,
             "repair_selected_coverage": coverage_stats(repair_rows),
             "canonical_purebred_unique_count": len(pure_rows),
             "allowed_motifs": sorted(allowed_motifs),

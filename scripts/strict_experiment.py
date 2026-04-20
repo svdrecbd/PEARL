@@ -50,8 +50,16 @@ def parse_args() -> argparse.Namespace:
     build_datasets.add_argument("--pure-repeat", type=int)
     build_datasets.add_argument("--anchor-count", type=int)
     build_datasets.add_argument("--new-top-k", type=int)
-    build_datasets.add_argument("--strict-selection-mode", choices=["rank", "prompt_cluster"])
+    build_datasets.add_argument("--repair-top-k", type=int)
+    build_datasets.add_argument("--repair-repeat", type=int)
+    build_datasets.add_argument("--strict-selection-mode", choices=["rank", "prompt_cluster", "bucket_cap"])
+    build_datasets.add_argument("--repair-selection-mode", choices=["rank", "prompt_cluster", "source_cluster", "bucket_cap"])
     build_datasets.add_argument("--anchor-selection-mode", choices=["rank", "prompt_cluster"])
+    build_datasets.add_argument("--strict-max-per-prompt-bucket", type=int)
+    build_datasets.add_argument("--strict-max-per-cluster", type=int)
+    build_datasets.add_argument("--repair-max-per-prompt-bucket", type=int)
+    build_datasets.add_argument("--repair-max-per-source-run", type=int)
+    build_datasets.add_argument("--repair-max-per-cluster", type=int)
     build_datasets.add_argument("--dry-run", action="store_true")
 
     launch_smoke = subparsers.add_parser("launch-smoke", help="Launch the smoke robustness run")
@@ -314,11 +322,14 @@ def build_datasets(config: dict[str, Any], *, dry_run: bool, overrides: dict[str
         ("repair_strict_path", "--repair-strict-path"),
         ("new_top_k", "--new-top-k"),
         ("repair_top_k", "--repair-top-k"),
+        ("strict_max_per_prompt_bucket", "--strict-max-per-prompt-bucket"),
+        ("strict_max_per_cluster", "--strict-max-per-cluster"),
         ("strict_selection_mode", "--strict-selection-mode"),
         ("repair_selection_mode", "--repair-selection-mode"),
         ("anchor_selection_mode", "--anchor-selection-mode"),
         ("repair_repeat", "--repair-repeat"),
         ("repair_identity_threshold", "--repair-identity-threshold"),
+        ("repair_max_per_prompt_bucket", "--repair-max-per-prompt-bucket"),
         ("repair_max_per_source_run", "--repair-max-per-source-run"),
         ("repair_max_per_cluster", "--repair-max-per-cluster"),
         ("selected_new_output_path", "--selected-new-output-path"),
@@ -574,8 +585,16 @@ def main() -> None:
                 "pure_repeat": args.pure_repeat,
                 "anchor_count": args.anchor_count,
                 "new_top_k": args.new_top_k,
+                "repair_top_k": args.repair_top_k,
+                "repair_repeat": args.repair_repeat,
                 "strict_selection_mode": args.strict_selection_mode,
+                "repair_selection_mode": args.repair_selection_mode,
                 "anchor_selection_mode": args.anchor_selection_mode,
+                "strict_max_per_prompt_bucket": args.strict_max_per_prompt_bucket,
+                "strict_max_per_cluster": args.strict_max_per_cluster,
+                "repair_max_per_prompt_bucket": args.repair_max_per_prompt_bucket,
+                "repair_max_per_source_run": args.repair_max_per_source_run,
+                "repair_max_per_cluster": args.repair_max_per_cluster,
             },
         )
     elif args.command == "launch-stage":

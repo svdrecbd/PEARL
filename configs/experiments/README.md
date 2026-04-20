@@ -7,8 +7,9 @@ The intent is:
 - experiment parameters in `configs/experiments/`
 - historical wrapper scripts preserved, but demoted from the supported surface
 
-Current supported config-driven strict experiment example:
-- [strict/topoff1m_a_strict_core_v6.json](strict/topoff1m_a_strict_core_v6.json)
+Current supported config-driven strict experiment examples:
+- [strict/topoff1m_a_strict_core_v7_repair_20260412.json](strict/topoff1m_a_strict_core_v7_repair_20260412.json)
+- [strict/topoff1m_a_strict_core_v8_coverage_20260413.json](strict/topoff1m_a_strict_core_v8_coverage_20260413.json)
 
 Current generic launcher:
 - [scripts/strict_experiment.py](../../scripts/strict_experiment.py)
@@ -60,8 +61,8 @@ Current repair read:
   - `577` survivors
   - `192` strict shortlist rows
   - readiness passed
-- next use of the repair workflow should be a bounded scale-up with explicit concentration caps, not an immediate jump to a broad mining replacement
-- the scale-up config now expresses those caps directly through `repair_pool.diversity_cap` and tighter `readiness` gates
+- the April 12 scale-up then passed with `96` parents, `1,071` survivors, and `231` strict shortlist rows
+- the next strict branch now shifts from “can repair transfer at all?” to “can we broaden prompt coverage without buying another million-candidate tranche yet?”
 
 The historical-analysis path is intended to answer a narrower question than the retrain bundle builders:
 - inventory the full finalized historical mining universe

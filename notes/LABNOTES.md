@@ -19,7 +19,7 @@ Supported operator docs now live under:
 
 This file remains the long-form experimental and engineering fossil record.
 
-## Latest Canonical Status (as of April 12, 2026)
+## Latest Canonical Status (as of April 20, 2026)
 
 - active mined-data engine:
   - merged `stage-b-lite` `1.6M` pool
@@ -62,6 +62,27 @@ This file remains the long-form experimental and engineering fossil record.
     - this is the first repair-augmented branch that actually cleared the stricter smoke gate and promoted cleanly to `stage-b-lite`
     - the project has turned a corner
     - but the full durability problem is still prompt coverage breadth, not hit existence
+- next built strict branch:
+  - `strict-core-v8-coverage`
+  - config:
+    - [configs/experiments/strict/topoff1m_a_strict_core_v8_coverage_20260413.json](../configs/experiments/strict/topoff1m_a_strict_core_v8_coverage_20260413.json)
+  - base/init checkpoint:
+    - `tinker://7bb7b832-45c0-5ac0-8cea-1c3bc3f1d7ea:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stageb-lite-lr5e7-ep1`
+  - stage-A dataset:
+    - `184` pairs
+    - `63` unique sequences
+    - selected new stricts: `32` rows from `54` raw, across `19` prompt buckets
+    - selected repair stricts: `20` rows from `231` raw, across all `5` repair prompt buckets
+  - stage-B-lite dataset:
+    - `192` pairs
+    - `71` unique sequences
+    - bridge anchors: `8` rows from `143` raw, across `8` prompt buckets
+  - engineering change:
+    - added bucket-capped selection for mined strict and repair strict rows
+    - kept bridge-anchor selection prompt-cluster-diverse
+  - status:
+    - built locally and tests pass
+    - not yet launched
 - local Gemma H200 trial:
   - half-wave frozen at `2053` prompts / `525,568` raw candidates
   - ESM finalization retained:
@@ -92,7 +113,11 @@ This file remains the long-form experimental and engineering fossil record.
   - governing objective: reproducible cross-prompt coverage, not existence of isolated strict hits
   - freeze `strict-core-v7-repair` as the best current retrain baseline
   - treat the enlarged strict pool as validated mining output, not as a failed data engine
-  - next gated branch: coverage-focused `v8`, informed by the `p12/p24/p48` prompt gaps
+  - next gated branch: run coverage-focused `v8`, informed by the `p12/p24/p48` prompt gaps
+  - clean `v8` Tinker eval budget:
+    - smoke decision: `18,432` sampled candidates
+    - smoke plus full robustness, if promoted: `50,688` sampled candidates
+    - using the current pasted rates, clean end-to-end branch cost is roughly `$133-142`
   - passive local exploit is not available in the saved finalized corpus
   - candidate-audit local repair is validated as a real lane and remains part of the next strict mix
   - broad mining is now fallback only if coverage-targeted retrain still stalls
@@ -111,6 +136,103 @@ Supported engine state:
 - reusable engine logic now lives under [src/pearl](../src/pearl)
 - supported workflow identity now lives under [configs/experiments](../configs/experiments)
 - historical PETase wrapper families now live under [archive/2026q1_topoff1m_a/scripts](../archive/2026q1_topoff1m_a/scripts) with compatibility symlinks left behind in `scripts/`
+
+## April 13-20, 2026: Coverage-focused `strict-core-v8` built and costed
+
+Artifacts:
+
+- [configs/experiments/strict/topoff1m_a_strict_core_v8_coverage_20260413.json](../configs/experiments/strict/topoff1m_a_strict_core_v8_coverage_20260413.json)
+- [reports/raft/topoff1m-a-strict-core-v8-coverage-20260413/strict_core_v8_stage_a_summary.json](../reports/raft/topoff1m-a-strict-core-v8-coverage-20260413/strict_core_v8_stage_a_summary.json)
+- [reports/raft/topoff1m-a-strict-core-v8-coverage-20260413/strict_core_v8_stage_b_lite_summary.json](../reports/raft/topoff1m-a-strict-core-v8-coverage-20260413/strict_core_v8_stage_b_lite_summary.json)
+- [reports/raft/topoff1m-a-strict-core-v8-coverage-20260413/strict_core_v8_selected_new_family_faithful.jsonl](../reports/raft/topoff1m-a-strict-core-v8-coverage-20260413/strict_core_v8_selected_new_family_faithful.jsonl)
+- [reports/raft/topoff1m-a-strict-core-v8-coverage-20260413/strict_core_v8_selected_repair_family_faithful.jsonl](../reports/raft/topoff1m-a-strict-core-v8-coverage-20260413/strict_core_v8_selected_repair_family_faithful.jsonl)
+- [reports/raft/topoff1m-a-strict-core-v8-coverage-20260413/strict_core_v8_selected_bridge_anchors.jsonl](../reports/raft/topoff1m-a-strict-core-v8-coverage-20260413/strict_core_v8_selected_bridge_anchors.jsonl)
+
+What changed:
+
+- the `v7` result separated two questions:
+  - the repair signal transfers
+  - coverage breadth is still too weak
+- `v8` therefore changes the data shape rather than the optimizer first
+- mined strict rows now use a bucket-capped selector:
+  - target: `32` rows
+  - cap: `7` rows per prompt bucket
+  - selected coverage: `32` prompts, `19` prompt buckets, `32` sequence clusters
+- repair strict rows also use a bucket-capped selector with source and cluster controls:
+  - target: `20` rows
+  - cap: `9` rows per prompt bucket
+  - max `2` rows per source run
+  - max `1` row per sequence cluster
+  - selected coverage: `20` prompts, all `5` repair prompt buckets, `20` sequence clusters
+- bridge anchors now pull more of the unused diversity reserve:
+  - target: `8` anchors
+  - selected from `143` bridge-anchor candidates
+  - selected coverage: `8` prompts, `8` prompt buckets, `8` sequence clusters
+
+Built datasets:
+
+- stage A:
+  - `184` pairs
+  - `63` unique sequences
+  - source mix:
+    - `20` old family-faithful rows
+    - `96` mined new family-faithful rows
+    - `60` repair family-faithful rows
+    - `8` canonical purebred rows
+- stage B-lite:
+  - `192` pairs
+  - `71` unique sequences
+  - source mix:
+    - the full stage-A set
+    - `8` bridge-anchor rows
+
+Why this matters:
+
+- `v7` was the first branch to prove transfer but failed on prompt breadth
+- `v8` is the first branch that directly targets that failure mode
+- this makes another million-candidate tranche a fallback, not the immediate next move
+- if `v8` fails the same way as `v7`, the next mining tranche should be coverage-aware and aimed at underrepresented prompt families rather than broad generic generation
+
+Expected Tinker candidate budget:
+
+- smoke only:
+  - `48` prompts
+  - `3` seeds
+  - `128` candidates per prompt
+  - `18,432` sampled candidates
+- full robustness after `stage-b-lite`:
+  - `12 + 24 + 48` prompts
+  - `3` seeds
+  - `128` candidates per prompt
+  - `32,256` sampled candidates
+- full branch eval path:
+  - `50,688` sampled candidates
+
+Using the pasted rates:
+
+- prefill: `$5.15 / 1M tokens`
+- sample: `$12.81 / 1M tokens`
+- train: `$15.40 / 1M tokens`
+
+Estimated clean-run spend:
+
+- smoke only: roughly `$47-50`
+- full robustness after promotion: roughly `$83-89`
+- full `v8` branch, including small warmstart training cost: roughly `$133-142`
+
+Caveats:
+
+- this is a clean-run estimate
+- stockpile retries can increase sampling spend if Tinker flakes
+- the training cost is small relative to remote sampling
+
+Current decision rule:
+
+- run `v8` stage A
+- run the stricter `p48` smoke gate
+- promote to `stage-b-lite` only if smoke clears
+- pay for full `p12/p24/p48` robustness only if the branch earns it
+- defer another huge mine unless `v8` repeats the `p12/p24` collapse or remains narrow at `p48`
 
 ## April 12, 2026: Repair scale-up, `strict-core-v7-repair`, and the first real turn
 

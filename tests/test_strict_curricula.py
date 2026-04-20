@@ -110,6 +110,62 @@ class StrictCurriculaTests(unittest.TestCase):
         self.assertEqual(len(selected), 2)
         self.assertEqual({row["source_run"] for row in selected}, {"run-a", "run-b"})
 
+    def test_bucket_capped_selector_limits_prompt_bucket_repetition(self) -> None:
+        rows = [
+            strict_row(prompt="Generate PETase around 210 aa motif A", cluster_id="c1", reward=10.0),
+            strict_row(prompt="Generate PETase around 220 aa motif B", cluster_id="c2", reward=9.0),
+            strict_row(prompt="Design enzyme inspired by source X", cluster_id="c3", reward=8.0),
+        ]
+
+        selected = MODULE.select_top_ranked_rows(
+            rows,
+            2,
+            selection_mode="bucket_cap",
+            ranker="strict",
+            label="strict",
+            max_per_prompt_bucket=1,
+        )
+
+        self.assertEqual(len(selected), 2)
+        self.assertEqual(len({MODULE.prompt_bucket_key(row) for row in selected}), 2)
+
+    def test_source_bucket_cluster_selector_respects_bucket_and_source_caps(self) -> None:
+        rows = [
+            repair_row(
+                prompt="Generate PETase around 210 aa motif A",
+                source_run="run-a",
+                sequence="M" + "A" * 30 + "GYSLG" + "C" * 30,
+                esm_score=99.0,
+            ),
+            repair_row(
+                prompt="Generate PETase around 220 aa motif B",
+                source_run="run-a",
+                sequence="M" + "A" * 31 + "GYSLG" + "C" * 29,
+                esm_score=98.5,
+            ),
+            repair_row(
+                prompt="Design enzyme inspired by source X",
+                source_run="run-b",
+                sequence="M" + "D" * 30 + "GYSLG" + "E" * 30,
+                esm_score=98.0,
+            ),
+        ]
+
+        prepared = MODULE.prepare_repair_strict_rows(rows, identity_threshold=0.95)
+        selected = MODULE.select_source_bucket_cluster_diverse_rows(
+            prepared,
+            top_k=2,
+            ranker="strict",
+            label="repair_strict",
+            max_per_source=2,
+            max_per_cluster=1,
+            max_per_prompt_bucket=1,
+        )
+
+        self.assertEqual(len(selected), 2)
+        self.assertEqual(len({MODULE.prompt_bucket_key(row) for row in selected}), 2)
+        self.assertEqual({row["source_run"] for row in selected}, {"run-a", "run-b"})
+
     def test_build_stage_a_dataset_includes_repair_bucket(self) -> None:
         dataset, summary = MODULE.build_stage_a_dataset(
             old_rows=[strict_row(prompt="old", cluster_id="o1", reward=10.0)],
