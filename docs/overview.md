@@ -33,6 +33,7 @@ The supported workflows are documented in:
 - [workflows.md](workflows.md)
 - [operations.md](operations.md)
 - [science.md](science.md)
+- [manifold_construction.md](manifold_construction.md)
 
 For onboarding, treat those three docs as authoritative before reading the white paper or the long-form labnotes. The white paper is useful background, but it is not the current-state operator document.
 
@@ -46,6 +47,17 @@ These docs describe the small set of workflows the repo should actively support:
 - `train`
 - `robustness`
 - `reranker`
+- `manifold-construction` (planned / proposed)
+
+## Current Scientific Stance
+
+As of April 22, 2026:
+
+- `strict-core-v7-repair` is the best historical branch, but its robustness was narrow.
+- `strict-core-v8-coverage` failed to broaden that branch; it regressed at `p12/p24` and lost family-faithful robustness.
+- The `v8` stage-A p12/p24 diagnostic also failed, so `stage-b-lite` was not the sole problem.
+- The `v9` p12/p24 repair rescue produced `79` high-ESM loose survivors but `0` strict-valid candidates and `0` retrain positives.
+- The next serious strategy under discussion is scaffold-first manifold construction, not another small SFT tweak or blind paid mining tranche.
 
 ## Historical Surface
 

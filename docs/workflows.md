@@ -8,9 +8,10 @@ Purpose:
 - run a stage1 mining wave from a chosen prior over a prompt pack or prompt slice
 
 Current scientific default:
-- use mining to increase cross-prompt strict coverage, not just raw strict-hit count
-- broad mining is currently the fallback branch, not the immediate next move
-- the prepared fallback tranche is still the coverage-aware `stageb-lite` million with an adversarial prompt slice for historically weak-conversion buckets
+- use mining only when the team explicitly wants a paid diagnostic or targeted tranche
+- do not treat a blind broad `1M` run as the default next move
+- if mining is used next, start with a `50k-75k` p12/p24 exact-hole sweep before scaling to a `250k-300k` targeted tranche
+- the prepared coverage-aware million remains a fallback reference design, but the current recommendation is scaffold-first manifold construction
 
 Primary entrypoints:
 - [scripts/mining_experiment.py](../scripts/mining_experiment.py)
@@ -143,11 +144,18 @@ Current result:
   - `128` strict-bridge consensus rows
   - readiness passed with `443` deduped tier-2 positives, `280` tier-1 proxy positives, `largest_cluster_share = 0.0293`, and `max_source_share = 0.0655`
 - the repair-derived strict set was then promoted into `strict-core-v7-repair`, which passed the stricter `p48` smoke gate and reached `stage-b-lite`
+- the April 21/22 p12/p24 `v9` repair rescue failed:
+  - `134` geometry-dominant near-misses
+  - `47,489` local variants evaluated
+  - `79` loose repair survivors
+  - `0` strict shortlist rows
+  - `0` strict bridge/family/consensus rows
+  - readiness failed with `0` retrain positives
 
 Current operating rule:
-- repair is now a supported retrain ingredient, not just a standalone readiness exercise
-- keep explicit source and cluster caps when selecting repair parents and repair-derived strict rows
-- use repair to broaden coverage, not to stuff the strict dataset with near-duplicate parents
+- repair remains a supported tool, but not a sufficient p12/p24 rescue path as currently implemented
+- do not train on failed repair survivors that pass ESM but fail family scaffold validation
+- future repair should preserve family manifold constraints before optimizing ESM or local geometry
 
 ## 6. Train
 
@@ -163,6 +171,12 @@ Primary entrypoints:
 For strict experiment chains, the supported path is now config-driven:
 - [configs/experiments/strict/topoff1m_a_strict_core_v6.json](../configs/experiments/strict/topoff1m_a_strict_core_v6.json)
 - [configs/experiments/strict/topoff1m_a_strict_core_v7_repair_20260412.json](../configs/experiments/strict/topoff1m_a_strict_core_v7_repair_20260412.json)
+- [configs/experiments/strict/topoff1m_a_strict_core_v8_coverage_20260413.json](../configs/experiments/strict/topoff1m_a_strict_core_v8_coverage_20260413.json)
+- [configs/experiments/strict/topoff1m_a_strict_core_v9_p12p24_repair_20260421.json](../configs/experiments/strict/topoff1m_a_strict_core_v9_p12p24_repair_20260421.json)
+
+Operator rule:
+- `v9` strict config is a record of the attempted path, not a branch to train from the failed repair output
+- only build/train a new strict branch after the source strict pool passes readiness
 
 ## 7. Robustness
 
@@ -173,6 +187,8 @@ Purpose:
 Current strict-branch promotion rule:
 - a smoke pass now requires at least `2` seeds with hits and at least `2` prompts hit across seeds
 - isolated strict hits no longer justify automatic stage-B promotion
+- `p48` functional hits without family-faithful signal no longer justify optimism by themselves
+- `p12/p24` diagnostics should be run before spending on broader robustness when a branch is suspected of short-context collapse
 
 Primary entrypoints:
 - [scripts/run_robustness_two_phase.py](../scripts/run_robustness_two_phase.py)
@@ -194,3 +210,18 @@ Primary entrypoints:
 - [scripts/train_pairwise_reranker.py](../scripts/train_pairwise_reranker.py)
 - [scripts/build_topoff1m_a_stageb_lite_reranker_dataset.sh](../scripts/build_topoff1m_a_stageb_lite_reranker_dataset.sh)
 - [scripts/train_topoff1m_a_stageb_lite_reranker.sh](../scripts/train_topoff1m_a_stageb_lite_reranker.sh)
+
+## 9. Manifold Construction
+
+Purpose:
+- construct PETase/cutinase-family candidates from valid scaffolds instead of asking a generator to rediscover the whole joint constraint
+- preserve family length band, motif identity, active-site blueprint, catalytic spacing, and family-core screen as hard constraints
+- only optimize stability, novelty, and diversity after strict family validity is guaranteed
+
+Current scientific role:
+- this is the recommended hard-route pivot after the `v8` p12/p24 collapse and the failed `v9` local repair rescue
+- it is not yet a fully supported code workflow
+- the first implementation should be validator-first and local-compute-first
+
+Reference:
+- [manifold_construction.md](manifold_construction.md)

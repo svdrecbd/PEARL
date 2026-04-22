@@ -11,25 +11,21 @@ This repository explores PETase-family sequence design through remote generation
 - Supported workflows: [`docs/workflows.md`](docs/workflows.md)
 - Operator notes: [`docs/operations.md`](docs/operations.md)
 - Current scientific status: [`docs/science.md`](docs/science.md)
+- Proposed hard-route pivot: [`docs/manifold_construction.md`](docs/manifold_construction.md)
 - Experiment configs: [`configs/experiments/README.md`](configs/experiments/README.md)
 - Full experimental history: [`notes/LABNOTES.md`](notes/LABNOTES.md)
 - Historical campaign wrapper inventory: [`archive/2026q1_topoff1m_a/README.md`](archive/2026q1_topoff1m_a/README.md)
 
 ## Current State
 
-As of April 12, 2026:
+As of April 22, 2026:
 
 - merged `stage-b-lite` mined pool:
   - `1,597,184` raw candidates
   - `179` exact-unique functional hits
   - `54` exact-unique family-faithful hits
   - `197` lineage clusters at `0.85`
-- candidate-audit local-repair lane:
-  - diversity-capped scale-up succeeded:
-    - `96` parents -> `28,030` evaluated variants -> `1,071` survivors
-    - validation kept `231` strict shortlist rows and `128` strict-bridge consensus rows
-    - readiness passed with `443` deduped tier-2 positives, `280` tier-1 proxy positives, `228` clusters, `largest_cluster_share = 0.0293`, and `max_source_share = 0.0655`
-- latest completed strict branch:
+- best historical strict branch:
   - `strict-core-v7-repair`
   - stage-A trained cleanly on `160` pairs and passed the stricter `p48` smoke gate with `2 / 3` seeds and `3 / 48` prompts
   - `stage-b-lite` trained cleanly on `162` pairs
@@ -38,6 +34,30 @@ As of April 12, 2026:
     - `p24`: `[0, 2, 0]`
     - `p48`: `[0, 3, 1]`
     - the main miss was prompt coverage breadth, with only `4 / 48` prompts hit at `p48`
+- latest strict branch:
+  - `strict-core-v8-coverage`
+  - stage-A checkpoint:
+    - `tinker://0e007439-8486-58fd-8a5a-9769ced7e0b2:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v8-coverage-stagea-lr1e6-ep3`
+  - stage-B-lite checkpoint:
+    - `tinker://789989aa-dbe7-522b-a82a-1bccd9060a06:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v8-coverage-stageb-lite-lr5e7-ep1`
+  - stage-A `p48` smoke showed hits but did not imply durability
+  - full stage-B-lite robustness failed:
+    - `p12`: `[0, 0, 0]`
+    - `p24`: `[0, 0, 0]`
+    - `p48`: `[0, 3, 3]`
+    - all family-faithful counts were `0`
+  - stage-A diagnostic at `p12/p24` also failed:
+    - `p12`: `[0, 0, 0]`
+    - `p24`: `[0, 0, 0]`
+    - this means `stage-b-lite` was not the sole regression
+- candidate-audit repair lane:
+  - April 10/12 repair succeeded and made `v7` possible
+  - April 21/22 p12/p24 `v9` repair failed as a rescue path:
+    - `134` geometry-dominant near-misses
+    - `47,489` local variants evaluated
+    - `79` loose repaired survivors
+    - `0` strict shortlist, `0` strict bridge, `0` strict family, `0` strict consensus
+    - readiness failed with `0` retrain positives
 - local Gemma mining trial:
   - half-wave `525,568`-candidate ESM check came back `0` functional / `0` family-faithful
   - treat the current local Gemma path as failed unless the serving/prompting path is corrected first
@@ -45,10 +65,11 @@ As of April 12, 2026:
   - finalized-hit universe and widened finalized-report near-miss universe both came back with no usable anchor neighborhoods
   - current “no free lunch” read: there is no passive challenge-style local basin already sitting in the saved finalized corpus
 - current direction:
-  - optimize for reproducible cross-prompt coverage, not existence of isolated strict hits
-  - treat `strict-core-v7-repair` as the best current retrain baseline, not the final winner
-  - build a coverage-focused `v8` branch before buying another blind broad mining tranche
-  - keep the candidate-audit local-repair lane as a core ingredient in that next branch
+  - stop treating broad paid sampling and small SFT tweaks as the primary next move
+  - treat `strict-core-v7-repair` as the best historical baseline and a possible lucky narrow attractor
+  - treat `v8` and the `v9` repair rescue as evidence that the current loop does not reliably learn the strict PETase/cutinase manifold
+  - discuss or build a scaffold-first manifold-construction pipeline before spending on another large mining tranche
+  - keep a `50k-75k` p12/p24 targeted mining sweep as an optional diagnostic, not the default next move
   - keep the reranker lane reranker-first and diagnostic-only until it clearly beats scalar reward baselines on harder held-out prompt / bucket / cluster splits
 
 See [`docs/science.md`](docs/science.md) for the current research readout and primary artifact links.
@@ -65,6 +86,7 @@ The supported reusable workflows are:
 6. `train`
 7. `robustness`
 8. `reranker`
+9. `manifold-construction` (planned / proposed)
 
 The details and entrypoints for those workflows live in [`docs/workflows.md`](docs/workflows.md).
 
@@ -83,7 +105,11 @@ Pinned local/dev requirements are in [`requirements.txt`](requirements.txt):
 - `tinker==0.16.1`
 - `torch==2.10.0`
 - `transformers==5.2.0`
+- `tiktoken==0.12.0`
 - `numpy==2.4.2`
+- `safetensors==0.7.0`
+- `sentencepiece==0.2.1`
+- `rapidfuzz==3.14.5`
 
 Production CUDA environments used on Nebius are separate from the local/dev baseline.
 

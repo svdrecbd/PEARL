@@ -242,6 +242,8 @@ def env_for_detached(*, allow_missing_api_key: bool = False) -> dict[str, str]:
     if not api_key and not allow_missing_api_key:
         api_key = require_api_key()
     env = {"TINKER_PYTHON_BIN": python_bin()}
+    if os.environ.get("PEARL_DETACHED_INHERIT_TINKER_API_KEY") == "1":
+        return env
     if api_key:
         env["TINKER_API_KEY"] = api_key
     return env

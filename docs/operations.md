@@ -62,6 +62,8 @@ Use the supported workflow entrypoints from [docs/workflows.md](workflows.md).
 
 Do not treat versioned campaign wrappers as the default operational surface unless you are explicitly replaying historical work.
 
+As of April 22, 2026, do not launch another strict-core train branch from the failed `v9` repair output. The repair run completed, but readiness failed with `0` retrain positives. The current discussion path is scaffold-first manifold construction, documented in [manifold_construction.md](manifold_construction.md).
+
 ## Config-Driven Strict Experiments
 
 The supported strict experiment path is now:
@@ -83,6 +85,12 @@ bash scripts/launch_strict_experiment.sh \
   --config configs/experiments/strict/topoff1m_a_strict_core_v6.json \
   launch-chain
 ```
+
+Current branch caveat:
+- `strict-core-v7-repair` is the best historical baseline.
+- `strict-core-v8-coverage` trained and evaluated, but failed short-context robustness.
+- `strict-core-v9-p12p24-repair` was prepared as a possible branch but should not be trained from the failed repair pool.
+- Do not run `launch-chain` on `v9` unless a replacement strict pool passes readiness.
 
 Supported subcommands are:
 - `describe`
@@ -136,6 +144,8 @@ Notes:
 - the local-hosted path is stage1 / eval-only only
 - it reuses the existing coverage-aware prompt pack under `reports/raft_prompt_packs/...`
 - training and robustness stay on the existing Tinker-backed path
+- the current recommendation is not to launch a blind `1M` mining run by default
+- if paid mining is chosen, start with a `50k-75k` p12/p24 exact-hole sweep, then decide whether a `250k-300k` targeted tranche is justified
 
 The generic runners now share the same repo-root and detached-job helpers:
 - [scripts/strict_experiment.py](../scripts/strict_experiment.py)
@@ -194,6 +204,14 @@ bash scripts/launch_repair_experiment.sh \
   launch-pad --dry-run
 ```
 
+Failed p12/p24 rescue path:
+
+```bash
+bash scripts/launch_repair_experiment.sh \
+  --config configs/experiments/repair/topoff1m_a_v9_p12p24_repair_20260421.json \
+  describe --pretty
+```
+
 Supported subcommands are:
 - `describe`
 - `build-pool`
@@ -204,10 +222,26 @@ Supported subcommands are:
 - `launch-pad`
 
 Operator rule:
-- this is now the active gated local-repair branch
-- the pilot already succeeded; the next supported step is a bounded scale-up with concentration caps
+- repair is a supported workflow, but the April 21/22 p12/p24 rescue failed as a v9 data source
+- the pilot and April 12 scale-up succeeded; the p12/p24 rescue did not
 - use `cap-pool` when the config carries a `repair_pool.diversity_cap` block
-- do not spend a larger Tinker mining budget on follow-up unless that scale-up fails or collapses into a few parent families
+- do not use high-ESM repair survivors for training unless they also pass strict family validation and readiness
+- future repair work should enforce family-manifold constraints before optimizing ESM or geometry
+
+## Manifold Construction
+
+There is not yet a production runner for the manifold-construction route.
+
+Operational starting point:
+
+1. Build a scaffold bank from natural references, canonical purebreds, old strict hits, mined family-faithful reps, and April 12 strict repairs.
+2. Verify all unedited scaffolds round-trip through strict validation.
+3. Extract active-site blueprints and immutable masks.
+4. Run same-length edit search only inside allowed mutable positions.
+5. Reject any sequence that leaves the family length band, motif identity, active-site blueprint, catalytic gap limits, or family core screen.
+
+Reference:
+- [manifold_construction.md](manifold_construction.md)
 
 ## Historical Scripts
 

@@ -16,10 +16,127 @@ Supported operator docs now live under:
 - [docs/workflows.md](../docs/workflows.md)
 - [docs/operations.md](../docs/operations.md)
 - [docs/science.md](../docs/science.md)
+- [docs/manifold_construction.md](../docs/manifold_construction.md)
 
 This file remains the long-form experimental and engineering fossil record.
 
-## Latest Canonical Status (as of April 20, 2026)
+## Latest Canonical Status (as of April 22, 2026)
+
+- best historical retrain branch:
+  - `strict-core-v7-repair`
+  - stage-A checkpoint:
+    - `tinker://59c10b59-45ec-5ed4-92a9-7c06e4241d0b:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stagea-lr1e6-ep3`
+  - stage-B-lite checkpoint:
+    - `tinker://7bb7b832-45c0-5ac0-8cea-1c3bc3f1d7ea:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stageb-lite-lr5e7-ep1`
+  - stage-A `p48` smoke passed the stricter gate:
+    - hits by seed `[0, 2, 1]`
+    - prompt coverage `3 / 48`
+  - full stage-B-lite robustness still failed durability:
+    - `p12`: hits by seed `[0, 0, 0]`, prompt coverage `0 / 12`
+    - `p24`: hits by seed `[0, 2, 0]`, prompt coverage `2 / 24`
+    - `p48`: hits by seed `[0, 3, 1]`, prompt coverage `4 / 48`
+  - interpretation:
+    - `v7` remains the best empirical branch
+    - it may have found a narrow, fragile attractor rather than a robust learned PETase/cutinase manifold
+- latest completed strict branch:
+  - `strict-core-v8-coverage`
+  - config:
+    - [configs/experiments/strict/topoff1m_a_strict_core_v8_coverage_20260413.json](../configs/experiments/strict/topoff1m_a_strict_core_v8_coverage_20260413.json)
+  - stage-A checkpoint:
+    - `tinker://0e007439-8486-58fd-8a5a-9769ced7e0b2:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v8-coverage-stagea-lr1e6-ep3`
+  - stage-B-lite checkpoint:
+    - `tinker://789989aa-dbe7-522b-a82a-1bccd9060a06:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v8-coverage-stageb-lite-lr5e7-ep1`
+  - stage-A `p48` smoke result:
+    - seed `41`: `3` functional, `2` family-faithful
+    - seed `53`: `1` functional, `0` family-faithful
+    - seed `67`: `0` functional, `0` family-faithful
+    - smoke gate passed, but this was not enough to predict durability
+  - full stage-B-lite robustness:
+    - `p12`: functional hits by seed `[0, 0, 0]`, family-faithful `[0, 0, 0]`
+    - `p24`: functional hits by seed `[0, 0, 0]`, family-faithful `[0, 0, 0]`
+    - `p48`: functional hits by seed `[0, 3, 3]`, family-faithful `[0, 0, 0]`
+  - stage-A diagnostic after the failure:
+    - run name: `pearl-topoff1m-a-strict-core-v8-stagea-diagnostic-p12p24-t08-s41s53s67`
+    - checkpoint: `v8` stage-A checkpoint above
+    - `p12`: functional `[0, 0, 0]`, family-faithful `[0, 0, 0]`
+    - `p24`: functional `[0, 0, 0]`, family-faithful `[0, 0, 0]`
+  - interpretation:
+    - `stage-b-lite` was not the sole regression
+    - the `v8` stage-A policy itself failed the short-context `p12/p24` manifold test
+    - raw `p48` functional hits are not sufficient because the family-faithful signal collapsed
+- latest local repair rescue attempt:
+  - config:
+    - [configs/experiments/repair/topoff1m_a_v9_p12p24_repair_20260421.json](../configs/experiments/repair/topoff1m_a_v9_p12p24_repair_20260421.json)
+  - intended strict config if repair had passed:
+    - [configs/experiments/strict/topoff1m_a_strict_core_v9_p12p24_repair_20260421.json](../configs/experiments/strict/topoff1m_a_strict_core_v9_p12p24_repair_20260421.json)
+  - source audits:
+    - `v8` stage-A diagnostic `p12/p24`
+    - `v8` stage-B-lite robustness `p12/p24`
+  - repair pool:
+    - `12` source audits
+    - `134` geometry-dominant near-misses
+    - `0` tier-2 hits
+    - mean ESM score `31.6049`
+    - mean geometry score `0.5971`
+  - native repair:
+    - `134` hits processed
+    - `47,489` local variants evaluated
+    - `79` loose repair survivors
+    - max survivor ESM `99.08`
+    - mean survivor ESM `95.943`
+    - elapsed time `8,081.93` seconds on the L40S
+  - strict validation:
+    - `0` strict shortlist
+    - `0` strict bridge
+    - `0` strict family
+    - `0` strict consensus
+    - `79 / 79` rejected
+  - reject histogram:
+    - `esm_below_strict_floor`: `25`
+    - `fails_family_core_screen`: `79`
+    - `gap_error_above_strict_bridge_limit`: `61`
+    - `missing_family_serine_motif`: `79`
+    - `mutation_count_too_high`: `18`
+    - `outside_family_length_band`: `79`
+  - readiness:
+    - `ready_for_retrain: false`
+    - base positives: `0`
+    - survivor positives: `0`
+    - no `v9` dataset should be built from this repair output
+  - interpretation:
+    - local repair found stable, geometry-ish sequences
+    - those sequences were not strict PETase/cutinase-family candidates
+    - the failure mode is family-manifold drift, not GPU/runtime failure
+- current spend/cost read:
+  - user-observed Tinker spend through the `v8` eval path was about `$53.33`
+  - sampled eval candidates in that spend:
+    - smoke: `18,432`
+    - full robustness: `32,256`
+    - total: `50,688`
+  - observed blended cost:
+    - roughly `$1.05 / 1k` candidates
+    - roughly `$105 / 100k`
+    - roughly `$315 / 300k`
+    - roughly `$1,052 / 1M`
+  - the April 21/22 local repair rescue did not add Tinker sampling spend
+- current scientific read:
+  - the original broad mining/data engine worked as a discovery engine
+  - April 10/12 repair was real and made `v7` possible
+  - `v7` may still have been a lucky narrow attractor
+  - `v8` failed to broaden the attractor
+  - the `v9` p12/p24 repair rescue failed because stable repaired outputs left the strict family manifold
+  - the next serious phase should not be another small SFT tweak
+- current decision point:
+  - do not launch a blind `1M` candidate run as the default next step
+  - a `50k-75k` p12/p24 exact-hole sweep remains available as a cheap diagnostic
+  - a `250k-300k` targeted mining tranche is reasonable only if the team wants one more paid empirical check
+  - the technically cleaner hard route is scaffold-first manifold construction:
+    - start from valid family scaffolds
+    - lock length, motif, active-site blueprint, and family-core constraints
+    - permit only same-length edits that preserve the strict family manifold
+    - score stability and novelty only after family validity is guaranteed
+
+## Previous Canonical Status (superseded; as of April 20, 2026)
 
 - active mined-data engine:
   - merged `stage-b-lite` `1.6M` pool
@@ -109,7 +226,7 @@ This file remains the long-form experimental and engineering fossil record.
     - all `48` anchors classified `red`
     - shortlist `0`
     - no neighbors even at `0.85` whole-sequence identity in the widened pass
-- current phase:
+- then-current phase:
   - governing objective: reproducible cross-prompt coverage, not existence of isolated strict hits
   - freeze `strict-core-v7-repair` as the best current retrain baseline
   - treat the enlarged strict pool as validated mining output, not as a failed data engine
@@ -122,7 +239,7 @@ This file remains the long-form experimental and engineering fossil record.
   - candidate-audit local repair is validated as a real lane and remains part of the next strict mix
   - broad mining is now fallback only if coverage-targeted retrain still stalls
   - parallel branch: keep the reranker lane reranker-first and diagnostic until it clearly beats scalar reward baselines on harder held-out prompt / bucket / cluster splits
-- currently ruled-out paths:
+- then-ruled-out paths:
   - resumed PPO
   - another loose-heavy SFT mix
   - another tiny strict-core variant before buying more data
@@ -136,6 +253,198 @@ Supported engine state:
 - reusable engine logic now lives under [src/pearl](../src/pearl)
 - supported workflow identity now lives under [configs/experiments](../configs/experiments)
 - historical PETase wrapper families now live under [archive/2026q1_topoff1m_a/scripts](../archive/2026q1_topoff1m_a/scripts) with compatibility symlinks left behind in `scripts/`
+
+## April 21-22, 2026: `v8` robustness failure, failed p12/p24 repair rescue, and manifold-construction pivot
+
+Artifacts and configs:
+
+- [configs/experiments/strict/topoff1m_a_strict_core_v8_coverage_20260413.json](../configs/experiments/strict/topoff1m_a_strict_core_v8_coverage_20260413.json)
+- [configs/experiments/repair/topoff1m_a_v9_p12p24_repair_20260421.json](../configs/experiments/repair/topoff1m_a_v9_p12p24_repair_20260421.json)
+- [configs/experiments/strict/topoff1m_a_strict_core_v9_p12p24_repair_20260421.json](../configs/experiments/strict/topoff1m_a_strict_core_v9_p12p24_repair_20260421.json)
+- remote repair artifacts on the L40S box:
+  - `/home/svdr/work/tinker/reports/repair/topoff1m-a-v9-p12p24-repair-20260421/repair_pool_selected_raw_summary.json`
+  - `/home/svdr/work/tinker/reports/repair/topoff1m-a-v9-p12p24-repair-20260421/repair_summary.json`
+  - `/home/svdr/work/tinker/reports/repair/topoff1m-a-v9-p12p24-repair-20260421/repair_validation_summary.json`
+  - `/home/svdr/work/tinker/reports/repair/topoff1m-a-v9-p12p24-repair-20260421/repair_readiness.json`
+
+### `v8` final readout
+
+`strict-core-v8-coverage` was designed to test whether the `v7` repair-derived signal could be broadened with bucket-capped strict selection and more bridge-anchor diversity.
+
+The result was negative:
+
+- stage-A checkpoint:
+  - `tinker://0e007439-8486-58fd-8a5a-9769ced7e0b2:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v8-coverage-stagea-lr1e6-ep3`
+- stage-B-lite checkpoint:
+  - `tinker://789989aa-dbe7-522b-a82a-1bccd9060a06:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v8-coverage-stageb-lite-lr5e7-ep1`
+- stage-A `p48` smoke:
+  - seed `41`: `3` functional, `2` family-faithful
+  - seed `53`: `1` functional, `0` family-faithful
+  - seed `67`: `0` functional, `0` family-faithful
+  - smoke passed, but the signal was not durable
+- full stage-B-lite robustness:
+  - `p12`: functional `[0, 0, 0]`, family-faithful `[0, 0, 0]`
+  - `p24`: functional `[0, 0, 0]`, family-faithful `[0, 0, 0]`
+  - `p48`: functional `[0, 3, 3]`, family-faithful `[0, 0, 0]`
+
+This was worse than `v7` on the most important short-context suites. `v7` had at least shown `p24` signal `[0, 2, 0]` and `p48` signal `[0, 3, 1]`; `v8` lost `p24` entirely and lost all family-faithful robustness signal.
+
+### Stage-A diagnostic
+
+To separate `stage-b-lite` damage from stage-A damage, we ran:
+
+- run name:
+  - `pearl-topoff1m-a-strict-core-v8-stagea-diagnostic-p12p24-t08-s41s53s67`
+- checkpoint:
+  - `v8` stage-A checkpoint above
+- suite:
+  - `p12,p24`
+  - seeds `41,53,67`
+  - temperature `0.8`
+  - `128` candidates per prompt
+  - `second_stage_top_k = 8`
+
+Final stage-A diagnostic:
+
+- `p12`:
+  - seed `41`: `0` functional, `0` family-faithful, average reward `6.5425`
+  - seed `53`: `0` functional, `0` family-faithful, average reward `4.3792`
+  - seed `67`: `0` functional, `0` family-faithful, average reward `7.215`
+- `p24`:
+  - seed `41`: `0` functional, `0` family-faithful, average reward `5.5204`
+  - seed `53`: `0` functional, `0` family-faithful, average reward `5.5646`
+  - seed `67`: `0` functional, `0` family-faithful, average reward `6.4796`
+
+Interpretation:
+
+- `stage-b-lite` was not the sole failure
+- the `v8` stage-A generator was already dead at `p12/p24`
+- a simple “skip stage B” branch is not a v9 strategy
+
+### p12/p24 repair rescue
+
+After the diagnostic, we tried a local repair rescue aimed only at `p12/p24` surfaces.
+
+Config:
+
+- [configs/experiments/repair/topoff1m_a_v9_p12p24_repair_20260421.json](../configs/experiments/repair/topoff1m_a_v9_p12p24_repair_20260421.json)
+
+Inputs:
+
+- `v8` stage-A diagnostic `p12/p24` candidate audits
+- `v8` stage-B-lite robustness `p12/p24` candidate audits
+- selected and unselected geometry-dominant near-misses
+
+Important operator fix:
+
+- the first repair driver was stopped because `native_repair.selected_only` was still `true`
+- that contradicted the rescue plan, because the useful near-misses were in the unselected candidate surface
+- the corrected driver used `--include-unselected`
+
+Repair pool:
+
+- `12` source audits
+- `134` total rows
+- `0` tier-2 hits
+- `134` geometry-dominant near-misses
+- mean ESM score `31.6049`
+- mean geometry score `0.5971`
+
+Native repair:
+
+- `134` hits processed
+- `47,489` local variants evaluated
+- `79` loose repair survivors
+- max survivor ESM `99.08`
+- mean survivor ESM `95.943`
+- proposal device: CUDA
+- elapsed time: `8,081.93` seconds
+
+This looked superficially promising until strict validation.
+
+Strict validation:
+
+- input count: `79`
+- strict shortlist: `0`
+- strict bridge: `0`
+- strict family: `0`
+- strict consensus: `0`
+- review: `0`
+- reject: `79`
+
+Reject histogram:
+
+- `esm_below_strict_floor`: `25`
+- `fails_family_core_screen`: `79`
+- `gap_error_above_strict_bridge_limit`: `61`
+- `missing_family_serine_motif`: `79`
+- `mutation_count_too_high`: `18`
+- `outside_family_length_band`: `79`
+
+Readiness:
+
+- `ready_for_retrain: false`
+- base positive count: `0`
+- survivor positive count: `0`
+- all minimum-positive and cluster-count checks failed
+
+Conclusion:
+
+> The repair pass recovered stable geometry-ish sequences, but not strict PETase/cutinase-family sequences.
+
+This is not an infrastructure failure. The run finished, the GPU drained, and the validator worked. The failure is scientific: high ESM plus local geometry repair is not enough when the candidate has already drifted out of the family manifold.
+
+### Cost read
+
+Observed user-side Tinker spend through the `v8` eval path was about `$53.33`.
+
+Candidate count behind that spend:
+
+- stage-A smoke: `48 * 3 * 128 = 18,432`
+- full robustness: `(12 + 24 + 48) * 3 * 128 = 32,256`
+- total sampled eval candidates: `50,688`
+
+Observed blended candidate cost:
+
+- about `$1.05 / 1k` candidates
+- about `$105 / 100k`
+- about `$315 / 300k`
+- about `$1,052 / 1M`
+
+The p12/p24 repair rescue did not add Tinker candidate spend; it was local L40S compute.
+
+### Strategic update
+
+The old read after `v7` was:
+
+> Repair-derived strict data transfers; the remaining issue is coverage breadth.
+
+The updated read after `v8` plus the failed `v9` repair rescue is:
+
+> Repair-derived strict data can transfer, but the current Kimi sampling plus strict-SFT plus repair loop does not reliably learn or preserve the strict PETase/cutinase manifold.
+
+The chance that `v7` was partly a lucky narrow attractor is now material.
+
+Current options:
+
+1. Run a cheap diagnostic mining sweep:
+   - `50k-75k` exact p12/p24 hole sweep
+   - stop unless strict or near-strict density is nonzero
+2. Run a targeted p12/p24 mining tranche:
+   - `250k-300k` candidates
+   - expected cost around `$315` at observed rates
+   - kill if strict density and cluster breadth are absent
+3. Skip paid sampling for now and construct the manifold directly:
+   - build a scaffold bank from natural references and validated strict rows
+   - infer and lock active-site blueprints
+   - permit only same-length edits that preserve family membership, motif identity, length band, and catalytic spacing
+   - optimize ESM and novelty only after strict family validity is guaranteed
+
+Recommended next research direction:
+
+> Stop asking Kimi to discover the joint constraint. Build a scaffold-first manifold constructor and use paid mining only as a diagnostic or later distillation source.
+
+The draft operator plan for this hard route is documented in [docs/manifold_construction.md](../docs/manifold_construction.md).
 
 ## April 13-20, 2026: Coverage-focused `strict-core-v8` built and costed
 

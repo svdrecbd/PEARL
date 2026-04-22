@@ -264,13 +264,17 @@ def stage1_stockpile_complete(run_dir: Path) -> bool:
     metadata_path = run_dir / "metadata.json"
     candidate_audit_path = run_dir / "candidate_audit.json"
     report_path = run_dir / "report.json"
+    summary_path = run_dir / "summary.json"
     if not (metadata_path.exists() and candidate_audit_path.exists() and report_path.exists()):
         return False
     try:
         report = json.loads(report_path.read_text())
+        summary = json.loads(summary_path.read_text()) if summary_path.exists() else None
     except json.JSONDecodeError:
         return False
-    return report.get("summary") is not None
+    if report.get("summary") is not None:
+        return True
+    return bool(summary and summary.get("stage1_only") and report.get("skip_stage2_esm"))
 
 
 def launch_stage1_stockpile(

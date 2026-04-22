@@ -1,223 +1,186 @@
 # Science Status
 
-## Current State (April 12, 2026)
+## Current State (April 22, 2026)
 
-Mining works. Repair is real. Retrain durability improved materially on the repair-augmented branch, but full robustness still fails on prompt coverage. The newest evidence still says there is no passive “challenge-style” local-exploit lane already sitting in the saved finalized corpus.
+The project is at a strategy reset.
 
-Current canonical merged `stage-b-lite` mined pool:
+The `stage-b-lite` mined-data engine, strict validators, robustness harness, and local repair tooling all work operationally. The scientific issue is that the current Kimi sampling plus strict-SFT plus repair loop is not reliably producing or preserving a robust PETase/cutinase-family manifold at the short-context `p12/p24` gates.
+
+Current canonical mined pool:
+
 - `1,597,184` raw candidates across the first `1.0M` tranche plus the `596,992` add-on tranche
 - `179` exact-unique functional hits
 - `54` exact-unique family-faithful hits
 - `197` lineage clusters at `0.85`
 
 Core references:
+
 - [reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/bundle_summary.json](../reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/bundle_summary.json)
 - [reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/retrain_readiness_selected_only.json](../reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/retrain_readiness_selected_only.json)
 
-Current candidate-audit local-repair lane:
-- pilot:
-  - `48` parents
-  - `13,033` evaluated variants
-  - `577` survivors
-  - `192` strict shortlist rows
-  - `122` strict-bridge consensus rows
-  - readiness passed
-- diversity-capped scale-up:
-  - `96` parents
-  - `28,030` evaluated variants
-  - `1,071` survivors
-  - `231` strict shortlist rows
-  - `128` strict-bridge consensus rows
-  - `18` unique parent runs represented in the strict shortlist
-  - `ready_for_retrain: true`
-  - `443` deduped tier-2 positives
-  - `280` deduped tier-1 proxy positives
-  - `228` clusters
-  - `largest_cluster_share: 0.0293`
-  - `max_source_share: 0.0655`
+## Best Historical Branch: `strict-core-v7-repair`
 
-References:
-- [reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_summary.json](../reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_summary.json)
-- [reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_validation_summary.json](../reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_validation_summary.json)
-- [reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_readiness.json](../reports/repair/topoff1m-a-local-repair-pilot-20260410/repair_readiness.json)
-- [reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_summary.json](../reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_summary.json)
-- [reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_validation_summary.json](../reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_validation_summary.json)
-- [reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_readiness.json](../reports/repair/topoff1m-a-local-repair-scaleup-20260412/repair_readiness.json)
+`v7` remains the best empirical branch.
 
-Latest completed strict branch:
-- `strict-core-v7-repair`
-- stage-A dataset:
-  - `160` pairs
-  - `24` mined new strict uniques repeated `4x`
-  - `18` repair strict uniques repeated `2x`
-  - `10` old strict uniques repeated `2x`
-  - `4` canonical purebreds repeated `2x`
 - stage-A checkpoint:
   - `tinker://59c10b59-45ec-5ed4-92a9-7c06e4241d0b:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stagea-lr1e6-ep3`
-- stage-A `p48` smoke passed the stricter promotion gate:
-  - hits by seed `[0, 2, 1]`
-  - prompt coverage `3 / 48`
-  - pass thresholds were `2` seeds and `2` prompts
-- stage-B-lite dataset:
-  - `162` pairs
-  - `2` bridge anchors added on top of the stage-A core
 - stage-B-lite checkpoint:
   - `tinker://7bb7b832-45c0-5ac0-8cea-1c3bc3f1d7ea:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stageb-lite-lr5e7-ep1`
-- full stage-B-lite robustness failed durability:
+- stage-A `p48` smoke passed:
+  - hits by seed `[0, 2, 1]`
+  - prompt coverage `3 / 48`
+- full stage-B-lite robustness failed:
   - `p12`: `[0, 0, 0]`, coverage `0 / 12`
   - `p24`: `[0, 2, 0]`, coverage `2 / 24`
   - `p48`: `[0, 3, 1]`, coverage `4 / 48`
 
+Interpretation:
+
+> `v7` proved that repair-derived strict data can transfer, but it did not prove the model learned a broad, durable manifold.
+
 References:
+
 - [reports/raft/topoff1m-a-strict-core-v7-repair-20260412/strict_core_v7_stage_a_summary.json](../reports/raft/topoff1m-a-strict-core-v7-repair-20260412/strict_core_v7_stage_a_summary.json)
 - [reports/raft/topoff1m-a-strict-core-v7-repair-20260412/strict_core_v7_stage_b_lite_summary.json](../reports/raft/topoff1m-a-strict-core-v7-repair-20260412/strict_core_v7_stage_b_lite_summary.json)
-- [reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stagea-lr1e6-ep3/summary.json](../reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stagea-lr1e6-ep3/summary.json)
-- [reports/robustness/pearl-topoff1m-a-strict-core-v7-repair-stagea-smoke-p48-t08-s41s53s67/smoke_gate_decision.json](../reports/robustness/pearl-topoff1m-a-strict-core-v7-repair-stagea-smoke-p48-t08-s41s53s67/smoke_gate_decision.json)
-- [reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stageb-lite-lr5e7-ep1/summary.json](../reports/warmstart/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stageb-lite-lr5e7-ep1/summary.json)
 - [reports/robustness/pearl-topoff1m-a-strict-core-v7-repair-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json](../reports/robustness/pearl-topoff1m-a-strict-core-v7-repair-stageb-lite-robustness-2phase-p12p24p48-t08-s41s53s67/robustness_summary.json)
 
-Local Gemma stage1 trial:
-- frozen half-wave:
-  - `2053` prompts
-  - `525,568` raw candidates
-- finalized result:
-  - `0` functional bridge steps
-  - `0` family-faithful bridge steps
-  - mean average reward `0.0`
+## Latest Negative Branch: `strict-core-v8-coverage`
 
-Reference:
-- [reports/raft/pearl-topoff1m-a-stageb-lite-gemma-local-raft-stage1-p3907-c256-20260403b-localgemma12/finalization_summary.json](../reports/raft/pearl-topoff1m-a-stageb-lite-gemma-local-raft-stage1-p3907-c256-20260403b-localgemma12/finalization_summary.json)
+`v8` was built to broaden `v7` with bucket-capped strict selection and more bridge-anchor diversity. It failed the intended test.
+
+- stage-A checkpoint:
+  - `tinker://0e007439-8486-58fd-8a5a-9769ced7e0b2:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v8-coverage-stagea-lr1e6-ep3`
+- stage-B-lite checkpoint:
+  - `tinker://789989aa-dbe7-522b-a82a-1bccd9060a06:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v8-coverage-stageb-lite-lr5e7-ep1`
+- stage-A `p48` smoke:
+  - seed `41`: `3` functional, `2` family-faithful
+  - seed `53`: `1` functional, `0` family-faithful
+  - seed `67`: `0` functional, `0` family-faithful
+- full stage-B-lite robustness:
+  - `p12`: functional `[0, 0, 0]`, family-faithful `[0, 0, 0]`
+  - `p24`: functional `[0, 0, 0]`, family-faithful `[0, 0, 0]`
+  - `p48`: functional `[0, 3, 3]`, family-faithful `[0, 0, 0]`
+- stage-A p12/p24 diagnostic:
+  - `p12`: functional `[0, 0, 0]`, family-faithful `[0, 0, 0]`
+  - `p24`: functional `[0, 0, 0]`, family-faithful `[0, 0, 0]`
 
 Interpretation:
-- this was not a silent finalization failure
-- the saved reports showed many motif and ESM-gate passes but essentially no catalytic geometry and zero retained bridge hits
-- the most likely explanation is a bad local-search regime for this setup, especially `google/gemma-4-31b-it` served through the current raw completions path
-- do not resume the Gemma path unchanged
 
-Historical local-exploit audit:
-- hit-only universe:
-  - `249` exact-unique finalized hit steps
-  - `66` exact-unique family-faithful
-  - `248` clusters at `0.85`
-  - largest cluster size `2`
-- widened report universe:
-  - `10,306` finalized report records
-  - `9,090` exact-unique report records
-  - `2,747` screened exact-unique near-miss candidates
-- anchor-neighborhood result:
-  - `24` strict anchors checked
-  - `24` bridge-only anchors checked
-  - all `48` anchors classified `red`
-  - shortlist count `0`
-  - in the widened pass, selected anchors had no neighbors even at `0.85` whole-sequence identity
+> Stage B was not the only problem. The `v8` stage-A generator itself failed the short-context manifold test.
 
-References:
-- [reports/analysis/petase_historical_local_exploit/universe/universe_summary.json](../reports/analysis/petase_historical_local_exploit/universe/universe_summary.json)
-- [reports/analysis/petase_historical_local_exploit_wide/universe/report_universe_summary.json](../reports/analysis/petase_historical_local_exploit_wide/universe/report_universe_summary.json)
-- [reports/analysis/petase_historical_local_exploit_wide/neighborhoods/anchor_neighborhood_summary.json](../reports/analysis/petase_historical_local_exploit_wide/neighborhoods/anchor_neighborhood_summary.json)
-- [reports/analysis/petase_historical_local_exploit_wide/shortlist/local_exploit_shortlist_summary.json](../reports/analysis/petase_historical_local_exploit_wide/shortlist/local_exploit_shortlist_summary.json)
+## Failed `v9` p12/p24 Local Repair Rescue
+
+The `v9` rescue tried to repair `v8` p12/p24 near-misses locally before training a new branch.
+
+Config:
+
+- [configs/experiments/repair/topoff1m_a_v9_p12p24_repair_20260421.json](../configs/experiments/repair/topoff1m_a_v9_p12p24_repair_20260421.json)
+- [configs/experiments/strict/topoff1m_a_strict_core_v9_p12p24_repair_20260421.json](../configs/experiments/strict/topoff1m_a_strict_core_v9_p12p24_repair_20260421.json)
+
+Repair pool:
+
+- `12` source audits
+- `134` geometry-dominant near-misses
+- `0` tier-2 hits
+- mean ESM score `31.6049`
+- mean geometry score `0.5971`
+
+Native repair:
+
+- `134` hits processed
+- `47,489` local variants evaluated
+- `79` loose survivors
+- max survivor ESM `99.08`
+- mean survivor ESM `95.943`
+
+Strict validation:
+
+- `0` strict shortlist
+- `0` strict bridge
+- `0` strict family
+- `0` strict consensus
+- `79 / 79` rejected
+
+Dominant rejection reasons:
+
+- `79` failed family core screen
+- `79` missing family serine motif
+- `79` outside family length band
+- `61` above strict catalytic gap limit
+
+Readiness:
+
+- `ready_for_retrain: false`
+- base positives: `0`
+- survivor positives: `0`
+
+Interpretation:
+
+> The repair pass found stable geometry-ish sequences, but they were not strict PETase/cutinase-family sequences. The failure is family-manifold drift, not runtime failure.
 
 ## Current Read
 
-- mining/data engine: working
-- eval/finalization engine: working
-- constrained strict selection: implemented
-- stricter smoke gate: implemented and now cleared by the repair-augmented `v7` branch
-- reranker lane: exists as a diagnostic track
-- retrain recipe family: improved materially with repair-derived strict data, but still not converting into enough cross-prompt coverage at `p12/p24/p48`
-- local-repair lane: validated through both the candidate-audit scale-up and the repair-augmented retrain branch
-- passive local-exploit lane in the finalized corpus: still absent
+- mining/data engine: operational
+- eval/finalization engine: operational
+- local repair tooling: operational
+- strict validator: operational and useful
+- `v7`: best historical branch, but narrow and possibly partly lucky
+- `v8`: failed to broaden `v7`; regressed at `p12/p24`
+- `v9` repair rescue: failed to create trainable strict data from p12/p24 near-misses
+- passive local-exploit lane in finalized corpus: absent
+- current SFT/mining loop: not a reliable route to the strict manifold without a strategy change
 
 Current governing objective:
 
-> We are no longer optimizing for existence of strict hits; we are optimizing for reproducible prompt coverage breadth across fixed held-out suites.
+> Construct candidates inside the PETase/cutinase family manifold before optimizing stability or training behavior.
 
 Current negative result:
 
-> There is no free lunch in the saved finalized corpus. If a PETase local-repair lane exists, we will have to build it from lower-level candidate surfaces or deliberate perturbation generation, not harvest it from finalized representatives.
+> High ESM plus local geometry repair is not enough. The repair path must preserve family scaffold, motif identity, length band, and catalytic blueprint as hard constraints.
 
 Current positive result:
 
-> Repair-derived strict data transfers. It produced the first branch that cleared the stricter smoke gate and promoted cleanly to `stage-b-lite`. The remaining issue is coverage breadth, not whether the signal is real.
+> The tooling is good enough to tell us when we are fooling ourselves. The next failure to avoid is paying for more samples that only satisfy fragments of the proxy.
 
-## External Lesson
+## Recommended Direction
 
-An external constrained optimization exercise outside this repo changed the working hypothesis in one important way:
+Primary next phase:
 
-- a basin that looks exhausted can still have large remaining headroom if the search operator changes
-- same-length substitution-only local repair, role-aware mutation maps, and closure scans can outperform another round of broad exploration
+- build a scaffold-first manifold-construction pipeline
+- start from natural references, canonical purebreds, old strict hits, mined family-faithful reps, and April 12 strict repairs
+- infer and lock active-site blueprints
+- permit only same-length edits that preserve:
+  - family length band
+  - canonical `GxSxG` motif identity
+  - single active-site motif
+  - catalytic `S/D/H` spacing
+  - family core screen
+- optimize ESM/stability and novelty only after strict family validity is guaranteed
 
-What transferred back to PEARL:
-- a “dead” branch can mean dead search policy, not dead basin
-- local repair remains worth thinking about
-- but the PETase corpus audit now says we do not already have those local basins precomputed in the saved finalized surfaces
+Reference:
 
-So the external lesson changed the question from:
-- “should we try local exploit?”
+- [manifold_construction.md](manifold_construction.md)
 
-to:
-- “where do we source local neighborhoods from, if not the finalized corpus?”
+Optional paid diagnostic:
 
-## Current Research Direction
+- `50k-75k` exact p12/p24 hole sweep
+- only scale to `250k-300k` targeted mining if strict or near-strict density appears
+- avoid a blind `1M` run unless smaller diagnostics justify it
 
-Primary branch:
-- freeze `strict-core-v7-repair` as the current best retrain baseline
-- analyze the `p12/p24/p48` prompt gaps before paying for another full durability sweep
-- keep strict promotion tied to the stricter `p48` smoke rule, but do not confuse smoke success with full durability
+Current ruled-out default paths:
 
-Repair branch:
-- keep sourcing from candidate-audit / near-miss material, not finalized representatives
-- keep same-length substitution-only repair as the core operator
-- preserve the scale-up caps that kept the lane healthy:
-  - low largest-cluster share
-  - low max-source share
-  - broad parent-run representation
-- use repair-derived strict rows to cover underrepresented prompt and bucket regimes, not just to add more near-duplicate positives
-
-Mining branch:
-- keep the coverage-aware adversarial-slice million plan as the fallback mainline if a coverage-targeted `v8` still collapses
-- do not discard the mining plan; defer it behind the next coverage decision gate
-
-Gemma branch:
-- do not continue the current local Gemma path unchanged
-- if revisited, it needs a corrected serving/prompting path and a small calibration tranche before another million-candidate run
-
-Parallel branch:
-- keep building the reranker lane from mined outputs
-- treat it as a reranker-first measurement track, not a generator-training default
-- only consider generator-side preference training if the reranker clearly beats scalar reward baselines on the harder held-out prompt / bucket / cluster splits
-
-## Next Action Plan
-
-1. Run prompt-gap analysis on the completed `v7` robustness outputs.
-- Identify which prompt buckets collapse at `p12` and `p24`.
-- Separate “signal exists at `p48`” from “coverage is actually broad enough to survive smaller prompt budgets.”
-
-2. Build one coverage-focused `v8` strict dataset.
-- Keep the repair-derived strict signal.
-- Add more examples aimed at under-covered prompt / bucket / cluster regimes.
-- Do not train directly on the held-out robustness prompts if evaluation integrity needs to stay clean.
-
-3. Re-gate cheaper before another full nine-run durability sweep.
-- Run stage A.
-- Re-run the supported stricter `p48` smoke gate.
-- If that improves, then pay for the full `p12/p24/p48` robustness suite again.
-
-4. Only fall back to another broad mining tranche if `v8` repeats the same failure mode.
-- Failure conditions:
-  - `p12` remains dead
-  - `p24` remains carried by a single seed
-  - `p48` still lacks prompt breadth
-  - repair additions stop broadening support across prompt regimes
+- another tiny strict-core SFT tweak
+- training on the failed `v9` repair outputs
+- treating `p48` functional hits without family-faithful signal as success
+- blind `1M` mining as the next default move
+- continuing the local Gemma path unchanged
 
 ## Repo / Engine State
 
-- supported workflow control flow is now config-driven
-- shared reusable logic now lives under [src/pearl](../src/pearl)
-- historical PETase campaign wrappers now live under [archive/2026q1_topoff1m_a/scripts](../archive/2026q1_topoff1m_a/scripts) with compatibility symlinks left behind in `scripts/`
-- the historical-analysis workflow now supports both:
-  - finalized hit-universe scans
-  - widened finalized-report near-miss scans
+- supported workflow control flow is config-driven
+- shared reusable logic lives under [src/pearl](../src/pearl)
+- historical PETase campaign wrappers live under [archive/2026q1_topoff1m_a/scripts](../archive/2026q1_topoff1m_a/scripts) with compatibility symlinks left behind in `scripts/`
 
 For full chronology and engineering incidents, use:
+
 - [notes/LABNOTES.md](../notes/LABNOTES.md)

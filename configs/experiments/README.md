@@ -10,6 +10,7 @@ The intent is:
 Current supported config-driven strict experiment examples:
 - [strict/topoff1m_a_strict_core_v7_repair_20260412.json](strict/topoff1m_a_strict_core_v7_repair_20260412.json)
 - [strict/topoff1m_a_strict_core_v8_coverage_20260413.json](strict/topoff1m_a_strict_core_v8_coverage_20260413.json)
+- [strict/topoff1m_a_strict_core_v9_p12p24_repair_20260421.json](strict/topoff1m_a_strict_core_v9_p12p24_repair_20260421.json)
 
 Current generic launcher:
 - [scripts/strict_experiment.py](../../scripts/strict_experiment.py)
@@ -53,6 +54,7 @@ Analysis config:
 Repair config:
 - [repair/topoff1m_a_local_repair_pilot_20260410.json](repair/topoff1m_a_local_repair_pilot_20260410.json)
 - [repair/topoff1m_a_local_repair_scaleup_20260412.json](repair/topoff1m_a_local_repair_scaleup_20260412.json)
+- [repair/topoff1m_a_v9_p12p24_repair_20260421.json](repair/topoff1m_a_v9_p12p24_repair_20260421.json)
 
 Current repair read:
 - the April 10 pilot validated the repair lane as a real branch:
@@ -62,7 +64,14 @@ Current repair read:
   - `192` strict shortlist rows
   - readiness passed
 - the April 12 scale-up then passed with `96` parents, `1,071` survivors, and `231` strict shortlist rows
-- the next strict branch now shifts from “can repair transfer at all?” to “can we broaden prompt coverage without buying another million-candidate tranche yet?”
+- the April 21/22 p12/p24 repair rescue failed as a v9 data source:
+  - `134` geometry-dominant near-misses
+  - `47,489` local variants evaluated
+  - `79` loose repair survivors
+  - `0` strict shortlist rows
+  - readiness failed with `0` retrain positives
+- the next strict branch should not be trained from the failed `v9` repair pool
+- the current strategic question is whether to run a small paid p12/p24 mining diagnostic or pivot directly to scaffold-first manifold construction
 
 The historical-analysis path is intended to answer a narrower question than the retrain bundle builders:
 - inventory the full finalized historical mining universe

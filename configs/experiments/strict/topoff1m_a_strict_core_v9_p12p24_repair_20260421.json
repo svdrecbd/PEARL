@@ -1,0 +1,67 @@
+{
+  "name": "topoff1m-a-strict-core-v9-p12p24-repair-20260421",
+  "model": "moonshotai/Kimi-K2.5",
+  "records_path": "data/petase_family_expanded/petase_records.jsonl",
+  "base_init_state_path": "tinker://7bb7b832-45c0-5ac0-8cea-1c3bc3f1d7ea:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stageb-lite-lr5e7-ep1",
+  "build": {
+    "old_strict_path": "reports/nebius_sequence_eval/topoff1m-a-postprocess-20260327/family_faithful_bridges.jsonl",
+    "new_strict_path": "reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/lineage_family_representatives.jsonl",
+    "repair_strict_path": "reports/repair/topoff1m-a-v9-p12p24-repair-20260421/repair_validated_strict.jsonl",
+    "purebred_path": "data/petase_family_expanded/kimi_micro_sft_top9_unicorn_only.jsonl",
+    "anchor_path": "reports/raft/topoff1m-a-stageb-lite-1p6m-postprocess-20260329/lineage_bridge_only_representatives.jsonl",
+    "stage_a_output_path": "reports/raft/topoff1m-a-strict-core-v9-p12p24-repair-20260421/strict_core_v9_stage_a.jsonl",
+    "stage_a_summary_path": "reports/raft/topoff1m-a-strict-core-v9-p12p24-repair-20260421/strict_core_v9_stage_a_summary.json",
+    "stage_b_output_path": "reports/raft/topoff1m-a-strict-core-v9-p12p24-repair-20260421/strict_core_v9_stage_b_lite.jsonl",
+    "stage_b_summary_path": "reports/raft/topoff1m-a-strict-core-v9-p12p24-repair-20260421/strict_core_v9_stage_b_lite_summary.json",
+    "selected_new_output_path": "reports/raft/topoff1m-a-strict-core-v9-p12p24-repair-20260421/strict_core_v9_selected_new_family_faithful.jsonl",
+    "selected_repair_output_path": "reports/raft/topoff1m-a-strict-core-v9-p12p24-repair-20260421/strict_core_v9_selected_repair_family_faithful.jsonl",
+    "selected_anchor_output_path": "reports/raft/topoff1m-a-strict-core-v9-p12p24-repair-20260421/strict_core_v9_selected_bridge_anchors.jsonl",
+    "old_repeat": 2,
+    "new_repeat": 3,
+    "repair_repeat": 4,
+    "pure_repeat": 2,
+    "anchor_count": 4,
+    "new_top_k": 28,
+    "repair_top_k": 32,
+    "strict_selection_mode": "bucket_cap",
+    "strict_max_per_prompt_bucket": 7,
+    "repair_selection_mode": "bucket_cap",
+    "repair_identity_threshold": 0.85,
+    "repair_max_per_prompt_bucket": 10,
+    "repair_max_per_source_run": 3,
+    "repair_max_per_cluster": 2,
+    "anchor_selection_mode": "prompt_cluster"
+  },
+  "stages": {
+    "stage-a": {
+      "run_name": "pearl-micro-sft-topoff1m-a-strict-core-v9-p12p24-repair-stagea-lr1e6-ep3",
+      "dataset_path": "reports/raft/topoff1m-a-strict-core-v9-p12p24-repair-20260421/strict_core_v9_stage_a.jsonl",
+      "learning_rate": "1e-6",
+      "epochs": 3,
+      "batch_size": 8,
+      "seed": 149
+    },
+    "stage-b-lite": {
+      "run_name": "pearl-micro-sft-topoff1m-a-strict-core-v9-p12p24-repair-stageb-lite-lr3e7-ep1",
+      "dataset_path": "reports/raft/topoff1m-a-strict-core-v9-p12p24-repair-20260421/strict_core_v9_stage_b_lite.jsonl",
+      "init_from_stage": "stage-a",
+      "learning_rate": "3e-7",
+      "epochs": 1,
+      "batch_size": 8,
+      "seed": 151
+    }
+  },
+  "robustness": {
+    "run_name": "pearl-topoff1m-a-strict-core-v9-p12p24-repair-stagea-gate-p12p24-t08-s41s53s67",
+    "init_from_stage": "stage-a",
+    "variant": "motif_prior_soft_v2",
+    "suite_sizes": [12, 24],
+    "temperatures": [0.8],
+    "seeds": [41, 53, 67],
+    "candidate_sample_count": 128,
+    "second_stage_top_k": 8,
+    "esm2_device": "cuda",
+    "stockpile_jobs": 4,
+    "stockpile_retries": 2
+  }
+}
