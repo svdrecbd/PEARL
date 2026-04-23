@@ -328,11 +328,27 @@ Next supported operational path:
 - current lane inventory: `43` geometry-valid/ESM-failing rows, `41` ESM-valid/geometry-failing rows, `2,946` single-motif background negatives, `6,186` motif-failure negatives, `55` selected length-offtarget failures
 - repair-frontier builder: [../scripts/build_manifold_v12_repair_frontier.py](../scripts/build_manifold_v12_repair_frontier.py)
 - repair-frontier scorer: [../scripts/score_manifold_v12_repair_frontier.py](../scripts/score_manifold_v12_repair_frontier.py)
+- repair selector: [../scripts/select_manifold_v12_repair_candidates.py](../scripts/select_manifold_v12_repair_candidates.py)
 - repair-frontier summary: `reports/analysis/manifold_v12_repair_frontier_20260423/repair_frontier_summary.json`
 - first ESM-positive smoke: `24 / 24` ESM-valid/geometry-repair candidates passed ESM, but all from one source row
+- one-per-source breadth diagnostic: `40 / 41` repaired ESM-lane representatives passed ESM, showing breadth in family space
+- breadth-selected offline set: `39` strict/core/ESM candidates across `38` sources and `29` lengths
+- stage-A dataset: `reports/raft/topoff1m-a-manifold-curriculum-v12-20260423/manifold_v12_stage_a.jsonl`
+- experiment config: `configs/experiments/strict/topoff1m_a_manifold_curriculum_v12_20260423.json`
 - require nonzero strict-conjunction density in offline replay before any paid Tinker gate
-- additionally require source/prompt breadth before any paid Tinker gate; the current one-source smoke is not enough
+- additionally require source breadth and length-retargeted prompt obedience before any paid Tinker gate
 - keep any future paid proof to a tiny p24-only gate until the offline constructor separates positives from v9/v1.1 negatives
+- v1.2 paid p24 result: `3 / 3` seeds with one post-ESM hit each, but only `3 / 24` prompts covered
+- v1.2 gate audit: `reports/analysis/manifold_v12_gate_audit_20260423/audit.json`
+- v1.3 builder: `scripts/build_manifold_v13_curriculum.py`
+- v1.3 config: `configs/experiments/strict/topoff1m_a_manifold_curriculum_v13_20260423.json`
+- v1.3 stage-A dataset: `reports/raft/topoff1m-a-manifold-curriculum-v13-20260423/manifold_v13_stage_a.jsonl`
+- v1.3 composition: `39` breadth anchors, `8` support scaffolds, `9` gate-hit replays, `8` purebred anchors
+- v1.3 paid p24 result: tier-2 hits by seed `[0, 0, 1]`, prompt coverage `1 / 24`, family-faithful hits `0`
+- v1.3 robustness summary: `reports/robustness/pearl-topoff1m-a-manifold-v13-stagea-gate-p24-t08-s41s53s67-c128/robustness_summary.json`
+- only recovered tier-2 event: seed `67`, prompt step `11`, bridge-only
+- do not launch a v1.4-style replay from this branch shape
+- the next approved work should be offline manifold redesign using v1.2 positives and v1.3 negatives, not stage-B, p48, or mining
 
 Reference:
 - [manifold_construction.md](manifold_construction.md)

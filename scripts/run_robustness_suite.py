@@ -795,8 +795,10 @@ def build_durability_gate(
     baseline_summary: dict[str, Any] | None,
     baseline_summary_path: Path | None,
 ) -> dict[str, Any]:
+    baseline_locked = baseline_summary is not None
     baseline_group_index: dict[tuple[int, float], dict[str, Any]] = {}
-    if baseline_summary:
+    if baseline_locked:
+        assert baseline_summary is not None
         for baseline_group in baseline_summary.get("groups", []):
             key = (
                 int(baseline_group.get("prompt_count", -1)),
@@ -815,6 +817,7 @@ def build_durability_gate(
                     temperature=temperature,
                     group=current_group,
                     baseline_group=baseline_group,
+                    baseline_locked=baseline_locked,
                     durability_config=durability_config,
                 )
             )
@@ -834,7 +837,7 @@ def build_durability_gate(
     overall_pass = all(bool(entry["passed"]) for entry in per_prompt_size.values()) if per_prompt_size else False
     return {
         "passed": overall_pass,
-        "baseline_locked": baseline_summary is not None,
+        "baseline_locked": baseline_locked,
         "baseline_summary_path": str(baseline_summary_path) if baseline_summary_path else None,
         "baseline_suite_name": baseline_summary.get("suite_name") if baseline_summary else None,
         "per_prompt_size": per_prompt_size,
@@ -855,6 +858,7 @@ def evaluate_durability_group(
     temperature: float,
     group: dict[str, Any] | None,
     baseline_group: dict[str, Any] | None,
+    baseline_locked: bool,
     durability_config: dict[str, Any],
 ) -> dict[str, Any]:
     required_seed_count = int(durability_config["required_seed_count"])
@@ -894,6 +898,68 @@ def evaluate_durability_group(
     baseline_stability_rate = float((baseline_group.get("stability_dominant_rate") or {}).get("mean") or 0.0) if baseline_group else None
     baseline_geometry_rate = float((baseline_group.get("geometry_dominant_rate") or {}).get("mean") or 0.0) if baseline_group else None
 
+    baseline_condition: dict[str, Any]
+    if not baseline_locked:
+        baseline_condition = {
+            "id": "basin_pressure_vs_baseline",
+            "applicable": False,
+            "passed": True,
+            "reason": "no_baseline_summary_supplied",
+            "actual": {
+                "bridge_hits_per_prompt_mean": round(current_bridge_rate, 6),
+                "stability_dominant_rate_mean": round(current_stability_rate, 6),
+                "geometry_dominant_rate_mean": round(current_geometry_rate, 6),
+            },
+            "target": {
+                "baseline_bridge_hits_per_prompt_mean": None,
+                "baseline_stability_dominant_rate_mean": None,
+                "baseline_geometry_dominant_rate_mean": None,
+            },
+        }
+    elif baseline_group is None:
+        baseline_condition = {
+            "id": "basin_pressure_vs_baseline",
+            "applicable": True,
+            "passed": False,
+            "reason": "baseline_group_missing",
+            "actual": {
+                "bridge_hits_per_prompt_mean": round(current_bridge_rate, 6),
+                "stability_dominant_rate_mean": round(current_stability_rate, 6),
+                "geometry_dominant_rate_mean": round(current_geometry_rate, 6),
+            },
+            "target": {
+                "baseline_bridge_hits_per_prompt_mean": None,
+                "baseline_stability_dominant_rate_mean": None,
+                "baseline_geometry_dominant_rate_mean": None,
+            },
+        }
+    else:
+        baseline_condition = {
+            "id": "basin_pressure_vs_baseline",
+            "applicable": True,
+            "passed": (
+                current_bridge_rate > float(baseline_bridge_rate)
+                and current_stability_rate < float(baseline_stability_rate)
+                and current_geometry_rate < float(baseline_geometry_rate)
+            ),
+            "actual": {
+                "bridge_hits_per_prompt_mean": round(current_bridge_rate, 6),
+                "stability_dominant_rate_mean": round(current_stability_rate, 6),
+                "geometry_dominant_rate_mean": round(current_geometry_rate, 6),
+            },
+            "target": {
+                "baseline_bridge_hits_per_prompt_mean": round(float(baseline_bridge_rate), 6)
+                if baseline_bridge_rate is not None
+                else None,
+                "baseline_stability_dominant_rate_mean": round(float(baseline_stability_rate), 6)
+                if baseline_stability_rate is not None
+                else None,
+                "baseline_geometry_dominant_rate_mean": round(float(baseline_geometry_rate), 6)
+                if baseline_geometry_rate is not None
+                else None,
+            },
+        }
+
     conditions = [
         {
             "id": "seed_support",
@@ -929,31 +995,7 @@ def evaluate_durability_group(
                 "max_spread": spread_limit,
             },
         },
-        {
-            "id": "basin_pressure_vs_baseline",
-            "passed": (
-                baseline_group is not None
-                and current_bridge_rate > float(baseline_bridge_rate)
-                and current_stability_rate < float(baseline_stability_rate)
-                and current_geometry_rate < float(baseline_geometry_rate)
-            ),
-            "actual": {
-                "bridge_hits_per_prompt_mean": round(current_bridge_rate, 6),
-                "stability_dominant_rate_mean": round(current_stability_rate, 6),
-                "geometry_dominant_rate_mean": round(current_geometry_rate, 6),
-            },
-            "target": {
-                "baseline_bridge_hits_per_prompt_mean": round(float(baseline_bridge_rate), 6)
-                if baseline_bridge_rate is not None
-                else None,
-                "baseline_stability_dominant_rate_mean": round(float(baseline_stability_rate), 6)
-                if baseline_stability_rate is not None
-                else None,
-                "baseline_geometry_dominant_rate_mean": round(float(baseline_geometry_rate), 6)
-                if baseline_geometry_rate is not None
-                else None,
-            },
-        },
+        baseline_condition,
     ]
     passed = all(bool(condition["passed"]) for condition in conditions)
     return {

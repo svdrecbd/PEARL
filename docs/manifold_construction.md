@@ -350,8 +350,10 @@ Initial v1.2 repair-frontier tooling:
 
 - frontier builder: `scripts/build_manifold_v12_repair_frontier.py`
 - ESM scorer: `scripts/score_manifold_v12_repair_frontier.py`
+- breadth selector: `scripts/select_manifold_v12_repair_candidates.py`
 - frontier summary: `reports/analysis/manifold_v12_repair_frontier_20260423/repair_frontier_summary.json`
 - ESM-valid lane score summary: `reports/analysis/manifold_v12_repair_frontier_20260423/esm_lane_score_summary.json`
+- ESM one-per-source summary: `reports/analysis/manifold_v12_repair_frontier_20260423/esm_lane_one_per_source_summary.json`
 - ready smoke candidates: `reports/analysis/manifold_v12_repair_frontier_20260423/v12_ready_candidates_esm_lane_smoke.jsonl`
 
 Initial repair-frontier result:
@@ -368,12 +370,48 @@ ESM smoke result:
 - ESM-valid lane score range: min `94.93`, mean `95.9562`, max `96.82`
 - all `24` ready smoke candidates came from one source row: seed `53`, step `12`, length `274`, prompt-length delta `-6`
 
+ESM-valid lane breadth diagnostic:
+
+- one repaired representative per ESM-valid/geometry-failing source: `41` scored
+- ESM `>=85`: `40 / 41`
+- ESM `>=95`: `35 / 41`
+- strict ready under original prompt-length gate: `1 / 41`
+- score range: min `83.27`, mean `97.5215`, max `99.99`
+
 Interpretation:
 
 - The geometry lane is not rescued by small motif/D/H edits; it remains low ESM.
 - The ESM lane can be repaired into single-motif plus geometry plus ESM candidates without collapsing ESM.
-- The current positive is too narrow for a paid gate because all ready smoke candidates share one source scaffold.
-- v1.2 should now broaden ESM-valid geometry repair across more prompt-length-obedient sources before any Tinker spend.
+- The remaining bottleneck is prompt/length conditioning. Most repaired candidates are strict/core/ESM-positive but not faithful to the original sampled prompt length.
+- v1.2 should use length-retargeted training prompts before any paid gate, not replay the failed original prompt lengths unchanged.
+
+v1.2 breadth-selected curriculum:
+
+- selected candidates: `reports/manifold/topoff1m-a-manifold-v12-20260423/v12_selected_repair_retargeted.jsonl`
+- selection summary: `reports/manifold/topoff1m-a-manifold-v12-20260423/v12_selected_repair_retargeted_summary.json`
+- stage-A dataset: `reports/raft/topoff1m-a-manifold-curriculum-v12-20260423/manifold_v12_stage_a.jsonl`
+- stage-A summary: `reports/raft/topoff1m-a-manifold-curriculum-v12-20260423/manifold_v12_stage_a_summary.json`
+- experiment config: `configs/experiments/strict/topoff1m_a_manifold_curriculum_v12_20260423.json`
+
+Breadth-selected result:
+
+- selected strict/core/ESM candidates: `39`
+- unique sources: `38`
+- unique exact lengths: `29`
+- length bins: `9`
+- motif split: `24` `GYSQG`, `15` `GYSLG`
+- ESM score range: min `87.72`, mean `98.0928`, max `99.99`
+- prompt retargeted rows: `37 / 39`
+- max source share: `0.051282`
+
+Stage-A dataset result:
+
+- dataset rows: `47`
+- selected repair rows: `39`
+- purebred anchors: `8`
+- unique sequences: `43`
+- prompt source: `47 / 47` nearest train prompts
+- max prompt-length delta after retargeting: `0`
 
 Required changes:
 
@@ -381,13 +419,69 @@ Required changes:
 - use v1.1 stability-only and geometry-only candidates as explicit negative contrast
 - split repair into two lanes: raise ESM for geometry-valid rows, and repair geometry for ESM-valid rows
 - require the full single-motif plus geometry plus ESM conjunction before treating a row as a bridge candidate
-- reject prompt-conditioned outputs with large length deltas before they can enter a curriculum
+- retarget prompts to the repaired sequence lengths before curriculum inclusion; do not train these rows against the failed original length requests
 
 v1.2 stop/go rule:
 
 - stop if offline replay still produces zero single-motif plus geometry plus ESM candidates
 - stop if positives are not cleanly separated from v9/v1.1 negatives
-- only consider a tiny paid p24 gate after the offline audit shows nonzero strict-conjunction density and length obedience
+- only consider a tiny paid p24 gate after the offline audit shows strict-conjunction density, source breadth, and length-retargeted prompt obedience
+
+v1.2 paid p24 outcome:
+
+- robustness summary: `reports/robustness/pearl-topoff1m-a-manifold-v12-stagea-gate-p24-t08-s41s53s67-c128/robustness_summary.json`
+- gate audit: `reports/analysis/manifold_v12_gate_audit_20260423/audit.json`
+- audit report: `reports/analysis/manifold_v12_gate_audit_20260423/audit.md`
+- recovered post-ESM functional hits: `3`
+- family-faithful recovered hits: `2`
+- hit prompts: steps `2`, `7`, `14` with requested lengths `241`, `215`, `236`
+- explicit smoke gate: pass under `min_seeds_with_hit=2`, `min_prompts_with_hit=2`
+- durability gate: fail because prompt coverage stayed at `3 / 24` and the branch is still too narrow
+
+Interpretation:
+
+- v1.2 did recover real hits; it is not another pure geometry/stability split failure.
+- The next move is still offline breadth work because there was no hidden extra tier-2 reservoir outside those three recovered prompts.
+
+v1.3 offline curriculum:
+
+- gate audit script: `scripts/audit_manifold_v12_gate.py`
+- curriculum builder: `scripts/build_manifold_v13_curriculum.py`
+- experiment config: `configs/experiments/strict/topoff1m_a_manifold_curriculum_v13_20260423.json`
+- stage-A dataset: `reports/raft/topoff1m-a-manifold-curriculum-v13-20260423/manifold_v13_stage_a.jsonl`
+- stage-A summary: `reports/raft/topoff1m-a-manifold-curriculum-v13-20260423/manifold_v13_stage_a_summary.json`
+
+v1.3 build result:
+
+- dataset rows: `64`
+- composition: `39` v1.2 breadth anchors, `8` support prompt scaffolds, `9` gate-hit replays, `8` purebred anchors
+- support prompt lengths: `214`, `219`, `220`, `224`, `226`, `227`, `228`, `264`
+- hit replay rows: `6` family-faithful plus `3` bridge-only
+
+v1.3 paid p24 outcome:
+
+- stage-A summary: `reports/warmstart/pearl-micro-sft-topoff1m-a-manifold-v13-stagea-lr5e7-ep2/summary.json`
+- robustness summary: `reports/robustness/pearl-topoff1m-a-manifold-v13-stagea-gate-p24-t08-s41s53s67-c128/robustness_summary.json`
+- completed runs: `3 / 3`
+- tier-2 hits by seed: `[0, 0, 1]`
+- prompt coverage across seeds: `1 / 24`
+- family-faithful hits: `0`
+- only recovered tier-2 event: seed `67`, prompt step `11`, bridge-only
+- stable-only counts by seed: `[9, 11, 11]`
+- geometry-only counts by seed: `[5, 6, 3]`
+
+Interpretation:
+
+- v1.3 did finish cleanly, so this is a scientific miss, not an ops failure.
+- Widening support prompts raised trainable and stability-dominant counts, but it did not preserve the v1.2 family-faithful basin.
+- The branch regressed from v1.2's `3 / 24` prompt coverage and `2` family-faithful hits to one bridge-only hit with zero family-faithful transfer.
+- Another near-identical `stage-A -> p24` replay is not justified.
+
+Next rule:
+
+- stop paid manifold v1.x replay branches until offline redesign shows nonzero family-faithful density again
+- do not launch stage-B, p48, or mining from this branch line
+- use v1.2 family-faithful hits as positive anchors and v1.3 stable-only / geometry-only rows as explicit negatives in the next offline constructor pass
 
 ### Phase 3: Deeper Local Optimization
 
@@ -433,12 +527,12 @@ If the `300k` targeted tranche fails, that should end the current sampling strat
 
 ## Current Recommendation
 
-Do not launch another paid run from manifold curriculum v1 or v1.1. v1 failed p24 transfer and v1.1 completed a cleaner p24-only test with zero tier-2 hits.
+Do not launch another paid run from manifold curriculum v1, v1.1, or a v1.3-shaped replay. v1.2 recovered a narrow basin; v1.3 tried to widen it and collapsed to one bridge-only hit with zero family-faithful transfer.
 
 Immediate next step:
 
-- build the v1.2 offline taxonomy/constructor loop
-- use the v1.1 postmortem as the kill gate for any future paid branch
-- do not train again until offline replay demonstrates nonzero strict-conjunction density
+- build a manifold v2 offline constructor/objective branch
+- freeze the v1.2 family-faithful hits as positives and treat the v1.3 stable-only / geometry-only finalists as hard negatives
+- tighten inclusion around family-faithful transfer, catalytic blueprint preservation, and prompt/length obedience before another paid gate
 
-Only after that should the team consider either a tiny p24-only proof gate or a small targeted mining diagnostic.
+Only after offline replay again shows nonzero family-faithful density should the team consider another tiny p24-only proof. If that offline redesign stalls, the only reasonable paid alternative is a small targeted mining diagnostic, not another broad replay.

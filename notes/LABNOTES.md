@@ -3420,3 +3420,140 @@ Interpretation:
 - The ESM lane is alive: geometry repair can preserve high ESM and produce the strict conjunction offline.
 - The positive is currently too narrow for Tinker spend because source breadth is `1`.
 - Next offline task is breadth: find or construct more ESM-valid, prompt-length-obedient sources before any paid gate.
+
+### v1.2 breadth selector and retargeted stage-A build
+
+New script:
+
+- breadth selector: [/Users/svdr/tinker/scripts/select_manifold_v12_repair_candidates.py](/Users/svdr/tinker/scripts/select_manifold_v12_repair_candidates.py)
+
+New artifacts:
+
+- one-per-source ESM summary: [/Users/svdr/tinker/reports/analysis/manifold_v12_repair_frontier_20260423/esm_lane_one_per_source_summary.json](/Users/svdr/tinker/reports/analysis/manifold_v12_repair_frontier_20260423/esm_lane_one_per_source_summary.json)
+- selected repair set: [/Users/svdr/tinker/reports/manifold/topoff1m-a-manifold-v12-20260423/v12_selected_repair_retargeted.jsonl](/Users/svdr/tinker/reports/manifold/topoff1m-a-manifold-v12-20260423/v12_selected_repair_retargeted.jsonl)
+- selected summary: [/Users/svdr/tinker/reports/manifold/topoff1m-a-manifold-v12-20260423/v12_selected_repair_retargeted_summary.json](/Users/svdr/tinker/reports/manifold/topoff1m-a-manifold-v12-20260423/v12_selected_repair_retargeted_summary.json)
+- stage-A dataset: [/Users/svdr/tinker/reports/raft/topoff1m-a-manifold-curriculum-v12-20260423/manifold_v12_stage_a.jsonl](/Users/svdr/tinker/reports/raft/topoff1m-a-manifold-curriculum-v12-20260423/manifold_v12_stage_a.jsonl)
+- stage-A summary: [/Users/svdr/tinker/reports/raft/topoff1m-a-manifold-curriculum-v12-20260423/manifold_v12_stage_a_summary.json](/Users/svdr/tinker/reports/raft/topoff1m-a-manifold-curriculum-v12-20260423/manifold_v12_stage_a_summary.json)
+- experiment config: [/Users/svdr/tinker/configs/experiments/strict/topoff1m_a_manifold_curriculum_v12_20260423.json](/Users/svdr/tinker/configs/experiments/strict/topoff1m_a_manifold_curriculum_v12_20260423.json)
+
+Breadth diagnostic result:
+
+- repaired one-per-source ESM lane: `41` scored
+- ESM `>=85`: `40 / 41`
+- ESM `>=95`: `35 / 41`
+- original prompt-length-valid ready rows: `1 / 41`
+- score range: min `83.27`, mean `97.5215`, max `99.99`
+
+Selector result:
+
+- raw scored rows considered: `65`
+- eligible strict/core/ESM rows after dedupe and delta cap: `63`
+- selected rows: `39`
+- unique sources: `38`
+- unique exact lengths: `29`
+- unique length bins: `9`
+- motif split: `24` `GYSQG`, `15` `GYSLG`
+- ESM score range: min `87.72`, mean `98.0928`, max `99.99`
+- max source share: `0.051282`
+- original prompt-length-ok rows: `2 / 39`
+- retargeted prompt rows: `37 / 39`
+
+Stage-A dataset build:
+
+- selected repair rows: `39`
+- purebred anchor rows: `8`
+- dataset rows: `47`
+- unique sequences: `43`
+- prompt source assignment: `47 / 47` nearest train prompts
+- resulting max prompt-length delta: `0`
+
+Interpretation:
+
+- The offline manifold constructor has now turned the one-source v1.2 smoke into a breadth-positive selected set.
+- The blocker was not ESM or strict-family viability. It was prompt/length conditioning.
+- The resulting v1.2 branch is not "replay the failed prompts again." It is "distill repaired strict/core/ESM manifold examples with prompts aligned to their repaired lengths."
+- This is offline-ready for a small paid stage-A plus p24-only proof if explicitly approved and if the base checkpoint is available under the funded account.
+- No paid training, robustness, or mining was launched during this step.
+
+### v1.2 paid p24 audit and v1.3 offline curriculum
+
+New scripts:
+
+- gate audit: [/Users/svdr/tinker/scripts/audit_manifold_v12_gate.py](/Users/svdr/tinker/scripts/audit_manifold_v12_gate.py)
+- v1.3 builder: [/Users/svdr/tinker/scripts/build_manifold_v13_curriculum.py](/Users/svdr/tinker/scripts/build_manifold_v13_curriculum.py)
+
+New artifacts:
+
+- v1.2 gate audit JSON: [/Users/svdr/tinker/reports/analysis/manifold_v12_gate_audit_20260423/audit.json](/Users/svdr/tinker/reports/analysis/manifold_v12_gate_audit_20260423/audit.json)
+- v1.2 gate audit report: [/Users/svdr/tinker/reports/analysis/manifold_v12_gate_audit_20260423/audit.md](/Users/svdr/tinker/reports/analysis/manifold_v12_gate_audit_20260423/audit.md)
+- v1.3 stage-A dataset: [/Users/svdr/tinker/reports/raft/topoff1m-a-manifold-curriculum-v13-20260423/manifold_v13_stage_a.jsonl](/Users/svdr/tinker/reports/raft/topoff1m-a-manifold-curriculum-v13-20260423/manifold_v13_stage_a.jsonl)
+- v1.3 stage-A summary: [/Users/svdr/tinker/reports/raft/topoff1m-a-manifold-curriculum-v13-20260423/manifold_v13_stage_a_summary.json](/Users/svdr/tinker/reports/raft/topoff1m-a-manifold-curriculum-v13-20260423/manifold_v13_stage_a_summary.json)
+- v1.3 config: [/Users/svdr/tinker/configs/experiments/strict/topoff1m_a_manifold_curriculum_v13_20260423.json](/Users/svdr/tinker/configs/experiments/strict/topoff1m_a_manifold_curriculum_v13_20260423.json)
+
+v1.2 paid p24 result:
+
+- recovered functional hits: `3`
+- recovered family-faithful hits: `2`
+- recovered hit prompt steps: `2`, `7`, `14`
+- recovered hit prompt lengths: `241`, `215`, `236`
+- explicit smoke gate result: pass under `min_seeds_with_hit=2`, `min_prompts_with_hit=2`
+- durability gate result: fail because prompt coverage stayed at `3 / 24`
+- raw prompt-tier2 coverage also stayed at `3`, so there was no hidden prompt reservoir beyond the recovered hit prompts
+
+Interpretation:
+
+- v1.2 did not fail the way `v1.1` failed. It produced real post-ESM bridge signal in all three seeds.
+- The remaining bottleneck is basin width: the branch is still too narrow to satisfy the durability gate.
+- That means the next branch should replay the exact recovered hits and widen nearby prompt support, not escalate to stage-B, p48, or mining.
+
+v1.3 offline build:
+
+- dataset rows: `64`
+- composition: `39` v1.2 breadth anchors, `8` support scaffolds, `9` gate-hit replays, `8` purebred anchors
+- unique sequences: `54`
+- support prompt lengths: `214`, `219`, `220`, `224`, `226`, `227`, `228`, `264`
+- hit replay rows: `6` family-faithful plus `3` bridge-only
+- max sequence repeat: `3`
+
+Branch intent:
+
+- keep the broad v1.2 manifold signal
+- explicitly replay the three recovered p24 successes
+- widen prompt coverage around the recovered hit basin with exact-length scaffold anchors
+- if approved later, keep the next spend capped at `stage-A -> p24` only
+
+### v1.3 paid p24 outcome
+
+Artifacts:
+
+- stage-A summary: [/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-manifold-v13-stagea-lr5e7-ep2/summary.json](/Users/svdr/tinker/reports/warmstart/pearl-micro-sft-topoff1m-a-manifold-v13-stagea-lr5e7-ep2/summary.json)
+- robustness summary: [/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-manifold-v13-stagea-gate-p24-t08-s41s53s67-c128/robustness_summary.json](/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-manifold-v13-stagea-gate-p24-t08-s41s53s67-c128/robustness_summary.json)
+- seed `41` summary: [/Users/svdr/tinker/reports/ablations/pearl-topoff1m-a-manifold-v13-stagea-gate-p24-t08-s41s53s67-c128-p24-t0p8-s41/summary.json](/Users/svdr/tinker/reports/ablations/pearl-topoff1m-a-manifold-v13-stagea-gate-p24-t08-s41s53s67-c128-p24-t0p8-s41/summary.json)
+- seed `53` summary: [/Users/svdr/tinker/reports/ablations/pearl-topoff1m-a-manifold-v13-stagea-gate-p24-t08-s41s53s67-c128-p24-t0p8-s53/summary.json](/Users/svdr/tinker/reports/ablations/pearl-topoff1m-a-manifold-v13-stagea-gate-p24-t08-s41s53s67-c128-p24-t0p8-s53/summary.json)
+- seed `67` summary: [/Users/svdr/tinker/reports/ablations/pearl-topoff1m-a-manifold-v13-stagea-gate-p24-t08-s41s53s67-c128-p24-t0p8-s67/summary.json](/Users/svdr/tinker/reports/ablations/pearl-topoff1m-a-manifold-v13-stagea-gate-p24-t08-s41s53s67-c128-p24-t0p8-s67/summary.json)
+
+Operational notes:
+
+- local `.env` was pointed at a billing-blocked Tinker org, so the launch had to be retried under a funded key already available in-thread
+- stage-A completed cleanly and produced checkpoint `tinker://4358dbe3-5c47-5fe0-8a91-6665ab2fa822:train:0/weights/pearl-micro-sft-topoff1m-a-manifold-v13-stagea-lr5e7-ep2`
+- p24 finalize was run with `ESM2` on `mps` to avoid the earlier local `cuda` finalize crash
+- all robustness processes were gone at completion
+
+Gate result:
+
+- completed runs: `3 / 3`
+- durability gate: fail
+- tier-2 hits by seed: `[0, 0, 1]`
+- prompt coverage across seeds: `1 / 24`
+- family-faithful hits: `0`
+- only recovered tier-2 event: seed `67`, prompt step `11`, bridge-only
+- seed `41`: `9` trainable, `9` stable-only, `5` geometry-only, `0` tier-2
+- seed `53`: `11` trainable, `11` stable-only, `6` geometry-only, `0` tier-2
+- seed `67`: `12` trainable, `11` stable-only, `3` geometry-only, `1` tier-2, `0` family-faithful
+
+Interpretation:
+
+- v1.3 was not an ops failure. The branch finished and the summary was written.
+- The support-widening curriculum raised trainable and stability-dominant counts, but that increase did not translate into family-faithful bridge recovery.
+- Relative to v1.2, this was a regression in the metric that matters: v1.2 had `3` post-ESM hits and `2` family-faithful hits across `3 / 24` prompts, while v1.3 ended with one bridge-only hit and zero family-faithful transfer.
+- The next move should not be another small variation of the same stage-A replay. The next branch needs an offline constructor/objective redesign that explicitly learns from v1.2 positives and v1.3 negatives.

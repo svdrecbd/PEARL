@@ -164,7 +164,32 @@ The first v1.2 offline repair-frontier pass produced a narrow positive:
 
 Interpretation:
 
-> v1.2 has shown that geometry can be repaired into high-ESM candidates for at least one ESM-valid source scaffold. It has not yet shown breadth. All `24` ready smoke candidates came from one source row, so the branch is not ready for paid training or robustness.
+> v1.2 has shown that geometry can be repaired into high-ESM candidates for at least one ESM-valid source scaffold. The first ready smoke was too narrow because all `24` prompt-length-valid candidates came from one source row.
+
+The follow-up one-per-source diagnostic changed the bottleneck:
+
+- `41` ESM-valid/geometry-failing source representatives scored after repair
+- `40 / 41` passed ESM `>=85`
+- `35 / 41` passed ESM `>=95`
+- only `1 / 41` remained ready under the original prompt-length gate
+
+Interpretation:
+
+> The ESM-valid lane has real source breadth after geometry repair. The failure is prompt/length conditioning, not family-space viability.
+
+The v1.2 breadth selector and length-retargeted curriculum are now built:
+
+- selected strict/core/ESM repair candidates: `39`
+- unique sources: `38`
+- unique exact lengths: `29`
+- ESM score range: min `87.72`, mean `98.0928`, max `99.99`
+- prompt-retargeted rows: `37 / 39`
+- stage-A dataset: `47` rows, including `39` selected repairs and `8` purebred anchors
+- max prompt-length delta after retargeting: `0`
+
+Interpretation:
+
+> v1.2 is now offline-ready for a small paid p24-only proof if approved, but it is not a replay of the original failed prompts. The scientific bet is length-retargeted manifold distillation from repaired strict/core/ESM examples.
 
 ## Current Read
 
@@ -176,9 +201,10 @@ Interpretation:
 - `v8`: failed to broaden `v7`; regressed at `p12/p24`
 - `v9` repair rescue: failed to create trainable strict data from p12/p24 near-misses
 - manifold `v1.1`: completed p24-only gate but produced `0` tier-2 hits and `0` raw strict-conjunction candidates
-- manifold `v1.2` offline: first nonzero strict-conjunction repair signal, but currently one-source narrow
+- manifold `v1.2`: recovered real but narrow post-ESM signal, with `3` tier-2 hits and `2` family-faithful hits across `3 / 24` prompts
+- manifold `v1.3`: widened support prompts but regressed to `1` bridge-only tier-2 hit, `0` family-faithful hits, and `1 / 24` prompt coverage
 - passive local-exploit lane in finalized corpus: absent
-- current SFT/mining loop: not a reliable route to the strict manifold without a strategy change
+- current SFT/mining loop and current manifold stage-A replay recipe are not reliable routes to the strict manifold without a strategy change
 
 Current governing objective:
 
@@ -186,11 +212,11 @@ Current governing objective:
 
 Current negative result:
 
-> High ESM plus local geometry repair is not enough, and v1.1 showed that stability and geometry proxies remain disjoint under the current generator. The next branch must preserve family scaffold, motif identity, length band, catalytic blueprint, and ESM/stability as a conjunction before paid training.
+> Length-retargeting was necessary, but it was not sufficient. v1.3 showed that widening nearby prompt support can increase trainability and stability while still losing family-faithful bridge transfer. The next branch must optimize for family-faithful manifold retention, not just stability, geometry, or trainability.
 
 Current positive result:
 
-> The tooling is good enough to tell us when we are fooling ourselves. Phase 1 of the manifold constructor is now online, and the next failure to avoid is paying for more samples that only satisfy fragments of the proxy.
+> The tooling is good enough to separate bridge-only, stability-only, and family-faithful outcomes. That makes another blind replay hard to justify and gives the next offline constructor branch a clean positive/negative panel to learn from.
 
 ## Manifold Phase 1: Validator-First Constructor
 
@@ -331,6 +357,33 @@ Current ruled-out default paths:
 - treating `p48` functional hits without family-faithful signal as success
 - blind `1M` mining as the next default move
 - continuing the local Gemma path unchanged
+
+## v1.2 / v1.3 Update
+
+The paid `v1.2` p24 proof changed the diagnosis:
+
+- recovered functional hits: `3`, one in each seed
+- family-faithful hits: `2`
+- recovered hit prompt lengths: `241`, `215`, `236`
+- prompt coverage across seeds: `3 / 24`
+
+Interpretation:
+
+> v1.2 did reach the strict family manifold often enough to show the pivot was real. The remaining problem is basin width, not total absence of hits.
+
+That result points directly to the `v1.3` offline branch:
+
+- keep the `39` breadth-positive `v1.2` anchors
+- add `9` exact replays of the recovered gate hits
+- add `8` scaffold-backed support prompts around the recovered hit lengths
+- keep `8` purebred anchors
+
+Reference artifacts:
+
+- [reports/analysis/manifold_v12_gate_audit_20260423/audit.md](../reports/analysis/manifold_v12_gate_audit_20260423/audit.md)
+- [reports/raft/topoff1m-a-manifold-curriculum-v13-20260423/manifold_v13_stage_a.jsonl](../reports/raft/topoff1m-a-manifold-curriculum-v13-20260423/manifold_v13_stage_a.jsonl)
+- [reports/raft/topoff1m-a-manifold-curriculum-v13-20260423/manifold_v13_stage_a_summary.json](../reports/raft/topoff1m-a-manifold-curriculum-v13-20260423/manifold_v13_stage_a_summary.json)
+- [configs/experiments/strict/topoff1m_a_manifold_curriculum_v13_20260423.json](../configs/experiments/strict/topoff1m_a_manifold_curriculum_v13_20260423.json)
 
 ## Repo / Engine State
 

@@ -141,6 +141,7 @@ class AuditManifoldV11GateTests(unittest.TestCase):
             self.assertEqual(audit["raw_population"]["conjunction_counts"]["motif1_and_geometry_and_esm"], 0)
             self.assertEqual(audit["selected_population"]["mode_counts"]["geometry_only"], 1)
             self.assertEqual(audit["selected_population"]["mode_counts"]["stability_only"], 1)
+            self.assertEqual(len(audit["prompt_records"][0]["seed_records"]), 1)
             self.assertIn("Recommended v1.2 Direction", output_md.read_text(encoding="utf-8"))
 
 

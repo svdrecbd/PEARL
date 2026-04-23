@@ -382,6 +382,16 @@ def prompt_records(
         deltas = [int(row["selected_length_delta"]) for row in rows if row.get("selected_length_delta") is not None]
         selected_candidates = [row["selected_candidate"] for row in rows]
         all_candidates = [row["candidate"] for row in all_rows]
+        seed_records = [
+            {
+                "seed": int(row["seed"]),
+                "run_name": str(row["run_name"]),
+                "selected_length": row.get("selected_length"),
+                "selected_length_delta": row.get("selected_length_delta"),
+                "selected_candidate": row["selected_candidate"],
+            }
+            for row in sorted(rows, key=lambda row: int(row["seed"]))
+        ]
         prompt_count, step, prompt = key
         output.append(
             {
@@ -390,6 +400,7 @@ def prompt_records(
                 "prompt": prompt,
                 "requested_length": rows[0].get("requested_length"),
                 "seeds": [int(row["seed"]) for row in rows],
+                "seed_records": seed_records,
                 "selected_mode_counts": dict(sorted(modes.items())),
                 "all_candidate_mode_counts": dict(sorted(all_modes.items())),
                 "selected_length_deltas": deltas,
