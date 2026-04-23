@@ -792,15 +792,21 @@ def resolve_eval_sampling_target(
     emit_timing_event(phase="resolve_eval_sampling_target", status="start")
     expected_sampler_path = INIT_STATE_PATH.replace("/weights/", "/sampler_weights/", 1)
     rest_client = service_client.create_rest_client()
-    checkpoints = rest_client.list_checkpoints(parsed_path.training_run_id).result().checkpoints
-    matching_sampler_checkpoint = next(
-        (
-            checkpoint
-            for checkpoint in checkpoints
-            if checkpoint.checkpoint_type == "sampler" and checkpoint.tinker_path == expected_sampler_path
-        ),
-        None,
-    )
+    try:
+        checkpoints = rest_client.list_checkpoints(parsed_path.training_run_id).result().checkpoints
+    except Exception:
+        # Public cross-account checkpoints can be loaded by exact path without
+        # granting permission to list the owning training run.
+        matching_sampler_checkpoint = None
+    else:
+        matching_sampler_checkpoint = next(
+            (
+                checkpoint
+                for checkpoint in checkpoints
+                if checkpoint.checkpoint_type == "sampler" and checkpoint.tinker_path == expected_sampler_path
+            ),
+            None,
+        )
     if matching_sampler_checkpoint is None:
         created_sampler_path = create_matching_sampler_checkpoint(
             service_client=service_client,
@@ -864,7 +870,12 @@ def sampler_checkpoint_exists(
     if parsed_path.checkpoint_type != "sampler":
         return False
     rest_client = service_client.create_rest_client()
-    checkpoints = rest_client.list_checkpoints(parsed_path.training_run_id).result().checkpoints
+    try:
+        checkpoints = rest_client.list_checkpoints(parsed_path.training_run_id).result().checkpoints
+    except Exception:
+        # The checkpoint map may point at a private sampler checkpoint from a
+        # different account; treat inaccessible mappings as stale.
+        return False
     return any(
         checkpoint.checkpoint_type == "sampler" and checkpoint.tinker_path == sampler_checkpoint_path
         for checkpoint in checkpoints

@@ -17,6 +17,7 @@ SUPPORTED_DOC_PATHS = [
     ROOT / "docs" / "workflows.md",
     ROOT / "docs" / "operations.md",
     ROOT / "docs" / "science.md",
+    ROOT / "docs" / "manifold_construction.md",
     ROOT / "configs" / "experiments" / "README.md",
 ]
 
@@ -26,6 +27,10 @@ SUPPORTED_CODE_PATHS = [
     ROOT / "scripts" / "mining_experiment.py",
     ROOT / "scripts" / "analysis_experiment.py",
     ROOT / "scripts" / "repair_experiment.py",
+    ROOT / "scripts" / "manifold_construction_experiment.py",
+    ROOT / "scripts" / "audit_manifold_v1_gate.py",
+    ROOT / "scripts" / "build_manifold_curriculum.py",
+    ROOT / "scripts" / "build_manifold_v11_curriculum.py",
     ROOT / "scripts" / "run_sft_warmstart.py",
     ROOT / "scripts" / "run_sequence_shard_eval.py",
     ROOT / "scripts" / "build_finalized_hit_lineage_bundle.py",

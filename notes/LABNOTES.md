@@ -125,16 +125,132 @@ This file remains the long-form experimental and engineering fossil record.
   - `v7` may still have been a lucky narrow attractor
   - `v8` failed to broaden the attractor
   - the `v9` p12/p24 repair rescue failed because stable repaired outputs left the strict family manifold
+  - manifold curriculum v1 produced nonzero strict transfer but failed to broaden it to `p24`
   - the next serious phase should not be another small SFT tweak
+- current manifold-construction status:
+  - Phase 1 validator-first constructor is implemented:
+    - [scripts/manifold_construction_experiment.py](../scripts/manifold_construction_experiment.py)
+    - [configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json](../configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json)
+  - local output:
+    - [reports/manifold/topoff1m-a-manifold-phase1-20260422/summary.json](../reports/manifold/topoff1m-a-manifold-phase1-20260422/summary.json)
+    - [reports/manifold/topoff1m-a-manifold-phase1-20260422/roundtrip_report.json](../reports/manifold/topoff1m-a-manifold-phase1-20260422/roundtrip_report.json)
+  - scaffold bank:
+    - `12,619` unique sequences
+    - `4,893` family-manifold scaffolds
+    - `3,769` strict-manifold scaffolds
+    - `274` strict candidate positives
+  - round-trip:
+    - `272` strict-positive rows
+    - `272` strict-positive passes
+    - `0` strict-positive rejects
+  - negative gate:
+    - recovered `79` `v9` reject rows from the L40S box
+    - `0` negative family-manifold passes
+- current Phase 2 ESM-scored status:
+  - local output:
+    - [reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_pre_esm_frontier.jsonl](../reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_pre_esm_frontier.jsonl)
+    - [reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_pre_esm_summary.json](../reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_pre_esm_summary.json)
+    - [reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_esm_scored.jsonl](../reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_esm_scored.jsonl)
+    - [reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_esm_score_summary.json](../reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_esm_score_summary.json)
+    - [reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_selected_strict.jsonl](../reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_selected_strict.jsonl)
+    - [reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_selection_summary.json](../reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_selection_summary.json)
+  - frontier:
+    - `10,000` strict-manifold same-length candidates
+    - `4,067` one-mutants
+    - `5,933` two-mutants
+    - `96` selected parent scaffolds
+    - `79` contributing parent scaffolds before the `10,000` cap was reached
+    - `8` unique lengths
+  - ESM scoring:
+    - scored on the L40S with `ESM2_DEVICE=cuda`
+    - duration `763.589` seconds
+    - `10,000 / 10,000` scored
+    - min `99.73`, mean `99.9121`, max `99.98`
+    - all `10,000` scored `>=95`
+  - diversity/readiness selection:
+    - run on the L40S box after scoring
+    - `ready_for_curriculum_build: true`
+    - `230` selected strict candidates
+    - `79` parent scaffolds
+    - `8` unique lengths
+    - mutation histogram: `130` one-mutants and `100` two-mutants
+    - `133` bridge-quality rows across `48` parent scaffolds
+    - max parent share `0.013043`
+    - max length share `0.165217`
+    - selected ESM min `99.8`, mean `99.9225`, max `99.98`
+  - manifold curriculum v1:
+    - config:
+      - [configs/experiments/strict/topoff1m_a_manifold_curriculum_v1_20260422.json](../configs/experiments/strict/topoff1m_a_manifold_curriculum_v1_20260422.json)
+    - builder:
+      - [scripts/build_manifold_curriculum.py](../scripts/build_manifold_curriculum.py)
+    - dataset:
+      - [reports/raft/topoff1m-a-manifold-curriculum-v1-20260422/manifold_v1_stage_a.jsonl](../reports/raft/topoff1m-a-manifold-curriculum-v1-20260422/manifold_v1_stage_a.jsonl)
+      - [reports/raft/topoff1m-a-manifold-curriculum-v1-20260422/manifold_v1_stage_a_summary.json](../reports/raft/topoff1m-a-manifold-curriculum-v1-20260422/manifold_v1_stage_a_summary.json)
+    - `238` dataset rows
+    - `230` selected Phase 2 rows
+    - `8` canonical purebred rows
+    - `234` unique sequences
+    - `133` bridge-quality selected rows
+    - stage-A train:
+      - `pearl-micro-sft-topoff1m-a-manifold-v1-stagea-lr8e7-ep2`
+      - base checkpoint: `strict-core-v7-repair-stageb-lite`
+      - epochs `2`, learning rate `8e-7`, batch size `8`
+      - training report: [reports/warmstart/pearl-micro-sft-topoff1m-a-manifold-v1-stagea-lr8e7-ep2/report.json](../reports/warmstart/pearl-micro-sft-topoff1m-a-manifold-v1-stagea-lr8e7-ep2/report.json)
+    - capped gate:
+      - `pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128`
+      - [reports/robustness/pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128/robustness_summary.json](../reports/robustness/pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128/robustness_summary.json)
+      - [reports/robustness/pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128/p12_gate_decision.json](../reports/robustness/pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128/p12_gate_decision.json)
+      - [reports/robustness/pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128/p24_gate_decision.json](../reports/robustness/pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128/p24_gate_decision.json)
+    - gate outcome:
+      - overall: failed
+      - `p12`: passed, tier-2 hits by seed `[1, 2, 0]`, `2 / 3` seeds with hits, `3` prompts covered
+      - `p24`: failed, tier-2 hits by seed `[0, 1, 0]`, `1 / 3` seeds with hits, `1` prompt covered
+    - operational guard:
+      - branch stayed inside the agreed stage-A plus p12/p24-only scope
+      - no retries, stage-B, p48, or paid mining were launched
+      - the L40S GPU drained after completion
+    - interpretation:
+      - the Phase 2 manifold pool is not inert; it can induce strict hits
+      - the learned behavior is still narrow and fails broader `p24` prompt coverage
+      - manifold v1 should stop here
+  - manifold curriculum v1.1 offline repair:
+    - audit:
+      - [scripts/audit_manifold_v1_gate.py](../scripts/audit_manifold_v1_gate.py)
+      - [reports/analysis/manifold_v1_gate_audit_20260422/audit.md](../reports/analysis/manifold_v1_gate_audit_20260422/audit.md)
+      - [reports/analysis/manifold_v1_gate_audit_20260422/audit.json](../reports/analysis/manifold_v1_gate_audit_20260422/audit.json)
+    - builder:
+      - [scripts/build_manifold_v11_curriculum.py](../scripts/build_manifold_v11_curriculum.py)
+    - config:
+      - [configs/experiments/strict/topoff1m_a_manifold_curriculum_v11_20260422.json](../configs/experiments/strict/topoff1m_a_manifold_curriculum_v11_20260422.json)
+    - dataset:
+      - [reports/raft/topoff1m-a-manifold-curriculum-v11-20260422/manifold_v11_stage_a.jsonl](../reports/raft/topoff1m-a-manifold-curriculum-v11-20260422/manifold_v11_stage_a.jsonl)
+      - [reports/raft/topoff1m-a-manifold-curriculum-v11-20260422/manifold_v11_stage_a_summary.json](../reports/raft/topoff1m-a-manifold-curriculum-v11-20260422/manifold_v11_stage_a_summary.json)
+    - audit result:
+      - `23` p24 prompt holes
+      - `1` p24 weak-hit prompt
+      - `20 / 20` unique p24 requested lengths absent from the Phase 2 selected pool
+      - actual v1 functional hits were strict but length-mismatched, so direct hit replay is not used by default
+    - dataset result:
+      - `216` rows
+      - `212` unique sequences
+      - `160` balanced Phase 2 anchors
+      - `46` p24-hole strict scaffold anchors
+      - `2` p24 weak-hit strict scaffold anchors
+      - `8` canonical purebred anchors
+      - `33` length buckets
+      - p24 replay anchor length delta: min `-1`, max `1`, mean absolute `0.042`
+      - max sequence repeat `2`
+      - max parent/candidate share `0.013889`
+    - interpretation:
+      - v1.1 patches the exact p24 prompt/length hole exposed by v1
+      - it is an offline dataset only; do not launch training without review
 - current decision point:
   - do not launch a blind `1M` candidate run as the default next step
-  - a `50k-75k` p12/p24 exact-hole sweep remains available as a cheap diagnostic
-  - a `250k-300k` targeted mining tranche is reasonable only if the team wants one more paid empirical check
-  - the technically cleaner hard route is scaffold-first manifold construction:
-    - start from valid family scaffolds
-    - lock length, motif, active-site blueprint, and family-core constraints
-    - permit only same-length edits that preserve the strict family manifold
-    - score stability and novelty only after family validity is guaranteed
+  - do not retry manifold v1 unchanged
+  - do not launch stage-B, p48, or paid mining from this failed branch
+  - review the built v1.1 dataset before spending again
+  - if approved, start with a capped p24-only proof gate
+  - a `50k-75k` p12/p24 exact-hole sweep remains available as a diagnostic only after the offline audit
 
 ## Previous Canonical Status (superseded; as of April 20, 2026)
 
@@ -3196,3 +3312,111 @@ Operational implication:
 - the next meaningful move is another mining-backed loop
 - the question is no longer whether the data engine works; it does
 - the question is how much more strict mass the next tranche needs before a new recipe family can finally clear coverage
+
+## 2026-04-22/23 - Manifold v1.1 p24 Postmortem
+
+Manifold v1.1 moved from offline repair into a capped p24-only stage-A transfer gate. The run completed cleanly after publishing the stage-A checkpoint across Tinker accounts and resuming under a funded key. The account/checkpoint issue is no longer the relevant blocker for this branch.
+
+Operational artifacts:
+
+- postmortem script: [/Users/svdr/tinker/scripts/audit_manifold_v11_gate.py](/Users/svdr/tinker/scripts/audit_manifold_v11_gate.py)
+- postmortem report: [/Users/svdr/tinker/reports/analysis/manifold_v11_gate_postmortem_20260423/audit.md](/Users/svdr/tinker/reports/analysis/manifold_v11_gate_postmortem_20260423/audit.md)
+- postmortem JSON: [/Users/svdr/tinker/reports/analysis/manifold_v11_gate_postmortem_20260423/audit.json](/Users/svdr/tinker/reports/analysis/manifold_v11_gate_postmortem_20260423/audit.json)
+- robustness summary: [/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-manifold-v11-stagea-gate-p24-t08-s41s53s67-c128/robustness_summary.json](/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-manifold-v11-stagea-gate-p24-t08-s41s53s67-c128/robustness_summary.json)
+- gate decision: [/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-manifold-v11-stagea-gate-p24-t08-s41s53s67-c128/p24_gate_decision.json](/Users/svdr/tinker/reports/robustness/pearl-topoff1m-a-manifold-v11-stagea-gate-p24-t08-s41s53s67-c128/p24_gate_decision.json)
+
+Gate result:
+
+- completed runs: `3`
+- missing runs: `0`
+- tier-2 hits by seed: `[0, 0, 0]`
+- prompt coverage by seed: `[0, 0, 0]`
+- prompts with any tier-2 across seeds: `0`
+- gate passed: `false`
+
+Failure taxonomy:
+
+- selected records: `72`
+- selected modes: `28` stability-only, `17` geometry-only, `24` single-motif/no-geometry/no-ESM, `2` motif spam, `1` missing motif
+- raw candidate records: `9,216`
+- raw modes: `3,569` missing motif, `2,946` single-motif/no-geometry/no-ESM, `2,617` motif spam, `43` geometry-only, `41` stability-only
+- raw single-motif candidates: `3,030`
+- raw geometry-valid candidates: `218`
+- raw ESM-valid candidates: `41`
+- raw single-motif plus geometry plus ESM candidates: `0`
+- selected mean absolute length delta: `63.917`
+- raw mean absolute length delta: `88.262`
+
+Interpretation:
+
+- This is a scientific failure, not an ops failure.
+- The selector did not merely miss a hidden bridge; the raw p24 pool had zero single-motif plus geometry plus ESM candidates.
+- v1.1 split into proxy fragments: stability-only and geometry-only rows appeared, but the strict conjunction never appeared.
+- Length conditioning is still materially poor.
+- No p48, stage-B, retry, or broad mining is justified from v1.1.
+
+Decision:
+
+- stop the v1.1 branch
+- keep the GPU drained and killable
+- move to v1.2 offline-first construction
+- require nonzero strict-conjunction density in offline replay before paying for another Tinker gate
+
+v1.2 requirements:
+
+- hard-gate family motif identity, single motif count, catalytic blueprint, family length band, and requested-length obedience before inclusion
+- use v9 and v1.1 invalids as explicit negative contrast
+- split repair into two lanes: raise ESM for geometry-valid rows and repair geometry for ESM-valid rows
+- only treat rows as trainable bridge candidates when single motif, geometry, and ESM pass together
+
+v1.2 offline lane builder:
+
+- script: [/Users/svdr/tinker/scripts/build_manifold_v12_offline_lanes.py](/Users/svdr/tinker/scripts/build_manifold_v12_offline_lanes.py)
+- summary: [/Users/svdr/tinker/reports/analysis/manifold_v12_offline_lanes_20260423/v12_offline_lanes_summary.json](/Users/svdr/tinker/reports/analysis/manifold_v12_offline_lanes_20260423/v12_offline_lanes_summary.json)
+- geometry-valid but ESM-failing rows: `43`
+- ESM-valid but geometry-failing rows: `41`
+- single-motif background negatives: `2,946` raw, capped to `512`
+- motif-failure negatives: `6,186` raw, capped to `512`
+- selected length-offtarget failures at abs delta `>40`: `55`
+
+Immediate next offline work:
+
+- use `geometry_valid_needs_esm.jsonl` to test whether same-scaffold/local edits can raise ESM without destroying geometry
+- use `esm_valid_needs_geometry.jsonl` to test whether geometry can be repaired without collapsing ESM
+- use the two negative lanes as explicit contrastive rejects for any v1.2 curriculum
+- do not pay for another Tinker gate until at least one lane produces nonzero single-motif plus geometry plus ESM candidates offline
+
+### v1.2 offline repair-frontier pass
+
+New scripts:
+
+- frontier builder: [/Users/svdr/tinker/scripts/build_manifold_v12_repair_frontier.py](/Users/svdr/tinker/scripts/build_manifold_v12_repair_frontier.py)
+- ESM scorer: [/Users/svdr/tinker/scripts/score_manifold_v12_repair_frontier.py](/Users/svdr/tinker/scripts/score_manifold_v12_repair_frontier.py)
+
+Artifacts:
+
+- frontier summary: [/Users/svdr/tinker/reports/analysis/manifold_v12_repair_frontier_20260423/repair_frontier_summary.json](/Users/svdr/tinker/reports/analysis/manifold_v12_repair_frontier_20260423/repair_frontier_summary.json)
+- geometry-lane ESM smoke: [/Users/svdr/tinker/reports/analysis/manifold_v12_repair_frontier_20260423/esm_smoke32_summary.json](/Users/svdr/tinker/reports/analysis/manifold_v12_repair_frontier_20260423/esm_smoke32_summary.json)
+- ESM-lane score summary: [/Users/svdr/tinker/reports/analysis/manifold_v12_repair_frontier_20260423/esm_lane_score_summary.json](/Users/svdr/tinker/reports/analysis/manifold_v12_repair_frontier_20260423/esm_lane_score_summary.json)
+- ready smoke candidates: [/Users/svdr/tinker/reports/analysis/manifold_v12_repair_frontier_20260423/v12_ready_candidates_esm_lane_smoke.jsonl](/Users/svdr/tinker/reports/analysis/manifold_v12_repair_frontier_20260423/v12_ready_candidates_esm_lane_smoke.jsonl)
+
+Frontier result:
+
+- strict pre-ESM repair candidates: `4,678`
+- prompt-length/core-screen trainable pre-ESM candidates: `580`
+- trainable candidates from geometry-valid/ESM-failing lane: `556`
+- trainable candidates from ESM-valid/geometry-failing lane: `24`
+
+ESM smoke:
+
+- geometry-valid/ESM-failing smoke: `32` scored, `0` passed ESM, max `33.28`
+- ESM-valid/geometry-failing lane: `24` scored, `24` passed ESM, `23` scored `>=95`
+- ESM-valid lane score range: min `94.93`, mean `95.9562`, max `96.82`
+- all ready smoke candidates came from one source row: seed `53`, step `12`, length `274`, prompt-length delta `-6`
+
+Interpretation:
+
+- The geometry lane still looks dead for small local motif/D/H edits.
+- The ESM lane is alive: geometry repair can preserve high ESM and produce the strict conjunction offline.
+- The positive is currently too narrow for Tinker spend because source breadth is `1`.
+- Next offline task is breadth: find or construct more ESM-valid, prompt-length-obedient sources before any paid gate.

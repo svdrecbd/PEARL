@@ -220,8 +220,49 @@ Purpose:
 
 Current scientific role:
 - this is the recommended hard-route pivot after the `v8` p12/p24 collapse and the failed `v9` local repair rescue
-- it is not yet a fully supported code workflow
-- the first implementation should be validator-first and local-compute-first
+- Phase 1 is now a supported validator-first local workflow
+- it builds a scaffold bank, extracts catalytic blueprints, builds immutable/mutable masks, and checks known strict positives round-trip through the family-manifold gate
+
+Primary entrypoint:
+- [scripts/manifold_construction_experiment.py](../scripts/manifold_construction_experiment.py)
+
+Config-driven manifold example:
+- [configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json](../configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json)
+
+Current Phase 1 result:
+- `12,619` unique sequences in the scaffold bank
+- `4,893` family-manifold scaffolds
+- `3,769` strict-manifold scaffolds
+- `274` strict candidate positives
+- `0` strict-positive round-trip rejects
+- `79` recovered `v9` negative rows with `0` family-manifold passes
+
+Current Phase 2 result:
+- `10,000` same-length strict-manifold candidates
+- `4,067` one-mutants and `5,933` two-mutants
+- `79` contributing parent scaffolds
+- all `10,000` ESM-scored on the L40S
+- min `99.73`, mean `99.9121`, max `99.98`
+- diversity selection passed readiness with `230` selected strict candidates, `79` parent scaffolds, `8` lengths, `133` bridge-quality rows, and `100` two-mutants
+
+Current transfer result:
+- builder: [scripts/build_manifold_curriculum.py](../scripts/build_manifold_curriculum.py)
+- config: [configs/experiments/strict/topoff1m_a_manifold_curriculum_v1_20260422.json](../configs/experiments/strict/topoff1m_a_manifold_curriculum_v1_20260422.json)
+- dataset: `238` pairs from `230` Phase 2 selected rows plus `8` purebred rows
+- stage-A run: `pearl-micro-sft-topoff1m-a-manifold-v1-stagea-lr8e7-ep2`
+- p12/p24 gate: `pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128`
+- `p12`: passed with tier-2 hits `[1, 2, 0]`
+- `p24`: failed with tier-2 hits `[0, 1, 0]`
+- next workflow: offline failure audit and balanced `v1.1` curriculum design, not retries or wider paid robustness
+
+Current v1.1 offline repair:
+- audit: [scripts/audit_manifold_v1_gate.py](../scripts/audit_manifold_v1_gate.py)
+- builder: [scripts/build_manifold_v11_curriculum.py](../scripts/build_manifold_v11_curriculum.py)
+- config: [configs/experiments/strict/topoff1m_a_manifold_curriculum_v11_20260422.json](../configs/experiments/strict/topoff1m_a_manifold_curriculum_v11_20260422.json)
+- audit found `23` p24 holes and `20 / 20` unique p24 requested lengths absent from the Phase 2 selected pool
+- dataset has `216` rows: `160` balanced Phase 2 anchors, `48` p24 prompt-replay strict scaffold anchors, `8` purebred anchors
+- p24 replay anchor length delta is effectively exact: mean absolute `0.042`, max absolute `1`
+- launch policy: review before train; if approved, start with p24-only gate
 
 Reference:
 - [manifold_construction.md](manifold_construction.md)

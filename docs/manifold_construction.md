@@ -14,6 +14,18 @@ The current evidence says:
 
 The recommended next phase is to construct candidates inside the PETase/cutinase family manifold from the start.
 
+Phase 1 of that pivot is now implemented locally:
+
+- runner: `scripts/manifold_construction_experiment.py`
+- config: `configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json`
+- output: `reports/manifold/topoff1m-a-manifold-phase1-20260422/`
+- result: `ready: true`
+- bank: `12,619` unique sequences, `4,893` family-manifold scaffolds, `3,769` strict-manifold scaffolds
+- positives: `274` strict candidate positives, `0` strict-positive round-trip rejects
+- negatives: recovered `79` `v9` reject rows, with `0` negative family-manifold passes
+- Phase 2 ESM-scored frontier: `10,000` same-length strict-manifold candidates, all scoring `>=95`
+- Phase 2 diversity selection: `230` selected strict candidates, `79` parent scaffolds, `8` lengths, `100` two-mutants, readiness passed
+
 ## Central Hypothesis
 
 The project has been asking a language model to satisfy too many coupled constraints at once:
@@ -116,10 +128,22 @@ Goal:
 - implement edit masks
 - prove that unedited input scaffolds round-trip through the validator
 
+Current entrypoint:
+
+- config: `configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json`
+- runner: `scripts/manifold_construction_experiment.py`
+- build: `python scripts/manifold_construction_experiment.py --config configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json build-bank`
+- validate: `python scripts/manifold_construction_experiment.py --config configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json validate-roundtrip`
+
 Success:
 
 - no strict reference is falsely rejected
 - no failed `v9` survivor is accidentally accepted
+
+Current result:
+
+- `272` strict-positive rows round-tripped with `0` rejects
+- `79` recovered `v9` negative rows round-tripped with `0` family-manifold passes
 
 ### Phase 2: Shallow Same-Length Search
 
@@ -128,12 +152,242 @@ Goal:
 - run `1-2` mutation beams around diverse scaffolds
 - produce strict-valid variants without paid generation
 
-Initial gate:
+Current entrypoint:
 
-- `20+` strict candidates
-- `8+` scaffold clusters
-- no cluster above `25%`
-- all candidates pass strict family validation before any training decision
+- command: `python scripts/manifold_construction_experiment.py --config configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json build-phase2-frontier`
+- output: `reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_pre_esm_frontier.jsonl`
+- summary: `reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_pre_esm_summary.json`
+
+Current result:
+
+- `10,000` pre-ESM candidates
+- `96` selected parent scaffolds
+- `79` processed/contributing parent scaffolds before the `10,000` frontier cap was reached
+- mutation histogram: `4,067` one-mutants and `5,933` two-mutants
+- `8` unique sequence lengths
+- no ESM or Tinker scoring was run; every row has `needs_esm_score: true` and `esm_score: null`
+
+ESM scoring result:
+
+- scored file: `reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_esm_scored.jsonl`
+- score summary: `reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_esm_score_summary.json`
+- remote device: L40S via `ESM2_DEVICE=cuda`
+- `10,000 / 10,000` candidates scored
+- min `99.73`, mean `99.9121`, max `99.98`
+- all `10,000` scored `>=95`
+
+Selection/readiness result:
+
+- command: `python scripts/manifold_construction_experiment.py --config configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json select-phase2`
+- selected file: `reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_selected_strict.jsonl`
+- selection summary: `reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_selection_summary.json`
+- result: `ready_for_curriculum_build: true`
+- `230` selected strict candidates from `10,000` eligible scored candidates
+- `79` parent scaffolds and `8` unique lengths
+- mutation histogram: `130` one-mutants and `100` two-mutants
+- bridge-quality rows: `133` rows across `48` parent scaffolds
+- max parent share `0.013043`; max length share `0.165217`
+- selected ESM summary: min `99.8`, mean `99.9225`, max `99.98`
+
+The Phase 2 pool is now large and diverse enough for local curriculum construction. It is not yet evidence that a trained model will clear p12/p24 robustness; that still requires a separate training and robustness decision.
+
+### Manifold Curriculum v1 Transfer Test
+
+The first transfer test from the selected Phase 2 pool has completed.
+
+Config and artifacts:
+
+- config: `configs/experiments/strict/topoff1m_a_manifold_curriculum_v1_20260422.json`
+- builder: `scripts/build_manifold_curriculum.py`
+- stage-A dataset: `reports/raft/topoff1m-a-manifold-curriculum-v1-20260422/manifold_v1_stage_a.jsonl`
+- stage-A summary: `reports/raft/topoff1m-a-manifold-curriculum-v1-20260422/manifold_v1_stage_a_summary.json`
+- stage-A report: `reports/warmstart/pearl-micro-sft-topoff1m-a-manifold-v1-stagea-lr8e7-ep2/report.json`
+- robustness summary: `reports/robustness/pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128/robustness_summary.json`
+- gate decisions:
+  - `reports/robustness/pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128/p12_gate_decision.json`
+  - `reports/robustness/pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128/p24_gate_decision.json`
+
+Curriculum:
+
+- `238` training pairs
+- `230` selected Phase 2 rows
+- `8` canonical purebred rows
+- `234` unique sequences
+- `133` bridge-quality selected rows
+- mutation histogram: `130` one-mutants and `100` two-mutants
+
+Training branch:
+
+- run: `pearl-micro-sft-topoff1m-a-manifold-v1-stagea-lr8e7-ep2`
+- base checkpoint: `strict-core-v7-repair-stageb-lite`
+- epochs: `2`
+- learning rate: `8e-7`
+- batch size: `8`
+- budget scope: stage-A train plus p12/p24 gate only; no stage-B, no p48, no paid mining
+
+Gate result:
+
+- `p12`: passed
+  - tier-2 hits by seed `[1, 2, 0]`
+  - `2 / 3` seeds with hits
+  - `3` prompts with tier-2 hits across seeds
+- `p24`: failed
+  - tier-2 hits by seed `[0, 1, 0]`
+  - `1 / 3` seeds with hits
+  - `1` prompt with tier-2 hits across seeds
+
+Interpretation:
+
+- The selected Phase 2 pool can move the model toward strict hits.
+- The transfer remains narrow and does not survive broader `p24` prompt coverage.
+- This branch should stop here. The next work is offline audit and curriculum redesign, not a retry, stage-B, p48, or paid mining.
+
+### Manifold Curriculum v1.1 Offline Repair
+
+The v1.1 repair is built as an offline dataset, not a launched train branch.
+
+New tools:
+
+- audit: `scripts/audit_manifold_v1_gate.py`
+- builder: `scripts/build_manifold_v11_curriculum.py`
+- config: `configs/experiments/strict/topoff1m_a_manifold_curriculum_v11_20260422.json`
+
+Artifacts:
+
+- audit JSON: `reports/analysis/manifold_v1_gate_audit_20260422/audit.json`
+- audit report: `reports/analysis/manifold_v1_gate_audit_20260422/audit.md`
+- v1.1 dataset: `reports/raft/topoff1m-a-manifold-curriculum-v11-20260422/manifold_v11_stage_a.jsonl`
+- v1.1 summary: `reports/raft/topoff1m-a-manifold-curriculum-v11-20260422/manifold_v11_stage_a_summary.json`
+
+Audit result:
+
+- `p24` prompt holes: `23`
+- `p24` weak-hit prompts: `1`
+- unique `p24` requested lengths missing from Phase 2 selected pool: `20 / 20`
+- `p12`: functional `3`, family-faithful `1`, ESM-gate `11`, geometry `13`, final trainable `11`
+- `p24`: functional `1`, family-faithful `0`, ESM-gate `28`, geometry `17`, final trainable `28`
+
+v1.1 dataset:
+
+- `216` rows
+- `212` unique sequences
+- `160` balanced Phase 2 anchors
+- `46` p24-hole strict scaffold anchors
+- `2` p24 weak-hit strict scaffold anchors
+- `8` canonical purebred anchors
+- `33` length buckets
+- p24 replay anchor length delta: min `-1`, max `1`, mean absolute `0.042`
+- max sequence repeat `2`
+- max parent/candidate share `0.013889`
+
+Important correction:
+
+- The actual v1 hits should not be directly replayed by default.
+- They were strict but badly length-mismatched to their prompts.
+- v1.1 instead uses the exact p24 prompt text with strict scaffold anchors at the requested lengths.
+
+### Manifold Curriculum v1.1 p24 Gate Outcome
+
+The v1.1 stage-A branch was launched as a capped p24-only transfer test and completed cleanly after publishing the stage-A checkpoint across Tinker accounts.
+
+Artifacts:
+
+- postmortem script: `scripts/audit_manifold_v11_gate.py`
+- postmortem JSON: `reports/analysis/manifold_v11_gate_postmortem_20260423/audit.json`
+- postmortem report: `reports/analysis/manifold_v11_gate_postmortem_20260423/audit.md`
+- robustness summary: `reports/robustness/pearl-topoff1m-a-manifold-v11-stagea-gate-p24-t08-s41s53s67-c128/robustness_summary.json`
+- gate decision: `reports/robustness/pearl-topoff1m-a-manifold-v11-stagea-gate-p24-t08-s41s53s67-c128/p24_gate_decision.json`
+
+Gate result:
+
+- completed runs: `3`
+- missing runs: `0`
+- tier-2 hits by seed: `[0, 0, 0]`
+- prompt coverage by seed: `[0, 0, 0]`
+- prompts with any tier-2 across seeds: `0`
+- gate passed: `false`
+
+Failure taxonomy:
+
+- selected records: `72`
+- selected modes: `28` stability-only, `17` geometry-only, `24` single-motif/no-geometry/no-ESM, `2` motif spam, `1` missing motif
+- raw candidate records: `9,216`
+- raw modes: `3,569` missing motif, `2,946` single-motif/no-geometry/no-ESM, `2,617` motif spam, `43` geometry-only, `41` stability-only
+- raw single-motif candidates: `3,030`
+- raw geometry-valid candidates: `218`
+- raw ESM-valid candidates: `41`
+- raw single-motif plus geometry plus ESM candidates: `0`
+- selected mean absolute length delta: `63.917`
+- raw mean absolute length delta: `88.262`
+
+Interpretation:
+
+- This was not an ops failure; checkpoint publishing, resume, ESM finalization, and gate writing all worked.
+- The selector did not merely choose the wrong candidate; the raw pool contained no candidate satisfying the tier-2 proxy conjunction.
+- v1.1 split probability mass between stability-only and geometry-only outputs instead of entering the strict family-functional intersection.
+- Length conditioning remained poor enough to be a first-class failure mode.
+- No p48, stage-B, retry, or broader mining is justified from this branch.
+
+### Manifold v1.2 Offline-First Direction
+
+v1.2 should not start as another paid train branch. It should start as an offline constructor and validator pass that proves it can separate positives from known v9/v1.1 negatives before any Tinker spend.
+
+Initial tooling:
+
+- lane builder: `scripts/build_manifold_v12_offline_lanes.py`
+- lane output: `reports/analysis/manifold_v12_offline_lanes_20260423/`
+- lane summary: `reports/analysis/manifold_v12_offline_lanes_20260423/v12_offline_lanes_summary.json`
+
+Current lane inventory from v1.1 p24:
+
+- geometry-valid but ESM-failing repair lane: `43` raw rows, `43` selected after dedupe/limit
+- ESM-valid but geometry-failing repair lane: `41` raw rows, `41` selected after dedupe/limit
+- single-motif background negatives: `2,946` raw rows, `512` selected after dedupe/limit
+- motif-failure negatives: `6,186` raw rows, `512` selected after dedupe/limit
+- selected length-offtarget failures at abs delta `>40`: `55`
+
+Initial v1.2 repair-frontier tooling:
+
+- frontier builder: `scripts/build_manifold_v12_repair_frontier.py`
+- ESM scorer: `scripts/score_manifold_v12_repair_frontier.py`
+- frontier summary: `reports/analysis/manifold_v12_repair_frontier_20260423/repair_frontier_summary.json`
+- ESM-valid lane score summary: `reports/analysis/manifold_v12_repair_frontier_20260423/esm_lane_score_summary.json`
+- ready smoke candidates: `reports/analysis/manifold_v12_repair_frontier_20260423/v12_ready_candidates_esm_lane_smoke.jsonl`
+
+Initial repair-frontier result:
+
+- strict pre-ESM repair frontier: `4,678` candidates
+- prompt-length/core-screen trainable pre-ESM frontier: `580` candidates
+- trainable by lane: `556` geometry-valid/ESM-failing lane, `24` ESM-valid/geometry-failing lane
+- trainable operations: `408` existing-motif plus D/H repairs, `160` motif-relocation plus D/H repairs, `12` motif canonicalizations
+
+ESM smoke result:
+
+- geometry-valid/ESM-failing smoke: `32` scored, `0` ESM-gate passes, max `33.28`
+- ESM-valid/geometry-failing smoke: `24` scored, `24` ESM-gate passes, `23` scored `>=95`
+- ESM-valid lane score range: min `94.93`, mean `95.9562`, max `96.82`
+- all `24` ready smoke candidates came from one source row: seed `53`, step `12`, length `274`, prompt-length delta `-6`
+
+Interpretation:
+
+- The geometry lane is not rescued by small motif/D/H edits; it remains low ESM.
+- The ESM lane can be repaired into single-motif plus geometry plus ESM candidates without collapsing ESM.
+- The current positive is too narrow for a paid gate because all ready smoke candidates share one source scaffold.
+- v1.2 should now broaden ESM-valid geometry repair across more prompt-length-obedient sources before any Tinker spend.
+
+Required changes:
+
+- make single canonical family motif, family motif identity, catalytic blueprint, and length band hard gates before training inclusion
+- use v1.1 stability-only and geometry-only candidates as explicit negative contrast
+- split repair into two lanes: raise ESM for geometry-valid rows, and repair geometry for ESM-valid rows
+- require the full single-motif plus geometry plus ESM conjunction before treating a row as a bridge candidate
+- reject prompt-conditioned outputs with large length deltas before they can enter a curriculum
+
+v1.2 stop/go rule:
+
+- stop if offline replay still produces zero single-motif plus geometry plus ESM candidates
+- stop if positives are not cleanly separated from v9/v1.1 negatives
+- only consider a tiny paid p24 gate after the offline audit shows nonzero strict-conjunction density and length obedience
 
 ### Phase 3: Deeper Local Optimization
 
@@ -141,6 +395,7 @@ Goal:
 
 - widen to `3-5` mutations where family gates remain stable
 - optimize stability and novelty without drifting out of family space
+- use the p12-hit / p24-miss postmortem to rebalance parent scaffolds, prompt families, lengths, and mutation masks before the next paid train
 
 Readiness gate:
 
@@ -178,9 +433,12 @@ If the `300k` targeted tranche fails, that should end the current sampling strat
 
 ## Current Recommendation
 
-Do not launch another broad paid run until the team decides whether it wants:
+Do not launch another paid run from manifold curriculum v1 or v1.1. v1 failed p24 transfer and v1.1 completed a cleaner p24-only test with zero tier-2 hits.
 
-- a cheap empirical diagnostic from targeted mining, or
-- a direct engineering pivot into the constructor.
+Immediate next step:
 
-The technically cleaner next step is the constructor.
+- build the v1.2 offline taxonomy/constructor loop
+- use the v1.1 postmortem as the kill gate for any future paid branch
+- do not train again until offline replay demonstrates nonzero strict-conjunction density
+
+Only after that should the team consider either a tiny p24-only proof gate or a small targeted mining diagnostic.

@@ -11,7 +11,7 @@ This repository explores PETase-family sequence design through remote generation
 - Supported workflows: [`docs/workflows.md`](docs/workflows.md)
 - Operator notes: [`docs/operations.md`](docs/operations.md)
 - Current scientific status: [`docs/science.md`](docs/science.md)
-- Proposed hard-route pivot: [`docs/manifold_construction.md`](docs/manifold_construction.md)
+- Manifold-construction pivot: [`docs/manifold_construction.md`](docs/manifold_construction.md)
 - Experiment configs: [`configs/experiments/README.md`](configs/experiments/README.md)
 - Full experimental history: [`notes/LABNOTES.md`](notes/LABNOTES.md)
 - Historical campaign wrapper inventory: [`archive/2026q1_topoff1m_a/README.md`](archive/2026q1_topoff1m_a/README.md)
@@ -68,8 +68,20 @@ As of April 22, 2026:
   - stop treating broad paid sampling and small SFT tweaks as the primary next move
   - treat `strict-core-v7-repair` as the best historical baseline and a possible lucky narrow attractor
   - treat `v8` and the `v9` repair rescue as evidence that the current loop does not reliably learn the strict PETase/cutinase manifold
-  - discuss or build a scaffold-first manifold-construction pipeline before spending on another large mining tranche
-  - keep a `50k-75k` p12/p24 targeted mining sweep as an optional diagnostic, not the default next move
+  - use the scaffold-first manifold-construction pipeline before spending on another large mining tranche
+  - Phase 1 now builds a local scaffold bank with `12,619` unique sequences, `4,893` family-manifold scaffolds, `79` recovered `v9` negatives, and `274` strict candidate positives
+  - Phase 2 built and ESM-scored a `10,000`-candidate strict-manifold same-length frontier on the L40S; all candidates scored `>=95`
+  - Phase 2 diversity/readiness selection passed on the L40S with `230` selected strict candidates across `79` parent scaffolds, `8` lengths, and `100` two-mutants
+  - manifold curriculum v1 trained cleanly from the Phase 2 selected pool under the `$80` capped branch, but failed the p12/p24 transfer gate:
+    - `p12`: passed, tier-2 hits by seed `[1, 2, 0]`, `2 / 3` seeds hit, `3` prompts covered
+    - `p24`: failed, tier-2 hits by seed `[0, 1, 0]`, `1 / 3` seeds hit, `1` prompt covered
+  - stop paid work on this branch; the next step is offline audit of p12 hits versus p24 misses and a better-balanced `v1.1` curriculum recipe
+  - offline manifold `v1.1` is now built:
+    - audit found `23` p24 prompt holes, `1` weak-hit p24 prompt, and `20 / 20` unique p24 requested lengths missing from the Phase 2 selected pool
+    - dataset has `216` rows: `160` balanced Phase 2 anchors, `48` exact p24 prompt-replay strict scaffold anchors, and `8` purebred anchors
+    - p24 replay anchors have mean absolute length delta `0.042` aa and max absolute delta `1` aa
+    - this is an offline artifact only; do not train it without review
+  - keep a `50k-75k` p12/p24 targeted mining sweep as an optional diagnostic only after the offline audit, not the default next move
   - keep the reranker lane reranker-first and diagnostic-only until it clearly beats scalar reward baselines on harder held-out prompt / bucket / cluster splits
 
 See [`docs/science.md`](docs/science.md) for the current research readout and primary artifact links.
@@ -86,7 +98,7 @@ The supported reusable workflows are:
 6. `train`
 7. `robustness`
 8. `reranker`
-9. `manifold-construction` (planned / proposed)
+9. `manifold-construction` (Phase 1 and Phase 2 selection implemented)
 
 The details and entrypoints for those workflows live in [`docs/workflows.md`](docs/workflows.md).
 
@@ -119,7 +131,7 @@ Production CUDA environments used on Nebius are separate from the local/dev base
 - `src/pearl/family.py`: family scoring and catalytic geometry checks
 - `src/pearl/esm_proxy.py`: local ESM proxy scorer
 - `src/pearl/`: reusable library surface for paths, detached jobs, reports, smoke gates, curricula, and run-record assembly
-- `scripts/`: supported workflow entrypoints plus archived compatibility symlinks
+- `scripts/`: supported workflow entrypoints plus archived compatibility symlinks, including `scripts/manifold_construction_experiment.py`
 - `reports/`: local run artifacts
 - `data/`: prompts, records, and family datasets
 

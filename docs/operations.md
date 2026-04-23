@@ -62,7 +62,7 @@ Use the supported workflow entrypoints from [docs/workflows.md](workflows.md).
 
 Do not treat versioned campaign wrappers as the default operational surface unless you are explicitly replaying historical work.
 
-As of April 22, 2026, do not launch another strict-core train branch from the failed `v9` repair output. The repair run completed, but readiness failed with `0` retrain positives. The current discussion path is scaffold-first manifold construction, documented in [manifold_construction.md](manifold_construction.md).
+As of April 22, 2026, do not launch another strict-core train branch from the failed `v9` repair output. The repair run completed, but readiness failed with `0` retrain positives. The current active path is scaffold-first manifold construction, documented in [manifold_construction.md](manifold_construction.md).
 
 ## Config-Driven Strict Experiments
 
@@ -230,15 +230,109 @@ Operator rule:
 
 ## Manifold Construction
 
-There is not yet a production runner for the manifold-construction route.
+Phase 1 now has a validator-first local runner for scaffold-bank construction, blueprint extraction, immutable/mutable mask construction, and strict-positive round-trip checks.
 
 Operational starting point:
 
-1. Build a scaffold bank from natural references, canonical purebreds, old strict hits, mined family-faithful reps, and April 12 strict repairs.
-2. Verify all unedited scaffolds round-trip through strict validation.
-3. Extract active-site blueprints and immutable masks.
-4. Run same-length edit search only inside allowed mutable positions.
-5. Reject any sequence that leaves the family length band, motif identity, active-site blueprint, catalytic gap limits, or family core screen.
+```bash
+python scripts/manifold_construction_experiment.py \
+  --config configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json \
+  launch-pad
+```
+
+Current local Phase 1 result:
+- `ready: true`
+- `12,619` unique sequences
+- `4,893` family-manifold scaffolds
+- `3,769` strict-manifold scaffolds
+- `274` strict candidate positives
+- `0` strict-positive round-trip rejects
+- recovered `79` `v9` negative rows with `0` negative family-manifold passes
+
+Phase 2 pre-ESM frontier:
+
+```bash
+python scripts/manifold_construction_experiment.py \
+  --config configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json \
+  build-phase2-frontier
+```
+
+Current local Phase 2 result:
+- `10,000` same-length strict-manifold candidates
+- `4,067` one-mutants
+- `5,933` two-mutants
+- `79` contributing parent scaffolds before the frontier cap was reached
+- L40S ESM scoring completed for all `10,000` rows
+- min `99.73`, mean `99.9121`, max `99.98`
+- all `10,000` scored `>=95`
+
+Phase 2 selection:
+
+```bash
+python scripts/manifold_construction_experiment.py \
+  --config configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json \
+  select-phase2
+```
+
+Current selection result:
+- `ready_for_curriculum_build: true`
+- `230` selected strict candidates
+- `79` parent scaffolds
+- `8` unique lengths
+- `130` one-mutants and `100` two-mutants
+- `133` bridge-quality rows across `48` parent scaffolds
+- max parent share `0.013043`
+- max length share `0.165217`
+- selected ESM min `99.8`, mean `99.9225`, max `99.98`
+
+Manifold curriculum v1 transfer test:
+- config: [../configs/experiments/strict/topoff1m_a_manifold_curriculum_v1_20260422.json](../configs/experiments/strict/topoff1m_a_manifold_curriculum_v1_20260422.json)
+- dataset: `reports/raft/topoff1m-a-manifold-curriculum-v1-20260422/manifold_v1_stage_a.jsonl`
+- summary: `reports/raft/topoff1m-a-manifold-curriculum-v1-20260422/manifold_v1_stage_a_summary.json`
+- stage-A run: `pearl-micro-sft-topoff1m-a-manifold-v1-stagea-lr8e7-ep2`
+- p12/p24 gate: `pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128`
+- result: failed overall
+- `p12`: passed, tier-2 hits by seed `[1, 2, 0]`, `2 / 3` seeds hit, `3` prompts covered
+- `p24`: failed, tier-2 hits by seed `[0, 1, 0]`, `1 / 3` seeds hit, `1` prompt covered
+- GPU drained after completion; no compute process remained
+
+Next operational step:
+- do not launch retries, stage-B, p48, or paid mining from this branch
+- run an offline audit of p12 hits versus p24 misses
+- build a balanced `v1.1` curriculum candidate set before any new Tinker spend
+
+Manifold curriculum v1.1 offline repair:
+- audit script: [../scripts/audit_manifold_v1_gate.py](../scripts/audit_manifold_v1_gate.py)
+- builder: [../scripts/build_manifold_v11_curriculum.py](../scripts/build_manifold_v11_curriculum.py)
+- config: [../configs/experiments/strict/topoff1m_a_manifold_curriculum_v11_20260422.json](../configs/experiments/strict/topoff1m_a_manifold_curriculum_v11_20260422.json)
+- audit report: `reports/analysis/manifold_v1_gate_audit_20260422/audit.md`
+- dataset: `reports/raft/topoff1m-a-manifold-curriculum-v11-20260422/manifold_v11_stage_a.jsonl`
+- summary: `reports/raft/topoff1m-a-manifold-curriculum-v11-20260422/manifold_v11_stage_a_summary.json`
+- result: `216` rows, `160` balanced Phase 2 anchors, `48` p24 prompt-replay strict scaffold anchors, `8` purebred anchors
+- p24 replay anchor length delta: mean absolute `0.042`, max absolute `1`
+- launch policy: review first; do not train automatically
+
+Manifold curriculum v1.1 p24 gate:
+- stage-A gate: `pearl-topoff1m-a-manifold-v11-stagea-gate-p24-t08-s41s53s67-c128`
+- postmortem script: [../scripts/audit_manifold_v11_gate.py](../scripts/audit_manifold_v11_gate.py)
+- postmortem report: `reports/analysis/manifold_v11_gate_postmortem_20260423/audit.md`
+- robustness summary: `reports/robustness/pearl-topoff1m-a-manifold-v11-stagea-gate-p24-t08-s41s53s67-c128/robustness_summary.json`
+- result: failed cleanly with completed runs `3`, missing runs `0`, tier-2 hits `[0, 0, 0]`, and prompt coverage `[0, 0, 0]`
+- failure mode: raw pool had `9,216` candidates but `0` single-motif plus geometry plus ESM tier-2 proxy candidates
+- launch policy: do not launch p48, stage-B, retry, or broad mining from v1.1
+
+Next supported operational path:
+- build v1.2 offline first
+- lane builder: [../scripts/build_manifold_v12_offline_lanes.py](../scripts/build_manifold_v12_offline_lanes.py)
+- lane summary: `reports/analysis/manifold_v12_offline_lanes_20260423/v12_offline_lanes_summary.json`
+- current lane inventory: `43` geometry-valid/ESM-failing rows, `41` ESM-valid/geometry-failing rows, `2,946` single-motif background negatives, `6,186` motif-failure negatives, `55` selected length-offtarget failures
+- repair-frontier builder: [../scripts/build_manifold_v12_repair_frontier.py](../scripts/build_manifold_v12_repair_frontier.py)
+- repair-frontier scorer: [../scripts/score_manifold_v12_repair_frontier.py](../scripts/score_manifold_v12_repair_frontier.py)
+- repair-frontier summary: `reports/analysis/manifold_v12_repair_frontier_20260423/repair_frontier_summary.json`
+- first ESM-positive smoke: `24 / 24` ESM-valid/geometry-repair candidates passed ESM, but all from one source row
+- require nonzero strict-conjunction density in offline replay before any paid Tinker gate
+- additionally require source/prompt breadth before any paid Tinker gate; the current one-source smoke is not enough
+- keep any future paid proof to a tiny p24-only gate until the offline constructor separates positives from v9/v1.1 negatives
 
 Reference:
 - [manifold_construction.md](manifold_construction.md)

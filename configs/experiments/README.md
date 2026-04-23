@@ -28,6 +28,10 @@ Current generic repair/local-exploit launcher:
 - [scripts/repair_experiment.py](../../scripts/repair_experiment.py)
 - [scripts/launch_repair_experiment.sh](../../scripts/launch_repair_experiment.sh)
 
+Current generic manifold-construction launcher:
+- [scripts/manifold_construction_experiment.py](../../scripts/manifold_construction_experiment.py)
+- [manifold/topoff1m_a_phase1_constructor_20260422.json](manifold/topoff1m_a_phase1_constructor_20260422.json)
+
 Shared reusable plumbing extracted so far:
 - [src/pearl/paths.py](../../src/pearl/paths.py)
 - [src/pearl/family.py](../../src/pearl/family.py)
@@ -56,6 +60,42 @@ Repair config:
 - [repair/topoff1m_a_local_repair_scaleup_20260412.json](repair/topoff1m_a_local_repair_scaleup_20260412.json)
 - [repair/topoff1m_a_v9_p12p24_repair_20260421.json](repair/topoff1m_a_v9_p12p24_repair_20260421.json)
 
+Manifold-construction config:
+- [manifold/topoff1m_a_phase1_constructor_20260422.json](manifold/topoff1m_a_phase1_constructor_20260422.json)
+
+Current manifold read:
+- Phase 1 scaffold-bank validation passed locally
+- Phase 2 pre-ESM frontier generation produced `10,000` same-length strict-manifold candidates
+- the recovered `v9` reject artifact is now included as `79` negative rows, with `0` negative family-manifold passes
+- Phase 2 ESM scoring was offloaded to the L40S and completed:
+  - `10,000 / 10,000` scored
+  - min `99.73`, mean `99.9121`, max `99.98`
+  - all `10,000` scored `>=95`
+- Phase 2 diversity/readiness selection passed:
+  - `230` selected strict candidates
+  - `79` parent scaffolds
+  - `8` unique lengths
+  - `130` one-mutants and `100` two-mutants
+  - `133` bridge-quality rows across `48` parent scaffolds
+  - selected ESM min `99.8`, mean `99.9225`, max `99.98`
+- manifold curriculum v1 was built and tested under the `$80` capped branch:
+  - config: [strict/topoff1m_a_manifold_curriculum_v1_20260422.json](strict/topoff1m_a_manifold_curriculum_v1_20260422.json)
+  - builder: [../../scripts/build_manifold_curriculum.py](../../scripts/build_manifold_curriculum.py)
+  - dataset: `238` pairs from `230` selected Phase 2 rows plus `8` purebred rows
+  - stage-A run: `pearl-micro-sft-topoff1m-a-manifold-v1-stagea-lr8e7-ep2`
+  - gate run: `pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128`
+  - `p12`: passed, tier-2 hits `[1, 2, 0]`
+  - `p24`: failed, tier-2 hits `[0, 1, 0]`
+  - no retries, stage-B, p48, or paid mining should be launched from this branch
+- manifold curriculum v1.1 is built offline but not approved for training:
+  - config: [strict/topoff1m_a_manifold_curriculum_v11_20260422.json](strict/topoff1m_a_manifold_curriculum_v11_20260422.json)
+  - audit: [../../scripts/audit_manifold_v1_gate.py](../../scripts/audit_manifold_v1_gate.py)
+  - builder: [../../scripts/build_manifold_v11_curriculum.py](../../scripts/build_manifold_v11_curriculum.py)
+  - audit found `23` p24 holes and `20 / 20` unique p24 requested lengths absent from the Phase 2 selected pool
+  - dataset has `216` rows: `160` balanced Phase 2 anchors, `48` p24 prompt-replay strict scaffold anchors, `8` purebred anchors
+  - p24 replay anchor mean absolute length delta is `0.042`, max absolute delta `1`
+  - launch policy: review before any Tinker spend
+
 Current repair read:
 - the April 10 pilot validated the repair lane as a real branch:
   - `48` parents
@@ -71,7 +111,7 @@ Current repair read:
   - `0` strict shortlist rows
   - readiness failed with `0` retrain positives
 - the next strict branch should not be trained from the failed `v9` repair pool
-- the current strategic question is whether to run a small paid p12/p24 mining diagnostic or pivot directly to scaffold-first manifold construction
+- the current default is offline manifold v1 postmortem and `v1.1` curriculum design; paid p12/p24 mining should remain diagnostic-only until the postmortem gives a reason to spend
 
 The historical-analysis path is intended to answer a narrower question than the retrain bundle builders:
 - inventory the full finalized historical mining universe

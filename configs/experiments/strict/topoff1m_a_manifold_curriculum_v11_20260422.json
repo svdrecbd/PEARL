@@ -1,0 +1,78 @@
+{
+  "name": "topoff1m-a-manifold-curriculum-v11-20260422",
+  "model": "moonshotai/Kimi-K2.5",
+  "records_path": "data/petase_family_expanded/petase_records.jsonl",
+  "base_init_state_path": "tinker://7bb7b832-45c0-5ac0-8cea-1c3bc3f1d7ea:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v7-repair-stageb-lite-lr5e7-ep1",
+  "status": {
+    "state": "approved_for_capped_stage_a_p24_gate",
+    "launch_policy": "train_stage_a_then_p24_gate_only",
+    "reason": "manifold v1 passed p12 but failed p24; v1.1 patches prompt/length coverage and is approved for a capped p24-only transfer test"
+  },
+  "budget": {
+    "max_usd": 40,
+    "scope": "stage-A train plus p24-only gate",
+    "excluded": [
+      "stage-b-lite",
+      "p12",
+      "p48",
+      "paid mining"
+    ]
+  },
+  "audit": {
+    "robustness_summary_path": "reports/robustness/pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128/robustness_summary.json",
+    "ablation_root": "reports/ablations",
+    "output_json": "reports/analysis/manifold_v1_gate_audit_20260422/audit.json",
+    "output_md": "reports/analysis/manifold_v1_gate_audit_20260422/audit.md"
+  },
+  "curriculum": {
+    "selected_path": "reports/manifold/topoff1m-a-manifold-phase1-20260422/phase2_selected_strict.jsonl",
+    "scaffold_bank_path": "reports/manifold/topoff1m-a-manifold-phase1-20260422/scaffold_bank.jsonl",
+    "audit_path": "reports/analysis/manifold_v1_gate_audit_20260422/audit.json",
+    "prompts_path": "data/petase_family_expanded/train_prompts_relevance_ge10.jsonl",
+    "purebred_path": "data/petase_family_expanded/kimi_micro_sft_top9_unicorn_only.jsonl",
+    "stage_a_output_path": "reports/raft/topoff1m-a-manifold-curriculum-v11-20260422/manifold_v11_stage_a.jsonl",
+    "stage_a_summary_path": "reports/raft/topoff1m-a-manifold-curriculum-v11-20260422/manifold_v11_stage_a_summary.json",
+    "base_selected_count": 160,
+    "base_max_per_length": 24,
+    "base_max_per_parent": 3,
+    "p24_replay_repeat": 2,
+    "hit_replay_repeat": 0,
+    "purebred_top_k": 4,
+    "purebred_repeat": 2
+  },
+  "stages": {
+    "stage-a": {
+      "run_name": "pearl-micro-sft-topoff1m-a-manifold-v11-stagea-lr6e7-ep2",
+      "dataset_path": "reports/raft/topoff1m-a-manifold-curriculum-v11-20260422/manifold_v11_stage_a.jsonl",
+      "learning_rate": "6e-7",
+      "epochs": 2,
+      "batch_size": 8,
+      "seed": 173
+    }
+  },
+  "robustness": {
+    "run_name": "pearl-topoff1m-a-manifold-v11-stagea-gate-p24-t08-s41s53s67-c128",
+    "init_from_stage": "stage-a",
+    "variant": "motif_prior_soft_v2",
+    "suite_sizes": [
+      24
+    ],
+    "temperatures": [
+      0.8
+    ],
+    "seeds": [
+      41,
+      53,
+      67
+    ],
+    "candidate_sample_count": 128,
+    "second_stage_top_k": 8,
+    "esm2_device": "cuda",
+    "stockpile_jobs": 3,
+    "stockpile_retries": 1,
+    "gate": {
+      "min_seeds_with_hit": 2,
+      "min_prompts_with_hit": 2
+    }
+  }
+}
