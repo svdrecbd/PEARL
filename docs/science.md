@@ -384,7 +384,12 @@ Current v2.1 bridge-weighted follow-up:
 - builder: `scripts/build_manifold_v21_bridge_curriculum.py`
 - curriculum: `reports/curriculum/manifold_v21_20260424/manifold_v21_bridge_curriculum.jsonl`
 - composition: `71` rows, with `28` v2 strict-breadth anchors, `15` measured bridge replay rows, `12` support prompt anchors, `12` historical family-faithful anchors, and `4` purebred anchors
-- readiness: prepared only for stage-A plus p24/c128 diagnostic; not broad paid-gate ready
+- status: **completed diagnostic (0.0% bridge hits)**
+- readiness: failed p24 durability; stability regression observed compared to v2
+
+Interpretation:
+
+> v2.1 is a direct response to the durability failure of v2. It explicitly weights the curriculum toward the narrow functional basin discovered in v1.2 and confirmed in v2, while maintaining the scaffold breadth needed for robustness.
 
 Reference:
 

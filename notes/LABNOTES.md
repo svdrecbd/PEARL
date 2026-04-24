@@ -3659,3 +3659,23 @@ Interpretation:
 
 **Next Step:**
 - Launch only the v2.1 stage-A plus p24/c128 diagnostic when `TINKER_API_KEY` is available. Do not launch stage-B, p48, or broad mining until p24 durability improves.
+
+### April 24, 2026 - Manifold v2.1 Diagnostic Outcome
+
+**v2.1 Bridge-Weighted Results:**
+- Operational status: 3 / 3 seeds completed.
+- Scientific status: **Failed durability**. 
+- Functional hits: `0` across all 72 prompts (24 steps * 3 seeds).
+- Tier-1/Tier-2 hits: `0`.
+- Geometry rate: ~40% (improved over v2).
+- Stability dominant rate: 0.0% (significant regression from v2's 33%).
+
+**Interpretation:**
+- The v2.1 curriculum reweighted specifically toward measured hits from v1.2 and v2.
+- While this improved the model's ability to propose correct catalytic geometry, it appears to have pushed the generation out of the stable manifold (as measured by the local ESM proxy).
+- Manifold v2 remains the best-performing iteration to date, having discovered sequence `v2-51eeb6d384a261ad` (Seed 53, Step 21), which represents the most complete functional bridge hit in the campaign.
+
+**Current State:**
+- Curriculum and configs for v2 and v2.1 are archived.
+- Documentation updated to reflect the regression.
+
