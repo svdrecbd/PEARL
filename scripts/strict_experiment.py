@@ -214,7 +214,7 @@ def robustness_init_state(
 def run_launch_detached(*, job_name: str, env_overrides: dict[str, str], command: list[str], dry_run: bool) -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     launch_command = [
-        sys.executable,
+        python_bin(),
         str(ROOT / "scripts" / "launch_detached_job.py"),
         "--job-name",
         job_name,

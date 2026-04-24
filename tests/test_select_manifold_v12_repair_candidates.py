@@ -132,6 +132,65 @@ class SelectManifoldV12RepairCandidatesTest(unittest.TestCase):
             self.assertEqual(2, len(selected))
             self.assertFalse(summary["ready_for_paid_gate"])
 
+    def test_v2_nested_flags_and_parent_source_keys_drive_readiness(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            scored_path = root / "scored.jsonl"
+            output_path = root / "selected.jsonl"
+            summary_path = root / "summary.json"
+            rows = [
+                v2_scored_row(
+                    "v2-a",
+                    "ACDEFGHIKLMNPQRSTVWY" * 15,
+                    score=96.0,
+                    parent_source_key="parent-a",
+                    requested_length=300,
+                ),
+                v2_scored_row(
+                    "v2-b",
+                    "CDEFGHIKLMNPQRSTVWYA" * 15,
+                    score=97.0,
+                    parent_source_key="parent-b",
+                    requested_length=300,
+                ),
+                v2_scored_row(
+                    "v2-c",
+                    "DEFGHIKLMNPQRSTVWYAC" * 15,
+                    score=98.0,
+                    parent_source_key="parent-c",
+                    requested_length=300,
+                ),
+            ]
+            write_jsonl(scored_path, rows)
+
+            summary = run_selection(
+                argparse.Namespace(
+                    scored_path=[str(scored_path)],
+                    output_path=str(output_path),
+                    summary_path=str(summary_path),
+                    esm_threshold=85.0,
+                    max_candidates=10,
+                    max_per_source=1,
+                    length_bin_size=10,
+                    max_per_length_bin=10,
+                    max_original_prompt_delta=100,
+                    min_selected_for_paid_gate=3,
+                    min_unique_sources_for_paid_gate=3,
+                    min_unique_lengths_for_paid_gate=1,
+                    recipe_stage="manifold_stage_a_v2_test",
+                )
+            )
+
+            selected = read_jsonl(output_path)
+            self.assertEqual(3, len(selected))
+            self.assertEqual(3, summary["counts"]["strict_manifold_passes"])
+            self.assertEqual(3, summary["counts"]["passes_core_screen"])
+            self.assertEqual(3, summary["counts"]["unique_sources"])
+            self.assertTrue(summary["ready_for_paid_gate"])
+            self.assertEqual({"parent-a", "parent-b", "parent-c"}, {row["source_key"] for row in selected})
+            self.assertEqual("manifold_v2_offline_constructor_selector", selected[0]["selection_source"])
+            self.assertEqual("v2_scored_constructor_selected", selected[0]["strict_bucket"])
+
 
 def scored_row(
     candidate_id: str,
@@ -164,6 +223,37 @@ def scored_row(
         "passes_core_screen": True,
         "esm_score": score,
         "blueprint": {"motif": "GYSLG"},
+    }
+
+
+def v2_scored_row(
+    candidate_id: str,
+    sequence: str,
+    *,
+    score: float,
+    parent_source_key: str,
+    requested_length: int,
+) -> dict[str, object]:
+    length = len(sequence)
+    return {
+        "candidate_id": candidate_id,
+        "sequence_id": candidate_id,
+        "sequence": sequence,
+        "length": length,
+        "requested_length": requested_length,
+        "prompt_length_delta": length - requested_length,
+        "prompt_length_ok": True,
+        "prompt": f"Generate a sequence around {requested_length} aa.",
+        "parent_panel_id": f"panel-{candidate_id}",
+        "parent_source_key": parent_source_key,
+        "parent_panel_source": "support_repair_validated_strict",
+        "mutation_count": 1,
+        "family_assessment": {"strict_manifold_passes": True},
+        "core_evaluation": {"passes_core_screen": True},
+        "esm_score": score,
+        "blueprint": {"motif": "GYSLG"},
+        "family_faithful_proxy_passes": True,
+        "bridge_quality_passes": True,
     }
 
 

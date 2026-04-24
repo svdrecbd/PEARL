@@ -11,7 +11,7 @@ Current scientific default:
 - use mining only when the team explicitly wants a paid diagnostic or targeted tranche
 - do not treat a blind broad `1M` run as the default next move
 - if mining is used next, start with a `50k-75k` p12/p24 exact-hole sweep before scaling to a `250k-300k` targeted tranche
-- the prepared coverage-aware million remains a fallback reference design, but the current recommendation is scaffold-first manifold construction
+- the prepared coverage-aware million remains a fallback reference design, but the current recommendation is offline manifold v2 construction
 
 Primary entrypoints:
 - [scripts/mining_experiment.py](../scripts/mining_experiment.py)
@@ -173,10 +173,13 @@ For strict experiment chains, the supported path is now config-driven:
 - [configs/experiments/strict/topoff1m_a_strict_core_v7_repair_20260412.json](../configs/experiments/strict/topoff1m_a_strict_core_v7_repair_20260412.json)
 - [configs/experiments/strict/topoff1m_a_strict_core_v8_coverage_20260413.json](../configs/experiments/strict/topoff1m_a_strict_core_v8_coverage_20260413.json)
 - [configs/experiments/strict/topoff1m_a_strict_core_v9_p12p24_repair_20260421.json](../configs/experiments/strict/topoff1m_a_strict_core_v9_p12p24_repair_20260421.json)
+- [configs/experiments/strict/topoff1m_a_manifold_curriculum_v12_20260423.json](../configs/experiments/strict/topoff1m_a_manifold_curriculum_v12_20260423.json)
+- [configs/experiments/strict/topoff1m_a_manifold_curriculum_v13_20260423.json](../configs/experiments/strict/topoff1m_a_manifold_curriculum_v13_20260423.json)
 
 Operator rule:
 - `v9` strict config is a record of the attempted path, not a branch to train from the failed repair output
 - only build/train a new strict branch after the source strict pool passes readiness
+- manifold `v1.x` configs are now records of tested branch shapes; do not launch another paid replay without a new offline constructor result
 
 ## 7. Robustness
 
@@ -220,11 +223,14 @@ Purpose:
 
 Current scientific role:
 - this is the recommended hard-route pivot after the `v8` p12/p24 collapse and the failed `v9` local repair rescue
-- Phase 1 is now a supported validator-first local workflow
-- it builds a scaffold bank, extracts catalytic blueprints, builds immutable/mutable masks, and checks known strict positives round-trip through the family-manifold gate
+- Phase 1 is a supported validator-first local workflow
+- repair-frontier and curriculum builders are now available for offline branch design
+- the next pass should consume the v2 objective panel and construct new candidates offline before paying for another gate
 
-Primary entrypoint:
+Primary entrypoints:
 - [scripts/manifold_construction_experiment.py](../scripts/manifold_construction_experiment.py)
+- [scripts/build_manifold_v2_objective_panel.py](../scripts/build_manifold_v2_objective_panel.py)
+- [scripts/build_manifold_v2_offline_constructor.py](../scripts/build_manifold_v2_offline_constructor.py)
 
 Config-driven manifold example:
 - [configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json](../configs/experiments/manifold/topoff1m_a_phase1_constructor_20260422.json)
@@ -245,7 +251,7 @@ Current Phase 2 result:
 - min `99.73`, mean `99.9121`, max `99.98`
 - diversity selection passed readiness with `230` selected strict candidates, `79` parent scaffolds, `8` lengths, `133` bridge-quality rows, and `100` two-mutants
 
-Current transfer result:
+Manifold v1 transfer result:
 - builder: [scripts/build_manifold_curriculum.py](../scripts/build_manifold_curriculum.py)
 - config: [configs/experiments/strict/topoff1m_a_manifold_curriculum_v1_20260422.json](../configs/experiments/strict/topoff1m_a_manifold_curriculum_v1_20260422.json)
 - dataset: `238` pairs from `230` Phase 2 selected rows plus `8` purebred rows
@@ -253,16 +259,22 @@ Current transfer result:
 - p12/p24 gate: `pearl-topoff1m-a-manifold-v1-stagea-gate-p12p24-t08-s41s53s67-c128`
 - `p12`: passed with tier-2 hits `[1, 2, 0]`
 - `p24`: failed with tier-2 hits `[0, 1, 0]`
-- next workflow: offline failure audit and balanced `v1.1` curriculum design, not retries or wider paid robustness
+- branch stopped; no retry, stage-B, p48, or broad mining
 
-Current v1.1 offline repair:
+Manifold v1.1 through v1.3 result:
 - audit: [scripts/audit_manifold_v1_gate.py](../scripts/audit_manifold_v1_gate.py)
 - builder: [scripts/build_manifold_v11_curriculum.py](../scripts/build_manifold_v11_curriculum.py)
 - config: [configs/experiments/strict/topoff1m_a_manifold_curriculum_v11_20260422.json](../configs/experiments/strict/topoff1m_a_manifold_curriculum_v11_20260422.json)
-- audit found `23` p24 holes and `20 / 20` unique p24 requested lengths absent from the Phase 2 selected pool
-- dataset has `216` rows: `160` balanced Phase 2 anchors, `48` p24 prompt-replay strict scaffold anchors, `8` purebred anchors
-- p24 replay anchor length delta is effectively exact: mean absolute `0.042`, max absolute `1`
-- launch policy: review before train; if approved, start with p24-only gate
+- v1.1 failed its p24 gate with `0` tier-2 hits and no raw strict-conjunction reservoir
+- v1.2 selected `39` strict/core/ESM repair candidates across `38` sources and `29` exact lengths
+- v1.2 recovered `3` functional hits and `2` family-faithful hits, but only `3 / 24` prompts were covered
+- v1.3 replayed v1.2 hits plus support prompts and regressed to `[0, 0, 1]` tier-2 hits, `1 / 24` prompt coverage, and `0` family-faithful hits
+
+Next workflow:
+- treat the finalized manifold `v2` curriculum as tested-but-failed at p24/c128: tier-2 hits `[0, 1, 0]`, prompt coverage `1 / 24`, and `0` family-faithful hits
+- use the prepared manifold `v2.1` bridge-weighted curriculum at `reports/curriculum/manifold_v21_20260424/manifold_v21_bridge_curriculum.jsonl`
+- v2.1 has `71` rows: `28` v2 strict-breadth anchors, `15` measured bridge replay rows, `12` support prompt anchors, `12` historical family-faithful anchors, and `4` purebred anchors
+- next paid step, if approved, is v2.1 stage-A training plus a p24-only diagnostic gate
 
 Reference:
 - [manifold_construction.md](manifold_construction.md)

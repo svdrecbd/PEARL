@@ -47,23 +47,27 @@ These docs describe the small set of workflows the repo should actively support:
 - `train`
 - `robustness`
 - `reranker`
-- `manifold-construction` (Phase 1 validator-first scaffold-bank implementation)
+- `manifold-construction` (validator-first scaffold bank, repair-frontier lanes, and offline curriculum builders)
 
 ## Current Scientific Stance
 
-As of April 22, 2026:
+As of April 23, 2026:
 
 - `strict-core-v7-repair` is the best historical branch, but its robustness was narrow.
 - `strict-core-v8-coverage` failed to broaden that branch; it regressed at `p12/p24` and lost family-faithful robustness.
 - The `v8` stage-A p12/p24 diagnostic also failed, so `stage-b-lite` was not the sole problem.
 - The `v9` p12/p24 repair rescue produced `79` high-ESM loose survivors but `0` strict-valid candidates and `0` retrain positives.
-- The next serious strategy is scaffold-first manifold construction, not another small SFT tweak or blind paid mining tranche.
+- The serious strategy remains scaffold-first manifold construction, not another small SFT tweak or blind paid mining tranche.
 - Phase 1 has passed locally with `12,619` unique banked sequences, `4,893` family-manifold scaffolds, `3,769` strict-manifold scaffolds, `79` recovered `v9` negative rows, and `274` strict candidate positives.
 - Phase 2 produced and ESM-scored `10,000` same-length strict-manifold candidates; all scored `>=95` on the L40S.
 - Phase 2 selection passed readiness with `230` selected strict candidates across `79` parents, `8` lengths, `133` bridge-quality rows, and `100` two-mutants.
 - Manifold curriculum v1 trained cleanly from the Phase 2 pool, but failed transfer at `p24`: `p12` passed with tier-2 hits `[1, 2, 0]`, while `p24` failed with `[0, 1, 0]`.
-- Offline manifold v1.1 is built to patch the p24 prompt/length hole: `216` rows, including `48` exact p24 prompt-replay strict scaffold anchors.
-- The active recommendation is to review v1.1 before any new paid branch.
+- Manifold v1.1 patched prompt/length holes offline, but its p24-only gate failed with `0` tier-2 hits and no hidden strict-conjunction reservoir.
+- Manifold v1.2 recovered a narrow real basin: `3` functional hits, `2` family-faithful hits, and `3 / 24` prompt coverage.
+- Manifold v1.3 tried to widen that basin but regressed to `[0, 0, 1]` tier-2 hits, `1 / 24` prompt coverage, and `0` family-faithful hits.
+- Manifold v2 completed its p24/c128 diagnostic but failed durability with tier-2 hits `[0, 1, 0]`, prompt coverage `1 / 24`, and `0` family-faithful hits.
+- The active recommendation is to stop paid `v1.x` replay branches and use the prepared v2.1 bridge-weighted curriculum at `reports/curriculum/manifold_v21_20260424/manifold_v21_bridge_curriculum.jsonl` for the next p24-only diagnostic.
+- v2.1 keeps v2 strict breadth but adds measured v12/v2 bridge replay, support prompt anchors, and historical family-faithful anchors.
 
 ## Historical Surface
 

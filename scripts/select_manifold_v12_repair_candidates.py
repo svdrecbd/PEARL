@@ -71,6 +71,10 @@ def to_int(value: Any) -> int | None:
 
 
 def source_key(row: dict[str, Any]) -> str:
+    for key in ("parent_source_key", "parent_panel_id", "source_key"):
+        value = row.get(key)
+        if value:
+            return str(value)
     parts = [
         row.get("source_lane"),
         row.get("source_mode"),
@@ -81,6 +85,28 @@ def source_key(row: dict[str, Any]) -> str:
         row.get("source_raw_esm_score"),
     ]
     return "|".join(str(part) for part in parts)
+
+
+def is_v2_row(row: dict[str, Any]) -> bool:
+    return any(row.get(key) for key in ("parent_panel_id", "parent_source_key", "parent_panel_source"))
+
+
+def strict_manifold_passes(row: dict[str, Any]) -> bool:
+    if bool(row.get("strict_manifold_passes")):
+        return True
+    family_assessment = row.get("family_assessment") or {}
+    if isinstance(family_assessment, dict):
+        return bool(family_assessment.get("strict_manifold_passes"))
+    return False
+
+
+def core_screen_passes(row: dict[str, Any]) -> bool:
+    if bool(row.get("passes_core_screen")):
+        return True
+    core_evaluation = row.get("core_evaluation") or {}
+    if isinstance(core_evaluation, dict):
+        return bool(core_evaluation.get("passes_core_screen"))
+    return False
 
 
 def length_bin(row: dict[str, Any], *, bin_size: int) -> int:
@@ -104,10 +130,11 @@ def is_eligible(row: dict[str, Any], *, esm_threshold: float, max_original_promp
     sequence = str(row.get("sequence") or "").strip()
     if not sequence:
         return False
+
     prompt_delta = to_int(row.get("prompt_length_delta"))
     return (
-        bool(row.get("strict_manifold_passes"))
-        and bool(row.get("passes_core_screen"))
+        strict_manifold_passes(row)
+        and core_screen_passes(row)
         and float(row.get("esm_score") or 0.0) >= float(esm_threshold)
         and (
             max_original_prompt_delta is None
@@ -152,6 +179,7 @@ def normalize_selected_row(row: dict[str, Any], *, selection_rank: int, recipe_s
     prompt = retargeted_prompt(length=len(sequence), motif=motif)
     candidate_id = str(row.get("candidate_id") or row.get("sequence_id") or f"v12-selected-{selection_rank}")
     parent_key = source_key(row)
+    row_is_v2 = is_v2_row(row)
     payload = dict(row)
     payload.update(
         {
@@ -161,8 +189,16 @@ def normalize_selected_row(row: dict[str, Any], *, selection_rank: int, recipe_s
             "length": len(sequence),
             "sequence_length": len(sequence),
             "selection_rank": selection_rank,
-            "selection_source": "manifold_v12_offline_repair_selector",
-            "parent_sequence_id": f"v12-source:{parent_key}",
+            "selection_source": (
+                "manifold_v2_offline_constructor_selector"
+                if row_is_v2
+                else "manifold_v12_offline_repair_selector"
+            ),
+            "parent_sequence_id": str(
+                row.get("parent_sequence_id")
+                or row.get("parent_panel_id")
+                or f"{'v2' if row_is_v2 else 'v12'}-source:{parent_key}"
+            ),
             "source_key": parent_key,
             "derived_motif": motif,
             "prompt": prompt,
@@ -180,10 +216,16 @@ def normalize_selected_row(row: dict[str, Any], *, selection_rank: int, recipe_s
             "original_prompt_length_delta": prompt_length_delta,
             "original_prompt_length_ok": prompt_was_length_ok,
             "v12_prompt_retargeted": not prompt_was_length_ok,
-            "curriculum_role": "v12_repair_bridge_anchor",
-            "curriculum_source": "v12_strict_repair_retargeted",
+            "curriculum_role": "v2_constructor_anchor" if row_is_v2 else "v12_repair_bridge_anchor",
+            "curriculum_source": (
+                "v2_constructor_scored_reselected"
+                if row_is_v2
+                else "v12_strict_repair_retargeted"
+            ),
             "recipe_stage": recipe_stage,
-            "strict_bucket": "v12_repair_retargeted",
+            "strict_bucket": "v2_scored_constructor_selected" if row_is_v2 else "v12_repair_retargeted",
+            "strict_manifold_passes": strict_manifold_passes(row),
+            "passes_core_screen": core_screen_passes(row),
             "family_faithful_bridge_passes": True,
             "functional_bridge_passes": True,
             "bridge_quality_passes": True,
@@ -249,10 +291,16 @@ def summarize_selected(
     unique_sources = len(source_counts)
     unique_lengths = len(length_counts)
     selected_count = len(selected_rows)
+    strict_count = sum(strict_manifold_passes(row) for row in selected_rows)
+    core_count = sum(core_screen_passes(row) for row in selected_rows)
+    esm_count = sum(float(row.get("esm_score") or 0.0) >= float(args.esm_threshold) for row in selected_rows)
     readiness_passes = (
         selected_count >= int(args.min_selected_for_paid_gate)
         and unique_sources >= int(args.min_unique_sources_for_paid_gate)
         and unique_lengths >= int(args.min_unique_lengths_for_paid_gate)
+        and strict_count == selected_count
+        and core_count == selected_count
+        and esm_count == selected_count
     )
     original_deltas = [
         abs(int(row["original_prompt_length_delta"]))
@@ -285,9 +333,9 @@ def summarize_selected(
             "unique_length_bins": len(length_bin_counts),
             "original_prompt_length_ok": sum(bool(row.get("original_prompt_length_ok")) for row in selected_rows),
             "retargeted_prompt_rows": retargeted_count,
-            "strict_manifold_passes": sum(bool(row.get("strict_manifold_passes")) for row in selected_rows),
-            "passes_core_screen": sum(bool(row.get("passes_core_screen")) for row in selected_rows),
-            "esm_gate_passes": sum(float(row.get("esm_score") or 0.0) >= float(args.esm_threshold) for row in selected_rows),
+            "strict_manifold_passes": strict_count,
+            "passes_core_screen": core_count,
+            "esm_gate_passes": esm_count,
         },
         "score_summary": numeric_summary([float(row.get("esm_score") or 0.0) for row in selected_rows]),
         "original_prompt_abs_delta_summary": numeric_summary([float(value) for value in original_deltas]),
@@ -318,7 +366,7 @@ def summarize_selected(
             for row in selected_rows[:20]
         ],
         "next_step": (
-            "Build the v1.2 stage-A curriculum from this selected file using length-retargeted prompts. "
+            "Build the stage-A curriculum from this selected file using length-retargeted prompts. "
             "Do not launch paid training or robustness until explicitly approved."
         ),
     }

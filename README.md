@@ -18,7 +18,7 @@ This repository explores PETase-family sequence design through remote generation
 
 ## Current State
 
-As of April 22, 2026:
+As of April 23, 2026:
 
 - merged `stage-b-lite` mined pool:
   - `1,597,184` raw candidates
@@ -27,62 +27,39 @@ As of April 22, 2026:
   - `197` lineage clusters at `0.85`
 - best historical strict branch:
   - `strict-core-v7-repair`
-  - stage-A trained cleanly on `160` pairs and passed the stricter `p48` smoke gate with `2 / 3` seeds and `3 / 48` prompts
-  - `stage-b-lite` trained cleanly on `162` pairs
-  - full robustness still failed durability:
+  - stage-A and stage-B-lite trained cleanly
+  - full robustness stayed narrow:
     - `p12`: `[0, 0, 0]`
     - `p24`: `[0, 2, 0]`
     - `p48`: `[0, 3, 1]`
     - the main miss was prompt coverage breadth, with only `4 / 48` prompts hit at `p48`
-- latest strict branch:
-  - `strict-core-v8-coverage`
-  - stage-A checkpoint:
-    - `tinker://0e007439-8486-58fd-8a5a-9769ced7e0b2:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v8-coverage-stagea-lr1e6-ep3`
-  - stage-B-lite checkpoint:
-    - `tinker://789989aa-dbe7-522b-a82a-1bccd9060a06:train:0/weights/pearl-micro-sft-topoff1m-a-strict-core-v8-coverage-stageb-lite-lr5e7-ep1`
-  - stage-A `p48` smoke showed hits but did not imply durability
-  - full stage-B-lite robustness failed:
-    - `p12`: `[0, 0, 0]`
-    - `p24`: `[0, 0, 0]`
-    - `p48`: `[0, 3, 3]`
-    - all family-faithful counts were `0`
-  - stage-A diagnostic at `p12/p24` also failed:
-    - `p12`: `[0, 0, 0]`
-    - `p24`: `[0, 0, 0]`
-    - this means `stage-b-lite` was not the sole regression
-- candidate-audit repair lane:
-  - April 10/12 repair succeeded and made `v7` possible
-  - April 21/22 p12/p24 `v9` repair failed as a rescue path:
-    - `134` geometry-dominant near-misses
-    - `47,489` local variants evaluated
-    - `79` loose repaired survivors
-    - `0` strict shortlist, `0` strict bridge, `0` strict family, `0` strict consensus
-    - readiness failed with `0` retrain positives
-- local Gemma mining trial:
-  - half-wave `525,568`-candidate ESM check came back `0` functional / `0` family-faithful
-  - treat the current local Gemma path as failed unless the serving/prompting path is corrected first
-- historical local-exploit audit:
-  - finalized-hit universe and widened finalized-report near-miss universe both came back with no usable anchor neighborhoods
-  - current “no free lunch” read: there is no passive challenge-style local basin already sitting in the saved finalized corpus
-- current direction:
-  - stop treating broad paid sampling and small SFT tweaks as the primary next move
-  - treat `strict-core-v7-repair` as the best historical baseline and a possible lucky narrow attractor
-  - treat `v8` and the `v9` repair rescue as evidence that the current loop does not reliably learn the strict PETase/cutinase manifold
-  - use the scaffold-first manifold-construction pipeline before spending on another large mining tranche
-  - Phase 1 now builds a local scaffold bank with `12,619` unique sequences, `4,893` family-manifold scaffolds, `79` recovered `v9` negatives, and `274` strict candidate positives
-  - Phase 2 built and ESM-scored a `10,000`-candidate strict-manifold same-length frontier on the L40S; all candidates scored `>=95`
-  - Phase 2 diversity/readiness selection passed on the L40S with `230` selected strict candidates across `79` parent scaffolds, `8` lengths, and `100` two-mutants
-  - manifold curriculum v1 trained cleanly from the Phase 2 selected pool under the `$80` capped branch, but failed the p12/p24 transfer gate:
-    - `p12`: passed, tier-2 hits by seed `[1, 2, 0]`, `2 / 3` seeds hit, `3` prompts covered
-    - `p24`: failed, tier-2 hits by seed `[0, 1, 0]`, `1 / 3` seeds hit, `1` prompt covered
-  - stop paid work on this branch; the next step is offline audit of p12 hits versus p24 misses and a better-balanced `v1.1` curriculum recipe
-  - offline manifold `v1.1` is now built:
-    - audit found `23` p24 prompt holes, `1` weak-hit p24 prompt, and `20 / 20` unique p24 requested lengths missing from the Phase 2 selected pool
-    - dataset has `216` rows: `160` balanced Phase 2 anchors, `48` exact p24 prompt-replay strict scaffold anchors, and `8` purebred anchors
-    - p24 replay anchors have mean absolute length delta `0.042` aa and max absolute delta `1` aa
-    - this is an offline artifact only; do not train it without review
-  - keep a `50k-75k` p12/p24 targeted mining sweep as an optional diagnostic only after the offline audit, not the default next move
-  - keep the reranker lane reranker-first and diagnostic-only until it clearly beats scalar reward baselines on harder held-out prompt / bucket / cluster splits
+- negative strict/repair evidence:
+  - `strict-core-v8-coverage` failed to broaden `v7`, regressed at `p12/p24`, and lost family-faithful robustness
+  - the April 21/22 `v9` p12/p24 repair rescue found `79` loose high-ESM survivors but `0` strict shortlist rows and `0` retrain positives
+  - local Gemma mining and historical local-exploit scans did not expose a usable passive basin
+- scaffold-first manifold pivot:
+  - Phase 1 built a local scaffold bank with `12,619` unique sequences, `4,893` family-manifold scaffolds, `3,769` strict-manifold scaffolds, `79` recovered `v9` negatives, and `274` strict candidate positives
+  - Phase 2 built and ESM-scored a `10,000`-candidate same-length strict-manifold frontier; all candidates scored `>=95`
+  - Phase 2 selection passed readiness with `230` selected strict candidates across `79` parent scaffolds, `8` lengths, and `100` two-mutants
+- manifold curriculum outcomes:
+  - `v1`: nonzero transfer but failed breadth; `p12` passed with tier-2 hits `[1, 2, 0]`, while `p24` failed with `[0, 1, 0]`
+  - `v1.1`: p24-only gate failed cleanly with `0` tier-2 hits and `0` raw single-motif plus geometry plus ESM candidates
+  - `v1.2`: length-retargeted repair distillation recovered real but narrow signal: `3` functional hits, `2` family-faithful hits, and `3 / 24` prompt coverage
+  - `v1.3`: support-prompt widening regressed to `[0, 0, 1]` tier-2 hits, `1 / 24` prompt coverage, and `0` family-faithful hits
+- current rule:
+  - do not launch another paid manifold `v1.x` replay, stage-B, p48, or broad mining tranche from this branch line
+  - the manifold `v2` objective panel is now built at `reports/analysis/manifold_v2_objective_panel_20260424/`
+  - use its `2` `v1.2` family-faithful hits as positive anchors and `45` `v1.3` stable-only / geometry-only finalists as hard negatives
+  - use its `305` v9/v1.1 drift negatives and `190` historical support positives to shape the next offline constructor
+  - the first v2 offline constructor selected `64` hard-gated pre-ESM candidates across `38` parents and `8` exact lengths
+  - the expanded v2 constructor scored `192 / 192` candidates above ESM `85`
+  - final reselection produced `34` strict/core/ESM candidates across `18` parent source keys and `14` exact lengths
+  - the finalized v2 curriculum has `42` rows: `34` selected candidates plus `8` purebred anchors
+  - the v2 p24/c128 diagnostic completed but failed durability with tier-2 hits `[0, 1, 0]`, prompt coverage `1 / 24`, and `0` family-faithful hits
+  - active next branch is v2.1 bridge-weighted replay at `reports/curriculum/manifold_v21_20260424/manifold_v21_bridge_curriculum.jsonl`
+  - v2.1 has `71` rows: `28` v2 strict-breadth anchors, `15` measured bridge replay rows, `12` support prompt anchors, `12` historical family-faithful anchors, and `4` purebred anchors
+  - current paid scope is a tiny v2.1 stage-A train plus p24-only diagnostic gate; no stage-B, p48, or broad mining from this artifact
+  - keep paid mining as a small diagnostic only if the offline v2 redesign stalls
 
 See [`docs/science.md`](docs/science.md) for the current research readout and primary artifact links.
 

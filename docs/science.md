@@ -1,6 +1,6 @@
 # Science Status
 
-## Current State (April 22, 2026)
+## Current State (April 23, 2026)
 
 The project is at a strategy reset.
 
@@ -189,7 +189,29 @@ The v1.2 breadth selector and length-retargeted curriculum are now built:
 
 Interpretation:
 
-> v1.2 is now offline-ready for a small paid p24-only proof if approved, but it is not a replay of the original failed prompts. The scientific bet is length-retargeted manifold distillation from repaired strict/core/ESM examples.
+> v1.2 was a reasonable small paid p24-only proof because it was not a replay of the original failed prompts. The scientific bet was length-retargeted manifold distillation from repaired strict/core/ESM examples.
+
+The v1.2 paid p24 proof recovered real but narrow transfer:
+
+- completed runs: `3 / 3`
+- tier-2 hits by seed: `[1, 1, 1]`
+- recovered functional hits: `3`
+- recovered family-faithful hits: `2`
+- prompt coverage: `3 / 24`
+- hit prompt steps: `2`, `7`, `14`
+
+The v1.3 follow-up replayed the v1.2 hits and added nearby support prompts, but regressed:
+
+- stage-A dataset: `64` rows
+- composition: `39` v1.2 breadth anchors, `8` support prompt scaffolds, `9` gate-hit replays, `8` purebred anchors
+- tier-2 hits by seed: `[0, 0, 1]`
+- prompt coverage: `1 / 24`
+- family-faithful hits: `0`
+- only recovered tier-2 event: seed `67`, prompt step `11`, bridge-only
+
+Interpretation:
+
+> v1.2 showed a narrow family-faithful basin exists. v1.3 showed that support-prompt widening and higher trainable/stability counts are not enough to preserve that basin.
 
 ## Current Read
 
@@ -325,10 +347,11 @@ Interpretation:
 
 Primary next phase:
 
-- review the v1.1 offline curriculum before spending again
-- if approved, train only a small stage-A branch and gate p24 first
-- add explicit negative steering from v9-style drift, stable-only rows, and geometry-only rows
-- start from natural references, canonical purebreds, old strict hits, mined family-faithful reps, and April 12 strict repairs
+- consume the manifold v2 objective panel before spending again
+- freeze its v1.2 family-faithful hits as positive anchors
+- treat its v1.3 stable-only and geometry-only finalists as hard negatives
+- include its v9/v1.1 drift examples as additional negative contrast
+- start from natural references, canonical purebreds, old strict hits, mined family-faithful reps, April 12 strict repairs, and the v1.2 family-faithful hits
 - infer and lock active-site blueprints
 - permit only same-length edits that preserve:
   - family length band
@@ -337,23 +360,54 @@ Primary next phase:
   - catalytic `S/D/H` spacing
   - family core screen
 - optimize ESM/stability and novelty only after strict family validity is guaranteed
+- require nonzero family-faithful density and prompt/length obedience offline before any new paid gate
+
+Current v2 objective panel:
+
+- `2` v1.2 family-faithful positive anchors
+- `45` v1.3 hard negatives
+- `305` v9/v1.1 drift negatives
+- `190` historical support positives
+- readiness: not paid-gate ready; this is the objective input for the next offline constructor pass
+
+Current v2 offline constructor and curriculum:
+
+- `340` hard-gated pre-ESM frontier candidates
+- expanded scoring pool: `192` candidates, all ESM `>=85`
+- final reselected set: `34` strict/core/ESM candidates
+- breadth: `18` parent source keys, `14` exact lengths, and `8` length bins
+- finalized curriculum: `42` rows, with `34` v2-selected candidates and `8` purebred anchors
+- p24/c128 diagnostic: completed operationally but failed durability with tier-2 hits `[0, 1, 0]`, prompt coverage `1 / 24`, and `0` family-faithful hits
+
+Current v2.1 bridge-weighted follow-up:
+
+- builder: `scripts/build_manifold_v21_bridge_curriculum.py`
+- curriculum: `reports/curriculum/manifold_v21_20260424/manifold_v21_bridge_curriculum.jsonl`
+- composition: `71` rows, with `28` v2 strict-breadth anchors, `15` measured bridge replay rows, `12` support prompt anchors, `12` historical family-faithful anchors, and `4` purebred anchors
+- readiness: prepared only for stage-A plus p24/c128 diagnostic; not broad paid-gate ready
 
 Reference:
 
 - [manifold_construction.md](manifold_construction.md)
+- [reports/analysis/manifold_v2_objective_panel_20260424/v2_objective_panel_summary.json](../reports/analysis/manifold_v2_objective_panel_20260424/v2_objective_panel_summary.json)
+- [reports/analysis/manifold_v2_offline_constructor_20260424/v2_constructor_summary.json](../reports/analysis/manifold_v2_offline_constructor_20260424/v2_constructor_summary.json)
+- [reports/analysis/manifold_v2_offline_constructor_20260424_batch2/v2_constructor_final_selection_summary.json](../reports/analysis/manifold_v2_offline_constructor_20260424_batch2/v2_constructor_final_selection_summary.json)
+- [reports/curriculum/manifold_v2_20260424/summary.json](../reports/curriculum/manifold_v2_20260424/summary.json)
+- [reports/curriculum/manifold_v21_20260424/summary.json](../reports/curriculum/manifold_v21_20260424/summary.json)
 
 Optional paid diagnostic:
 
 - `50k-75k` exact p12/p24 hole sweep
 - only scale to `250k-300k` targeted mining if strict or near-strict density appears
 - avoid a blind `1M` run unless smaller diagnostics justify it
-- do not use paid mining as the immediate next step after the failed manifold v1 p24 gate
+- do not use paid mining as the immediate next step after the manifold v1.x failures
 
 Current ruled-out default paths:
 
 - another tiny strict-core SFT tweak
 - training on the failed `v9` repair outputs
 - retrying manifold v1 unchanged
+- launching a v1.4-shaped replay of v1.3
 - treating `p48` functional hits without family-faithful signal as success
 - blind `1M` mining as the next default move
 - continuing the local Gemma path unchanged
@@ -371,12 +425,23 @@ Interpretation:
 
 > v1.2 did reach the strict family manifold often enough to show the pivot was real. The remaining problem is basin width, not total absence of hits.
 
-That result points directly to the `v1.3` offline branch:
+The `v1.3` offline branch tested whether nearby support prompts would widen that basin:
 
 - keep the `39` breadth-positive `v1.2` anchors
 - add `9` exact replays of the recovered gate hits
 - add `8` scaffold-backed support prompts around the recovered hit lengths
 - keep `8` purebred anchors
+
+The paid `v1.3` p24 gate failed that bet:
+
+- tier-2 hits by seed: `[0, 0, 1]`
+- prompt coverage: `1 / 24`
+- family-faithful hits: `0`
+- only recovered tier-2 event: seed `67`, prompt step `11`, bridge-only
+
+Interpretation:
+
+> v1.3 raised trainable and stability-dominant counts, but did not preserve the v1.2 family-faithful basin. The next pass should be a v2 offline objective redesign, not another paid replay.
 
 Reference artifacts:
 

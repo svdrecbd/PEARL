@@ -2,7 +2,7 @@
 
 ## Status
 
-As of April 22, 2026, the project should treat the Kimi sampling plus strict-SFT loop as a partially successful but unreliable discovery engine, not as the primary path to the next result.
+As of April 23, 2026, the project should treat the Kimi sampling plus strict-SFT loop as a partially successful but unreliable discovery engine, not as the primary path to the next result.
 
 The current evidence says:
 
@@ -10,9 +10,11 @@ The current evidence says:
 - `strict-core-v8-coverage` did not broaden that signal; it regressed at `p12/p24`.
 - The `v8` stage-A diagnostic also failed at `p12/p24`, so `stage-b-lite` was not the sole failure.
 - The `v9` p12/p24 local repair pass produced stable repaired sequences but `0` strict-valid candidates.
+- Manifold `v1.2` recovered a narrow real basin with `3` functional hits and `2` family-faithful hits across `3 / 24` prompts.
+- Manifold `v1.3` tried support-prompt widening and regressed to one bridge-only hit with `0` family-faithful transfer.
 - Another paid mining tranche remains possible, but it is no longer the highest-quality next move unless we explicitly want a diagnostic.
 
-The recommended next phase is to construct candidates inside the PETase/cutinase family manifold from the start.
+The recommended next phase is to build a manifold `v2` offline constructor/objective branch before another paid gate.
 
 Phase 1 of that pivot is now implemented locally:
 
@@ -531,8 +533,56 @@ Do not launch another paid run from manifold curriculum v1, v1.1, or a v1.3-shap
 
 Immediate next step:
 
-- build a manifold v2 offline constructor/objective branch
-- freeze the v1.2 family-faithful hits as positives and treat the v1.3 stable-only / geometry-only finalists as hard negatives
-- tighten inclusion around family-faithful transfer, catalytic blueprint preservation, and prompt/length obedience before another paid gate
+- build a manifold v2 offline constructor/objective branch (Complete)
+- freeze the v1.2 family-faithful hits as positives and treat the v1.3 stable-only / geometry-only finalists as hard negatives (Complete)
+- tighten inclusion around family-faithful transfer, catalytic blueprint preservation, and prompt/length obedience before another paid gate (Complete)
 
-Only after offline replay again shows nonzero family-faithful density should the team consider another tiny p24-only proof. If that offline redesign stalls, the only reasonable paid alternative is a small targeted mining diagnostic, not another broad replay.
+Objective panel built:
+
+- builder: `scripts/build_manifold_v2_objective_panel.py`
+- output: `reports/analysis/manifold_v2_objective_panel_20260424/`
+- summary: `reports/analysis/manifold_v2_objective_panel_20260424/v2_objective_panel_summary.json`
+- panel counts: `2` v1.2 family-faithful positive anchors, `45` v1.3 hard negatives, `305` v9/v1.1 drift negatives, and `190` historical support positives
+- readiness: objective panel built; not a paid-gate artifact by itself
+
+Offline constructor built (Phase 1 & 2):
+
+- builder: `scripts/build_manifold_v2_offline_constructor.py`
+- batch 1 output: `reports/analysis/manifold_v2_offline_constructor_20260424/`
+- batch 2 output: `reports/analysis/manifold_v2_offline_constructor_20260424_batch2/`
+- total candidates scored: `192`
+- ESM status: `192 / 192` passed `>= 85`, mean `98.8`
+
+Final Reselection:
+
+- tool: `scripts/select_manifold_v12_repair_candidates.py` (v2-nested support added)
+- status: **Ready for Paid Gate**
+- selection: `34` candidates across `18` unique parent source keys
+- breadth: `8` length bins, `14` exact lengths
+- validation: `34 / 34` strict-manifold, core-screen, and ESM-gate passes
+- ESM score range: min `92.01`, mean `98.8174`, max `99.95`
+- readiness: `"offline selected set has enough strict/core/ESM breadth for a small paid gate"`
+
+Final Curriculum:
+
+- tool: `scripts/finalize_manifold_v2_curriculum.py`
+- location: `reports/curriculum/manifold_v2_20260424/manifold_v2_curriculum.jsonl`
+- composition: `34` v2-selected candidates, `8` purebred anchors
+- audit status: selected-row metadata preserved, including prompts, source keys, selection rank, motif, mutation count, validation fields, and parent/source provenance
+
+Paid p24 diagnostic outcome:
+
+- stage-A checkpoint: `pearl-micro-sft-topoff1m-a-manifold-v2-stagea-20260424`
+- gate: `pearl-topoff1m-a-manifold-v2-stagea-gate-p24-c128`
+- operational status: `3 / 3` seed runs completed
+- scientific status: failed durability with tier-2 hits `[0, 1, 0]`, prompt coverage `1 / 24`, and `0` family-faithful hits
+
+Manifold v2.1 bridge-weighted follow-up:
+
+- builder: `scripts/build_manifold_v21_bridge_curriculum.py`
+- config: `configs/experiments/strict/topoff1m_a_manifold_v21_bridge_20260424.json`
+- curriculum: `reports/curriculum/manifold_v21_20260424/manifold_v21_bridge_curriculum.jsonl`
+- composition: `71` rows: `28` v2 strict-breadth anchors, `10` v12 family-hit replays, `3` v12 bridge-hit replays, `2` v2 bridge-hit replays, `12` support prompt anchors, `12` historical family-faithful anchors, and `4` purebred anchors
+- readiness: prepared for stage-A plus p24/c128 diagnostic only; not broad paid-gate ready
+
+Status as of April 24, 2026: **v2 failed p24 durability; v2.1 bridge-weighted diagnostic is prepared but not launched from this shell**.

@@ -20,7 +20,7 @@ Supported operator docs now live under:
 
 This file remains the long-form experimental and engineering fossil record.
 
-## Latest Canonical Status (as of April 22, 2026)
+## Latest Canonical Status (as of April 23, 2026)
 
 - best historical retrain branch:
   - `strict-core-v7-repair`
@@ -243,14 +243,24 @@ This file remains the long-form experimental and engineering fossil record.
       - max parent/candidate share `0.013889`
     - interpretation:
       - v1.1 patches the exact p24 prompt/length hole exposed by v1
-      - it is an offline dataset only; do not launch training without review
+      - the later p24-only gate failed cleanly with `0` tier-2 hits and no hidden strict-conjunction reservoir
+  - manifold curriculum v1.2:
+    - selected `39` strict/core/ESM repair candidates across `38` sources and `29` exact lengths
+    - stage-A dataset had `47` rows: `39` selected repairs plus `8` purebred anchors
+    - paid p24 gate recovered `3` functional hits and `2` family-faithful hits
+    - prompt coverage stayed narrow at `3 / 24`, so durability failed
+  - manifold curriculum v1.3:
+    - dataset had `64` rows: `39` v1.2 breadth anchors, `8` support scaffolds, `9` gate-hit replays, and `8` purebred anchors
+    - paid p24 gate regressed to tier-2 hits `[0, 0, 1]`, prompt coverage `1 / 24`, and `0` family-faithful hits
+    - the only recovered tier-2 event was bridge-only at seed `67`, prompt step `11`
 - current decision point:
   - do not launch a blind `1M` candidate run as the default next step
   - do not retry manifold v1 unchanged
-  - do not launch stage-B, p48, or paid mining from this failed branch
-  - review the built v1.1 dataset before spending again
-  - if approved, start with a capped p24-only proof gate
-  - a `50k-75k` p12/p24 exact-hole sweep remains available as a diagnostic only after the offline audit
+  - do not launch another paid manifold `v1.x` replay, stage-B, p48, or broad mining from this branch line
+  - build a manifold `v2` offline constructor/objective branch before spending again
+  - freeze v1.2 family-faithful hits as positive anchors
+  - treat v1.3 stable-only and geometry-only finalists as hard negatives
+  - a `50k-75k` p12/p24 exact-hole sweep remains available only as a diagnostic if the offline redesign stalls
 
 ## Previous Canonical Status (superseded; as of April 20, 2026)
 
@@ -3557,3 +3567,95 @@ Interpretation:
 - The support-widening curriculum raised trainable and stability-dominant counts, but that increase did not translate into family-faithful bridge recovery.
 - Relative to v1.2, this was a regression in the metric that matters: v1.2 had `3` post-ESM hits and `2` family-faithful hits across `3 / 24` prompts, while v1.3 ended with one bridge-only hit and zero family-faithful transfer.
 - The next move should not be another small variation of the same stage-A replay. The next branch needs an offline constructor/objective redesign that explicitly learns from v1.2 positives and v1.3 negatives.
+
+### Manifold v2 objective panel
+
+New script:
+
+- builder: [/Users/svdr/tinker/scripts/build_manifold_v2_objective_panel.py](/Users/svdr/tinker/scripts/build_manifold_v2_objective_panel.py)
+
+New artifacts:
+
+- summary: [/Users/svdr/tinker/reports/analysis/manifold_v2_objective_panel_20260424/v2_objective_panel_summary.json](/Users/svdr/tinker/reports/analysis/manifold_v2_objective_panel_20260424/v2_objective_panel_summary.json)
+- positive anchors: [/Users/svdr/tinker/reports/analysis/manifold_v2_objective_panel_20260424/v2_positive_anchors.jsonl](/Users/svdr/tinker/reports/analysis/manifold_v2_objective_panel_20260424/v2_positive_anchors.jsonl)
+- hard negatives: [/Users/svdr/tinker/reports/analysis/manifold_v2_objective_panel_20260424/v2_hard_negatives.jsonl](/Users/svdr/tinker/reports/analysis/manifold_v2_objective_panel_20260424/v2_hard_negatives.jsonl)
+- drift negatives: [/Users/svdr/tinker/reports/analysis/manifold_v2_objective_panel_20260424/v2_drift_negatives.jsonl](/Users/svdr/tinker/reports/analysis/manifold_v2_objective_panel_20260424/v2_drift_negatives.jsonl)
+- support positives: [/Users/svdr/tinker/reports/analysis/manifold_v2_objective_panel_20260424/v2_support_positives.jsonl](/Users/svdr/tinker/reports/analysis/manifold_v2_objective_panel_20260424/v2_support_positives.jsonl)
+
+Panel inventory:
+
+- `2` v1.2 family-faithful positive anchors
+- `45` v1.3 hard negatives, split into `31` stability-only and `14` geometry-only selected rows
+- `305` v9/v1.1 drift negatives
+- `190` historical support positives
+- `542` total rows, all exact-unique by sequence
+
+Interpretation:
+
+- This is not paid-gate ready by itself. It is the offline objective panel for the next manifold v2 constructor.
+- The next pass should generate candidates that stay close to the family-faithful anchors and support positives while explicitly avoiding the v1.3 stability-only/geometry-only and v9/v1.1 drift modes.
+- Any future paid p24 proof should wait until that constructor shows family-faithful density, source breadth, catalytic blueprint preservation, and prompt/length obedience offline.
+
+### Manifold v2 offline constructor
+
+New script:
+
+- constructor: [/Users/svdr/tinker/scripts/build_manifold_v2_offline_constructor.py](/Users/svdr/tinker/scripts/build_manifold_v2_offline_constructor.py)
+
+New artifacts:
+
+- summary: [/Users/svdr/tinker/reports/analysis/manifold_v2_offline_constructor_20260424/v2_constructor_summary.json](/Users/svdr/tinker/reports/analysis/manifold_v2_offline_constructor_20260424/v2_constructor_summary.json)
+- frontier: [/Users/svdr/tinker/reports/analysis/manifold_v2_offline_constructor_20260424/v2_constructor_frontier_pre_esm.jsonl](/Users/svdr/tinker/reports/analysis/manifold_v2_offline_constructor_20260424/v2_constructor_frontier_pre_esm.jsonl)
+- selected: [/Users/svdr/tinker/reports/analysis/manifold_v2_offline_constructor_20260424/v2_constructor_selected_pre_esm.jsonl](/Users/svdr/tinker/reports/analysis/manifold_v2_offline_constructor_20260424/v2_constructor_selected_pre_esm.jsonl)
+
+Constructor result:
+
+- frontier: `340` hard-gated pre-ESM candidates
+- frontier breadth: `44` parent scaffolds and `8` exact lengths
+- selected set: `64` pre-ESM candidates
+- selected breadth: `38` parent scaffolds and `8` exact lengths
+- mutation mix: `56` one-mutants and `8` two-mutants
+- selected quality proxies: `45` family-faithful proxy rows and `64` bridge-quality rows
+- all selected rows preserve hard family gates and exact prompt-length obedience
+- readiness: `ready_for_esm_scoring: true`, `ready_for_paid_gate: false`
+
+Interpretation:
+
+- The v2 objective redesign now has a concrete candidate handoff.
+- This is still pre-ESM. The next required pass is ESM scoring and scored reselection, not training or a Tinker gate.
+
+### April 24, 2026 - Manifold v2 Scoring and Curriculum Finalization
+
+**ESM Scoring Results:**
+- Batch 1 (64 candidates): All passed ESM >= 85, mean 99.5.
+- Batch 2 (128 candidates, expanded parent pass): All passed ESM >= 85, mean 98.8.
+- **Combined Pool:** 192 candidates, all high-stability, all hard-gated for family manifold validity.
+
+**Selection & Readiness:**
+- Fixed `scripts/select_manifold_v12_repair_candidates.py` to support v2 nested JSON flags (`family_assessment.strict_manifold_passes`, etc).
+- Fixed v2 source-breadth accounting to use `parent_source_key` / `parent_panel_id` instead of v1.2 lane fields.
+- Final Reselection: 34 candidates from 18 unique parent source keys.
+- Validation: 34 / 34 strict-manifold, core-screen, and ESM-gate passes.
+- Readiness Decision: **Passed**. The set has sufficient breadth (14 lengths, 8 length bins) for a small-scale paid gate.
+
+**Curriculum Building:**
+- Tool: `scripts/finalize_manifold_v2_curriculum.py`
+- Result: Generated `reports/curriculum/manifold_v2_20260424/manifold_v2_curriculum.jsonl`.
+- Composition: 34 v2-selected candidates + 8 purebred anchors (total 42 rows).
+- Audit metadata is preserved in the finalized curriculum, including sequence/source prompts, source keys, recipe stage, strict bucket, motif, mutation count, validation records, and parent/source provenance.
+
+**Paid Diagnostic Result:**
+- Stage-A checkpoint: `pearl-micro-sft-topoff1m-a-manifold-v2-stagea-20260424`.
+- p24/c128 gate: `pearl-topoff1m-a-manifold-v2-stagea-gate-p24-c128`.
+- Operational status: 3 / 3 seeds completed.
+- Scientific status: failed durability. Tier-2 hits by seed were `[0, 1, 0]`, prompt coverage was `1 / 24`, and family-faithful hits were `0`.
+
+**v2.1 Bridge-Weighted Follow-Up:**
+- Tool: `scripts/build_manifold_v21_bridge_curriculum.py`
+- Config: `configs/experiments/strict/topoff1m_a_manifold_v21_bridge_20260424.json`
+- Curriculum: `reports/curriculum/manifold_v21_20260424/manifold_v21_bridge_curriculum.jsonl`
+- Composition: `71` rows = `28` v2 strict-breadth anchors, `10` v12 family-hit replays, `3` v12 bridge-hit replays, `2` v2 bridge-hit replays, `12` support prompt anchors, `12` historical family-faithful anchors, and `4` purebred anchors.
+- Validation: no missing prompt/sequence fields, no rows longer than 400 aa, and focused v2/v2.1 tests passed.
+
+**Next Step:**
+- Launch only the v2.1 stage-A plus p24/c128 diagnostic when `TINKER_API_KEY` is available. Do not launch stage-B, p48, or broad mining until p24 durability improves.

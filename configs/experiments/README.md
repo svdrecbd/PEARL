@@ -11,6 +11,8 @@ Current supported config-driven strict experiment examples:
 - [strict/topoff1m_a_strict_core_v7_repair_20260412.json](strict/topoff1m_a_strict_core_v7_repair_20260412.json)
 - [strict/topoff1m_a_strict_core_v8_coverage_20260413.json](strict/topoff1m_a_strict_core_v8_coverage_20260413.json)
 - [strict/topoff1m_a_strict_core_v9_p12p24_repair_20260421.json](strict/topoff1m_a_strict_core_v9_p12p24_repair_20260421.json)
+- [strict/topoff1m_a_manifold_curriculum_v12_20260423.json](strict/topoff1m_a_manifold_curriculum_v12_20260423.json)
+- [strict/topoff1m_a_manifold_curriculum_v13_20260423.json](strict/topoff1m_a_manifold_curriculum_v13_20260423.json)
 
 Current generic launcher:
 - [scripts/strict_experiment.py](../../scripts/strict_experiment.py)
@@ -87,14 +89,43 @@ Current manifold read:
   - `p12`: passed, tier-2 hits `[1, 2, 0]`
   - `p24`: failed, tier-2 hits `[0, 1, 0]`
   - no retries, stage-B, p48, or paid mining should be launched from this branch
-- manifold curriculum v1.1 is built offline but not approved for training:
+- manifold curriculum v1.1 was built to patch the p24 prompt/length hole, then failed its p24-only gate:
   - config: [strict/topoff1m_a_manifold_curriculum_v11_20260422.json](strict/topoff1m_a_manifold_curriculum_v11_20260422.json)
   - audit: [../../scripts/audit_manifold_v1_gate.py](../../scripts/audit_manifold_v1_gate.py)
   - builder: [../../scripts/build_manifold_v11_curriculum.py](../../scripts/build_manifold_v11_curriculum.py)
   - audit found `23` p24 holes and `20 / 20` unique p24 requested lengths absent from the Phase 2 selected pool
   - dataset has `216` rows: `160` balanced Phase 2 anchors, `48` p24 prompt-replay strict scaffold anchors, `8` purebred anchors
   - p24 replay anchor mean absolute length delta is `0.042`, max absolute delta `1`
-  - launch policy: review before any Tinker spend
+  - paid p24 gate completed cleanly but produced `0` tier-2 hits and `0` raw single-motif plus geometry plus ESM candidates
+- manifold curriculum v1.2 used the failed v1.1 gate as an offline repair-frontier source:
+  - config: [strict/topoff1m_a_manifold_curriculum_v12_20260423.json](strict/topoff1m_a_manifold_curriculum_v12_20260423.json)
+  - lane builder: [../../scripts/build_manifold_v12_offline_lanes.py](../../scripts/build_manifold_v12_offline_lanes.py)
+  - repair-frontier builder/scorer/selector:
+    - [../../scripts/build_manifold_v12_repair_frontier.py](../../scripts/build_manifold_v12_repair_frontier.py)
+    - [../../scripts/score_manifold_v12_repair_frontier.py](../../scripts/score_manifold_v12_repair_frontier.py)
+    - [../../scripts/select_manifold_v12_repair_candidates.py](../../scripts/select_manifold_v12_repair_candidates.py)
+  - selected `39` strict/core/ESM repair candidates across `38` sources and `29` exact lengths
+  - paid p24 gate recovered `3` functional hits and `2` family-faithful hits, but only `3 / 24` prompts were covered
+- manifold curriculum v1.3 replayed v1.2 hits plus support prompts and failed to widen the family-faithful basin:
+  - config: [strict/topoff1m_a_manifold_curriculum_v13_20260423.json](strict/topoff1m_a_manifold_curriculum_v13_20260423.json)
+  - builder: [../../scripts/build_manifold_v13_curriculum.py](../../scripts/build_manifold_v13_curriculum.py)
+  - dataset has `64` rows: `39` v1.2 breadth anchors, `8` support prompt scaffolds, `9` gate-hit replays, and `8` purebred anchors
+  - paid p24 gate regressed to tier-2 hits `[0, 0, 1]`, prompt coverage `1 / 24`, and `0` family-faithful hits
+- current launch policy:
+  - do not launch another paid `v1.x` replay, stage-B, p48, or broad mining tranche from this branch line
+  - consume the manifold `v2` objective panel before spending again
+  - panel builder: [../../scripts/build_manifold_v2_objective_panel.py](../../scripts/build_manifold_v2_objective_panel.py)
+  - panel output: `reports/analysis/manifold_v2_objective_panel_20260424/`
+  - use its `2` `v1.2` family-faithful hits as positives and `45` `v1.3` stable-only / geometry-only finalists as hard negatives
+  - constructor builder: [../../scripts/build_manifold_v2_offline_constructor.py](../../scripts/build_manifold_v2_offline_constructor.py)
+  - constructor output: `reports/analysis/manifold_v2_offline_constructor_20260424/`
+  - expanded constructor/scoring output: `reports/analysis/manifold_v2_offline_constructor_20260424_batch2/`
+  - final v2 selection has `34` strict/core/ESM candidates across `18` parent source keys and `14` exact lengths
+  - finalized curriculum: `reports/curriculum/manifold_v2_20260424/manifold_v2_curriculum.jsonl`
+  - paid p24/c128 diagnostic completed but failed durability with tier-2 hits `[0, 1, 0]`, prompt coverage `1 / 24`, and `0` family-faithful hits
+  - prepared v2.1 bridge-weighted config: [strict/topoff1m_a_manifold_v21_bridge_20260424.json](strict/topoff1m_a_manifold_v21_bridge_20260424.json)
+  - prepared v2.1 curriculum: `reports/curriculum/manifold_v21_20260424/manifold_v21_bridge_curriculum.jsonl`
+  - v2.1 paid scope is limited to a tiny stage-A train plus p24-only diagnostic gate
 
 Current repair read:
 - the April 10 pilot validated the repair lane as a real branch:
@@ -111,7 +142,7 @@ Current repair read:
   - `0` strict shortlist rows
   - readiness failed with `0` retrain positives
 - the next strict branch should not be trained from the failed `v9` repair pool
-- the current default is offline manifold v1 postmortem and `v1.1` curriculum design; paid p12/p24 mining should remain diagnostic-only until the postmortem gives a reason to spend
+- the current default is offline manifold v2 redesign; paid p12/p24 mining should remain diagnostic-only unless the offline redesign stalls
 
 The historical-analysis path is intended to answer a narrower question than the retrain bundle builders:
 - inventory the full finalized historical mining universe
