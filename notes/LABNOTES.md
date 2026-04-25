@@ -3679,3 +3679,75 @@ Interpretation:
 - Curriculum and configs for v2 and v2.1 are archived.
 - Documentation updated to reflect the regression.
 
+
+
+### April 24, 2026 - Manifold v2.2 Intersection Recovery Plan
+
+**Status:** Implementing v2.2 intersection recovery.
+- **Audit:** v2.1 amplified geometry (4x) but lost ESM stability. Mean ESM for geometry rows dropped to ~35.7.
+- **Selection:** Shifted to a hard lexicographic selector (Valid AA -> Length -> Motif -> Core -> Geometry -> ESM -> Novelty).
+- **Curriculum:** Built `manifold_v22_intersection_curriculum.jsonl` with strict caps on bridge replay and geometry imports.
+- **Repair:** Running a local stability-rescue lane on 149 v2.1 geometry-valid but low-ESM rows.
+- **Validation:** Created `scripts/validate_v22_inputs.py` to enforce strict offline readiness before any paid gate.
+
+### April 24, 2026 - Manifold v2.3 Diagnostic Outcome & Hit Authentication
+
+**v2.3-unicorn-lock Outcome:**
+- **Status:** Provisional Pass, Authentication FAIL/PARTIAL.
+- **Discovery:** 2/3 seeds produced functional bridge hits (Seed 53, Seed 67).
+- **Hits:** Verified distinct from original v2 unicorn (Step 5 and Step 2).
+- **Durability:** Improved over v2, but hits show new artifact behavior.
+
+**Authentication Report (Repeat Detection):**
+- **Hit 1 (Seed 53, Step 5):** 35 aa exact tandem repeat (`PVDYLLHFSKRDEDGKLQLVKLQSWAELIAPDFNG`). Masking repeat breaks catalytic geometry. Verdict: **Repeat-dependent artifact**.
+- **Hit 2 (Seed 67, Step 2):** 32 aa exact tandem repeat (`GDGLGLVDWLKASGVDGQPRSFLPDASARVPG`). Geometry survives masking. Verdict: **Inflated/Repeat-assisted candidate**, not clean single-domain hit.
+
+**Conclusion:**
+- The model successfully recovered the bridge basin using the low-LR unicorn lock, but exploited a tandem-repeat loophole to satisfy structural constraints.
+- Scalability is blocked until repeat artifacts are handled.
+- Proceeding to **v2.4-anti-repeat-confirm**.
+
+
+### April 24, 2026 - Manifold v2.4 Clean-Room Diagnostic Outcome
+
+**v2.4-anti-repeat-confirm Outcome:**
+- **Status:** Methodological SUCCESS, Discovery FAIL.
+- **Result:** 0 functional bridge hits across all 3 seeds and 9,216 sequences.
+- **Stability (ESM >= 85):** ~33-45%.
+- **Geometry Rate:** ~16-41%.
+- **Hard Gates:** Successfully blocked tandem-repeat artifacts and natural anchor replays.
+
+**Key Scientific Clarifications:**
+1. **Repeat Loophole Closed:** The "success" signal in v2.3 was definitively repeat-assisted. v2.4 proved the model cannot reach the clean single-domain bridge basin under current settings.
+2. **Coupling Gap Identified:** Stability and catalytic geometry remain separable features in the model's current latent space; they are not yet coupled in single-domain scaffolds.
+3. **Natural Manifold Restored:** The use of 80 real natural anchors restored physical realism but widened the distance to the bridge discovery target.
+
+**Interpretation:**
+Under the current model, curriculum, validator, and budget, we cannot reach a clean single-domain bridge basin. The next task is to determine if the desired intersection is physically populated in single-domain space by diagnosing the gap between the original v2 unicorn and the v2.4 failures.
+
+**Immediate Next Step:**
+- Revalidate original v2 unicorn under v2.4 hardened gates.
+- Build clean coupling map (ESM vs. Geometry).
+
+
+### April 24, 2026 - Final SFT Campaign Readout (v2.6 and v2.7)
+
+**v2.6-clean-manifold-promotion (Stage-B-Lite)**
+- **Status:** FAIL (0.0% Bridge Rate).
+- **Setup:** Trained on 83 clean, topology-independent sequences (3 True Clean Anchors + 50 Clean Hit2 Variants + 30 Hardened Naturals). All previous repeat-dependent artifacts were demoted to hard negatives.
+- **Result:** Without the ability to use domain-duplication (the "cheat code"), the K2.5 model lost all generative geometry capability. The geometry pass rate crashed to ~2% (random noise).
+
+**v2.7-clean-manifold-k26 (Stage-B-Lite)**
+- **Status:** FAIL (0.0% Bridge Rate).
+- **Setup:** Exact same clean manifold as v2.6, but using the stronger `moonshotai/Kimi-K2.6` base architecture.
+- **Result:** K2.6 failed in the exact same manner as K2.5 (1.96% geometry rate). 
+
+**Final Campaign Conclusion:**
+The generative SFT limit has been definitively reached. Positive-only Supervised Fine-Tuning could learn the surface-level bridge/repeat shortcuts but failed to learn the complex negative topological constraints required for clean single-domain bridge generation. The bottleneck is the objective/training signal, not just the base-model capacity. 
+
+Clean bridge manifold expansion now requires either:
+1. **Local library design / directed evolution** around True Unicorn v1 (offline).
+2. **Contrastive / Preference / RL training** with explicit anti-artifact penalties.
+
+The SFT discovery campaign is formally concluded.
+

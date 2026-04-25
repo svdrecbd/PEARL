@@ -379,17 +379,20 @@ Current v2 offline constructor and curriculum:
 - finalized curriculum: `42` rows, with `34` v2-selected candidates and `8` purebred anchors
 - p24/c128 diagnostic: completed operationally but failed durability with tier-2 hits `[0, 1, 0]`, prompt coverage `1 / 24`, and `0` family-faithful hits
 
-Current v2.1 bridge-weighted follow-up:
+Current status:
 
-- builder: `scripts/build_manifold_v21_bridge_curriculum.py`
-- curriculum: `reports/curriculum/manifold_v21_20260424/manifold_v21_bridge_curriculum.jsonl`
-- composition: `71` rows, with `28` v2 strict-breadth anchors, `15` measured bridge replay rows, `12` support prompt anchors, `12` historical family-faithful anchors, and `4` purebred anchors
-- status: **completed diagnostic (0.0% bridge hits)**
-- readiness: failed p24 durability; stability regression observed compared to v2
+- v2.1: Learned geometry but collapsed stability (repeat-assisted signal).
+- v2.2: Restored stability but lost bridge basin.
+- v2.3: Rediscovered bridge but revealed major "tandem-repeat" artifact loophole.
+- v2.4: Clean-room revalidation (repeat gate enforced). 0 bridge hits.
+- v2.5: Revealed boundary optimization (16aa repeat dependency), but found True Unicorn v1 (v2.5-Hit2).
+- v2.6: Clean-manifold promotion. 0 clean hits. Proved SFT cannot generatively expand the clean bridge without anti-artifact constraints.
+- v2.7: K2.6 control. 0 clean hits. Confirmed limitation persists in stronger models.
+- **Verdict:** SFT discovery campaign complete. Generative SFT limit reached.
 
 Interpretation:
 
-> v2.1 is a direct response to the durability failure of v2. It explicitly weights the curriculum toward the narrow functional basin discovered in v1.2 and confirmed in v2, while maintaining the scaffold breadth needed for robustness.
+> The clean bridge manifold expansion now requires either local library design/directed evolution around True Unicorn v1, or contrastive/preference/RL training with explicit anti-artifact penalties. The generative SFT discovery campaign is formally concluded.
 
 Reference:
 

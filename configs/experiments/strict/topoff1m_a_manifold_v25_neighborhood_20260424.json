@@ -1,0 +1,77 @@
+{
+  "name": "topoff1m-a-manifold-v25-clean-neighborhood-20260424",
+  "model": "moonshotai/Kimi-K2.5",
+  "records_path": "data/petase_family_expanded/petase_records.jsonl",
+  "base_init_state_path": "tinker://929e0eff-713b-518b-89b5-b7da383bda4e:train:0/weights/pearl-micro-sft-topoff1m-a-manifold-v24-confirm-stagea-20260424",
+  "status": {
+    "state": "prepared_for_v25_local_neighborhood_lock",
+    "launch_policy": "train_stage_a_then_p24_gate_only",
+    "reason": "Phase 5 breakthrough: Constructing a clean local manifold around the v2 Unicorn (99 survivors). v2.5 trains on 50 clean variants + 30 hardened natural anchors to teach single-domain bridge physics."
+  },
+  "budget": {
+    "max_usd": 40,
+    "scope": "stage-A local neighborhood expansion"
+  },
+  "stages": {
+    "stage-a": {
+      "run_name": "pearl-micro-sft-topoff1m-a-manifold-v25-neighborhood-stagea-20260424",
+      "dataset_path": "reports/curriculum/manifold_v25_20260424/manifold_v25_clean_neighborhood_curriculum.jsonl",
+      "dataset_summary_path": "reports/curriculum/manifold_v25_20260424/summary.json",
+      "learning_rate": "1e-7",
+      "epochs": 1,
+      "batch_size": 8,
+      "seed": 42
+    }
+  },
+  "robustness": {
+    "run_name": "pearl-topoff1m-a-manifold-v25-neighborhood-stagea-gate-p24-c128",
+    "init_from_stage": "stage-a",
+    "variant": "motif_prior_soft_v2",
+    "suite_sizes": [
+      24
+    ],
+    "temperatures": [
+      0.8
+    ],
+    "seeds": [
+      41,
+      53,
+      67
+    ],
+    "candidate_sample_count": 128,
+    "second_stage_top_k": 8,
+    "esm2_device": "mps",
+    "stockpile_jobs": 3,
+    "stockpile_retries": 1,
+    "gate": {
+      "min_seeds_with_hit": 2,
+      "min_prompts_with_hit": 2,
+      "stop_after": "p24_gate"
+    }
+  },
+  "smoke": {
+    "run_name": "pearl-topoff1m-a-manifold-v25-neighborhood-stagea-gate-p24-c128",
+    "init_from_stage": "stage-a",
+    "variant": "motif_prior_soft_v2",
+    "suite_sizes": [
+      24
+    ],
+    "temperatures": [
+      0.8
+    ],
+    "seeds": [
+      41,
+      53,
+      67
+    ],
+    "candidate_sample_count": 128,
+    "second_stage_top_k": 8,
+    "esm2_device": "mps",
+    "stockpile_jobs": 3,
+    "stockpile_retries": 1,
+    "gate": {
+      "min_seeds_with_hit": 2,
+      "min_prompts_with_hit": 2
+    }
+  }
+}

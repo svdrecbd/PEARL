@@ -270,11 +270,19 @@ Manifold v1.1 through v1.3 result:
 - v1.2 recovered `3` functional hits and `2` family-faithful hits, but only `3 / 24` prompts were covered
 - v1.3 replayed v1.2 hits plus support prompts and regressed to `[0, 0, 1]` tier-2 hits, `1 / 24` prompt coverage, and `0` family-faithful hits
 
-Next workflow:
-- treat the finalized manifold `v2` curriculum as tested-but-failed at p24/c128: tier-2 hits `[0, 1, 0]`, prompt coverage `1 / 24`, and `0` family-faithful hits
-- use the prepared manifold `v2.1` bridge-weighted curriculum at `reports/curriculum/manifold_v21_20260424/manifold_v21_bridge_curriculum.jsonl`
-- v2.1 has `71` rows: `28` v2 strict-breadth anchors, `15` measured bridge replay rows, `12` support prompt anchors, `12` historical family-faithful anchors, and `4` purebred anchors
-- next paid step, if approved, is v2.1 stage-A training plus a p24-only diagnostic gate
+Manifold v2.3 to v2.7 results:
+- v2.3 recovered the bridge but was found to be repeat-dependent (32-35aa).
+- v2.4 enforced a 20aa repeat gate and found 0 clean hits, exposing the limit of the prior objective.
+- v2.5 revealed the model optimizing to the boundary (16aa repeat dependency).
+- v2.5-Hit2 was authenticated as the first True Unicorn (repeat-independent).
+- v2.6 built a clean manifold around v2.5-Hit2 but generated 0 clean hits, proving SFT cannot generatively expand the clean bridge without explicit anti-artifact constraints.
+- v2.7 confirmed the same limitation persists in the stronger K2.6 base model.
+
+Next workflow (Campaign Concluded):
+- The generative SFT discovery campaign is formally concluded.
+- The project pivots to Phase 6: Local Library Design (offline) or Contrastive/Preference/RL training with explicit anti-artifact penalties (DPO).
 
 Reference:
 - [manifold_construction.md](manifold_construction.md)
+- [final_sft_campaign_report.md](final_sft_campaign_report.md)
+

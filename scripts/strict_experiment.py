@@ -153,7 +153,7 @@ def checkpoint_from_summary(summary_path: Path) -> str:
     return str(checkpoint_path)
 
 
-def stage_init_state(config: dict[str, Any], stage: str) -> str:
+def stage_init_state(config: dict[str, Any], stage: str) -> str | None:
     stage_payload = stage_config(config, stage)
     explicit = stage_payload.get("init_state_path")
     if explicit:
@@ -174,7 +174,7 @@ def stage_init_state(config: dict[str, Any], stage: str) -> str:
     if base:
         return str(base)
 
-    raise SystemExit(f"No init state configured for stage '{stage}' in {config['_config_path']}")
+    return None
 
 
 def env_override(name: str) -> str | None:
@@ -268,8 +268,6 @@ def launch_stage(config: dict[str, Any], stage: str, *, dry_run: bool, init_stat
         str(records_path),
         "--model",
         model,
-        "--init-state-path",
-        init_state,
         "--epochs",
         str(stage_payload["epochs"]),
         "--batch-size",
@@ -279,6 +277,9 @@ def launch_stage(config: dict[str, Any], stage: str, *, dry_run: bool, init_stat
         "--seed",
         str(stage_payload["seed"]),
     ]
+    if init_state:
+        command.extend(["--init-state-path", init_state])
+
     run_launch_detached(
         job_name=job_name,
         env_overrides=env_for_detached(allow_missing_api_key=dry_run),

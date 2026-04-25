@@ -585,4 +585,4 @@ Manifold v2.1 bridge-weighted follow-up:
 - composition: `71` rows: `28` v2 strict-breadth anchors, `10` v12 family-hit replays, `3` v12 bridge-hit replays, `2` v2 bridge-hit replays, `12` support prompt anchors, `12` historical family-faithful anchors, and `4` purebred anchors
 - readiness: prepared for stage-A plus p24/c128 diagnostic only; not broad paid-gate ready
 
-Status as of April 24, 2026: **v2.1 bridge-weighted diagnostic completed with functional_bridge_hits: 0 and stability regression**.
+Status as of April 24, 2026: **v2.4 clean-room diagnostic completed with 0 bridge hits. Methodological success (loophole closed) but discovery fail. Moving to coupling gap diagnosis.**
