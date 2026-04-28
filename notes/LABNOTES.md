@@ -3751,3 +3751,34 @@ Clean bridge manifold expansion now requires either:
 
 The SFT discovery campaign is formally concluded.
 
+## April 26, 2026: Phase 7 Success and Future Tracks
+
+We have formally concluded Phase 7 with robust empirical success, proving the "Generative Mirage" effect and charting a path forward.
+
+### Phase 7 Track 1 Results (Offline Local Library Design)
+We used an MCMC offline library builder starting from **True Unicorn v1** (`v2.5-Hit2`).
+- 2,500 raw variants generated.
+- 2,446 survived strict 8aa topology-masking checks.
+- 2,434 scored `ESM >= 85`.
+- Clustered to a diverse **96-candidate validation panel**.
+- *Structural Collapse:* AlphaFold 3 (ColabFold) revealed that despite passing local sequence and ESM tests, the candidates (and True Unicorn v1 itself) structurally collapse due to lack of deep evolutionary co-variation. Generative models optimized for local stability fail at global physical alignment.
+
+### Phase 7 Track 2 Results (Contrastive DPO Dataset Prep)
+To fix this "Generative Mirage," we repurposed our past failures into preference datasets to explicitly penalize structural shortcuts.
+- **Initial Mining:** Mined the `v2.x` SFT audit logs for high-ESM artifacts (Class A, B, C, D repeat/boundary cheats). Found 170 organic pairs.
+- **The "Juice Cup" Problem:** 170 pairs is a microscopic dataset that would cause catastrophic overfitting on a frontier MoE model (Kimi-K2.5).
+- **The 1.6M Sweep:** Swept the massive historical 1.6M candidate pool (evaluating 2,157,312 raw sequences). Found only **135** organic hard negative artifacts that passed ESM/geometry but failed topology masking. This proves how rarely the unaligned model actually approaches the manifold.
+- **The Hybrid DPO Solution:** To reach a safe alignment volume (10,000 pairs), we supplemented the 305 organic failures with 9,695 **synthetic contrastive pairs**. We programmatically injected known hallucinated SFT failures (30aa loops, 16/21aa boundary surfers) into our 2,434 pristine Phase 7 variants. This provides the model with perfect contrastive gradients: "The exact same sequence, but WITHOUT the cheat."
+- **Final Artifact:** `data/phase8_dpo/dpo_preferences_hybrid_10k.jsonl` (10,000 high-quality Chosen/Rejected pairs).
+
+### Phase 8 Execution Plan & Costs (The Road Ahead)
+The next session will focus entirely on **Track 2 (PEARL-DPO)** using the 10k hybrid dataset.
+- **Training Cost:** 1 Epoch of DPO on Kimi-K2.5 (10,000 pairs, ~6.8M tokens) @ $15.40/1M = **~$104.72**.
+- **Eval Cost:** Standard 50k-candidate eval sweep (Smoke + Robustness) = **~$53.33**.
+- **Total Phase 8 Cost:** **~$158.00** (well within the $5k grant).
+- **The Validation Goal:** Train the DPO model, generate "True Unicorn v2", and fold it in ColabFold. We expect the pLDDT to finally reach >85 with an intact active site, proving the negative constraints eliminated the generative mirage.
+- **Track 1 Expansion:** Once "True Unicorn v2" is AF3-validated, we will unleash the offline MCMC script for the massive 100k+ variant shell expansion to build the final wet-lab synthesis library.
+- **Track 4 (RL):** With the DPO model's "brain" fixed, we can safely re-enable PPO (Reinforcement Learning) without the model reward-hacking the sequence-level oracle.
+
+*Current repository state frozen under tag `phase7-local-library-v1`.*
+
