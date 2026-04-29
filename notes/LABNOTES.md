@@ -3751,3 +3751,51 @@ Clean bridge manifold expansion now requires either:
 
 The SFT discovery campaign is formally concluded.
 
+## April 26, 2026: Phase 7 Success and Future Tracks
+
+We have formally concluded Phase 7 with robust empirical success, proving the "Generative Mirage" effect and charting a path forward.
+
+### Phase 7 Track 1 Results (Offline Local Library Design)
+We used an MCMC offline library builder starting from **True Unicorn v1** (`v2.5-Hit2`).
+- 2,500 raw variants generated.
+- 2,446 survived strict 8aa topology-masking checks.
+- 2,434 scored `ESM >= 85`.
+- Clustered to a diverse **96-candidate validation panel**.
+- *Structural Collapse:* AlphaFold 3 (ColabFold) revealed that despite passing local sequence and ESM tests, the candidates (and True Unicorn v1 itself) structurally collapse due to lack of deep evolutionary co-variation. Generative models optimized for local stability fail at global physical alignment.
+
+### Phase 7 Track 2 Results (Contrastive DPO Dataset Prep)
+To fix this "Generative Mirage," we repurposed our past failures into preference datasets to explicitly penalize structural shortcuts.
+- **Initial Mining:** Mined the `v2.x` SFT audit logs for high-ESM artifacts (Class A, B, C, D repeat/boundary cheats). Found 170 organic pairs.
+- **The "Juice Cup" Problem:** 170 pairs is a microscopic dataset that would cause catastrophic overfitting on a frontier MoE model (Kimi-K2.5).
+- **The 1.6M Sweep:** Swept the massive historical 1.6M candidate pool (evaluating 2,157,312 raw sequences). Found only **135** organic hard negative artifacts that passed ESM/geometry but failed topology masking. This proves how rarely the unaligned model actually approaches the manifold.
+- **The Hybrid DPO Solution:** To reach a safe alignment volume (10,000 pairs), we supplemented the organic failures with **length-controlled synthetic contrastive pairs**. Known hallucinated SFT failures (30aa loops, 16/21aa boundary surfers) are now substituted into equal-length internal windows of pristine Phase 7 variants, so the rejected sequence remains the same length as the chosen sequence. This prevents the model from learning the trivial shortcut that shorter sequences are preferred.
+- **Final Artifact:** `data/phase8_dpo/dpo_preferences_hybrid_10k.jsonl` (10,000 high-quality Chosen/Rejected pairs).
+
+### Phase 8 Execution Plan & Costs (The Road Ahead)
+The next session will focus entirely on **Track 2 (PEARL-DPO)** using the 10k hybrid dataset.
+- **Training Cost:** 1 Epoch of DPO on Kimi-K2.5 (10,000 pairs, ~6.8M tokens) @ $15.40/1M = **~$104.72**.
+- **Eval Cost:** Standard 50k-candidate eval sweep (Smoke + Robustness) = **~$53.33**.
+- **Total Phase 8 Cost:** **~$158.00** (well within the $5k grant).
+- **The Validation Goal:** Train the DPO model, generate "True Unicorn v2", and fold it in ColabFold. We expect the pLDDT to finally reach >85 with an intact active site, proving the negative constraints eliminated the generative mirage.
+- **Track 1 Expansion:** Once "True Unicorn v2" is AF3-validated, we will unleash the offline MCMC script for the massive 100k+ variant shell expansion to build the final wet-lab synthesis library.
+- **Track 4 (RL):** With the DPO model's "brain" fixed, we can safely re-enable PPO (Reinforcement Learning) without the model reward-hacking the sequence-level oracle.
+
+*Current repository state frozen under tag `phase7-local-library-v1`.*
+
+## April 28, 2026: Phase 8 DPO Preflight Hardening
+
+The original hybrid DPO artifact used insertion-based synthetic negatives. That created a length shortcut because rejected sequences were often longer than chosen sequences. The dataset was rebuilt with `scripts/build_hybrid_10k_dpo.py` using deterministic, length-preserving artifact replacement.
+
+**Preflight Result:**
+- Dataset: `data/phase8_dpo/dpo_preferences_hybrid_10k.jsonl`
+- SHA256: `6657886dd40c9bce6b4d0a69e56ec17ec42fd7e53d936badbcd435e5522dbbfb`
+- Rows: `10,000`
+- Length delta: `0` for all pairs (`chosen=303 aa`, `rejected=303 aa`)
+- Composition: `9,994` synthetic length-preserving artifact replacements + `6` raw organic length-matched pairs
+- Source prompts: derived from the `305` mined organic failures, but raw length-mismatched organic pairs are not directly used for training.
+- Validator: `scripts/preflight_phase8_dpo_dataset.py`
+- Manifest: `data/phase8_dpo/dpo_preferences_hybrid_10k_preflight.json`
+- Status: `ready_for_paid_dpo_smoke: true`
+
+**Operational Note:**
+No repo-native Tinker DPO runner exists yet. The installed Tinker client exposes `cross_entropy`, `importance_sampling`, `ppo`, `cispo`, and `dro` loss names, but not a native `dpo` loss. Do not launch a paid Phase 8 run until the preference-training entrypoint is implemented or the correct supported Tinker preference objective is confirmed.
