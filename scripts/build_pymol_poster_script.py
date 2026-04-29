@@ -1,8 +1,20 @@
 #!/usr/bin/env python3
-import glob
 from pathlib import Path
 
+FOLD_DIR = Path("reports/analysis/phase7_local_library_v1/folds")
+POSTER_MODELS = [
+    (FOLD_DIR / "Natural_Cutinase_Ref.pdb", "natural_ref"),
+    (FOLD_DIR / "Old_v2_Unicorn_Artifact.pdb", "artifact_v2"),
+    (FOLD_DIR / "True_Unicorn_v1.pdb", "true_unicorn"),
+    (FOLD_DIR / "CAND_001.pdb", "phase7_cand1"),
+]
+
+
 def main():
+    missing = [str(path) for path, _ in POSTER_MODELS if not path.exists()]
+    if missing:
+        raise FileNotFoundError(f"missing poster model PDBs: {missing}")
+
     pml_content = """# PyMOL Script for Poster Fold Visualizations
 # Usage: pymol -c scripts/render_poster_folds.pml
 
@@ -11,20 +23,9 @@ set ray_trace_mode, 1
 set antialias, 2
 
 """
-    
-    # Locate the best rank 1 models
-    natural_pdb = glob.glob("phase7_batch1_results/Natural_Cutinase_Reference*rank_001*.pdb")[0]
-    artifact_pdb = glob.glob("phase7_batch1_results/Old_v2_Unicorn_Artifact*rank_001*.pdb")[0]
-    unicorn_pdb = glob.glob("phase7_batch1_results/True_Unicorn_v1*rank_001*.pdb")[0]
-    cand1_pdb = glob.glob("phase7_batch2_results/Phase7_CAND_001*rank_001*.pdb")[0]
-    
+
     # Generate sequential render commands
-    for pdb, name in [
-        (natural_pdb, "natural_ref"),
-        (artifact_pdb, "artifact_v2"),
-        (unicorn_pdb, "true_unicorn"),
-        (cand1_pdb, "phase7_cand1")
-    ]:
+    for pdb, name in POSTER_MODELS:
         pml_content += f"load {pdb}, {name}\n"
         pml_content += "hide everything\n"
         pml_content += "show cartoon\n"
@@ -39,8 +40,34 @@ set antialias, 2
         pml_content += f"png reports/analysis/phase7_local_library_v1/figures/fold_{name}.png\n"
         pml_content += f"delete {name}\n\n"
     
-    pml_content += 'print "Successfully rendered high-resolution poster fold figures to reports/analysis/phase7_local_library_v1/figures/"\n'
+    pml_content += 'print "Successfully rendered individual high-resolution poster fold figures."\n\n'
 
+    # Generate Superposition View
+    pml_content += "# Superposition View\n"
+    for pdb, name in POSTER_MODELS:
+        pml_content += f"load {pdb}, {name}\n"
+    
+    pml_content += """
+hide everything
+show cartoon
+color orange, (b < 50)
+color yellow, (b > 50 or b = 50) and (b < 70)
+color cyan, (b > 70 or b = 70) and (b < 90)
+color blue, (b > 90 or b = 90)
+
+# Align all to natural reference
+align artifact_v2, natural_ref
+align true_unicorn, natural_ref
+align phase7_cand1, natural_ref
+
+orient natural_ref
+zoom all, 10
+set ray_opaque_background, off
+ray 1200, 1200
+png reports/analysis/phase7_local_library_v1/figures/fold_superposition.png
+
+print "Successfully rendered superposition poster fold figure."
+"""
     Path("scripts/render_poster_folds.pml").write_text(pml_content)
     print("Generated dynamic PyMOL script at scripts/render_poster_folds.pml")
 

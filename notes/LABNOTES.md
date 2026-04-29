@@ -3768,7 +3768,7 @@ To fix this "Generative Mirage," we repurposed our past failures into preference
 - **Initial Mining:** Mined the `v2.x` SFT audit logs for high-ESM artifacts (Class A, B, C, D repeat/boundary cheats). Found 170 organic pairs.
 - **The "Juice Cup" Problem:** 170 pairs is a microscopic dataset that would cause catastrophic overfitting on a frontier MoE model (Kimi-K2.5).
 - **The 1.6M Sweep:** Swept the massive historical 1.6M candidate pool (evaluating 2,157,312 raw sequences). Found only **135** organic hard negative artifacts that passed ESM/geometry but failed topology masking. This proves how rarely the unaligned model actually approaches the manifold.
-- **The Hybrid DPO Solution:** To reach a safe alignment volume (10,000 pairs), we supplemented the 305 organic failures with 9,695 **synthetic contrastive pairs**. We programmatically injected known hallucinated SFT failures (30aa loops, 16/21aa boundary surfers) into our 2,434 pristine Phase 7 variants. This provides the model with perfect contrastive gradients: "The exact same sequence, but WITHOUT the cheat."
+- **The Hybrid DPO Solution:** To reach a safe alignment volume (10,000 pairs), we supplemented the organic failures with **length-controlled synthetic contrastive pairs**. Known hallucinated SFT failures (30aa loops, 16/21aa boundary surfers) are now substituted into equal-length internal windows of pristine Phase 7 variants, so the rejected sequence remains the same length as the chosen sequence. This prevents the model from learning the trivial shortcut that shorter sequences are preferred.
 - **Final Artifact:** `data/phase8_dpo/dpo_preferences_hybrid_10k.jsonl` (10,000 high-quality Chosen/Rejected pairs).
 
 ### Phase 8 Execution Plan & Costs (The Road Ahead)
@@ -3782,3 +3782,20 @@ The next session will focus entirely on **Track 2 (PEARL-DPO)** using the 10k hy
 
 *Current repository state frozen under tag `phase7-local-library-v1`.*
 
+## April 28, 2026: Phase 8 DPO Preflight Hardening
+
+The original hybrid DPO artifact used insertion-based synthetic negatives. That created a length shortcut because rejected sequences were often longer than chosen sequences. The dataset was rebuilt with `scripts/build_hybrid_10k_dpo.py` using deterministic, length-preserving artifact replacement.
+
+**Preflight Result:**
+- Dataset: `data/phase8_dpo/dpo_preferences_hybrid_10k.jsonl`
+- SHA256: `6657886dd40c9bce6b4d0a69e56ec17ec42fd7e53d936badbcd435e5522dbbfb`
+- Rows: `10,000`
+- Length delta: `0` for all pairs (`chosen=303 aa`, `rejected=303 aa`)
+- Composition: `9,994` synthetic length-preserving artifact replacements + `6` raw organic length-matched pairs
+- Source prompts: derived from the `305` mined organic failures, but raw length-mismatched organic pairs are not directly used for training.
+- Validator: `scripts/preflight_phase8_dpo_dataset.py`
+- Manifest: `data/phase8_dpo/dpo_preferences_hybrid_10k_preflight.json`
+- Status: `ready_for_paid_dpo_smoke: true`
+
+**Operational Note:**
+No repo-native Tinker DPO runner exists yet. The installed Tinker client exposes `cross_entropy`, `importance_sampling`, `ppo`, `cispo`, and `dro` loss names, but not a native `dpo` loss. Do not launch a paid Phase 8 run until the preference-training entrypoint is implemented or the correct supported Tinker preference objective is confirmed.

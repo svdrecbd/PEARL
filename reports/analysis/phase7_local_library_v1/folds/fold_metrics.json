@@ -1,15 +1,15 @@
 [
   {
     "name": "True_Unicorn_v1",
-    "mean_plddt": 0.0,
-    "ser_asp_dist": null,
-    "asp_his_dist": null,
-    "ser_his_dist": null,
+    "mean_plddt": 34.75,
+    "ser_asp_dist": 18.56,
+    "asp_his_dist": 15.25,
+    "ser_his_dist": 13.3,
     "geometry_passes": true
   },
   {
     "name": "Old_v2_Unicorn_Artifact",
-    "mean_plddt": 0.35,
+    "mean_plddt": 34.97,
     "ser_asp_dist": 18.82,
     "asp_his_dist": 23.91,
     "ser_his_dist": 35.75,
@@ -17,7 +17,7 @@
   },
   {
     "name": "Natural_Cutinase_Ref",
-    "mean_plddt": 0.94,
+    "mean_plddt": 94.23,
     "ser_asp_dist": 14.04,
     "asp_his_dist": 11.46,
     "ser_his_dist": 9.89,
@@ -25,7 +25,7 @@
   },
   {
     "name": "CAND_001",
-    "mean_plddt": 0.35,
+    "mean_plddt": 34.77,
     "ser_asp_dist": 15.3,
     "asp_his_dist": 27.61,
     "ser_his_dist": 17.6,
@@ -33,7 +33,7 @@
   },
   {
     "name": "CAND_002",
-    "mean_plddt": 0.33,
+    "mean_plddt": 32.92,
     "ser_asp_dist": 17.16,
     "asp_his_dist": 28.96,
     "ser_his_dist": 19.54,
@@ -41,7 +41,7 @@
   },
   {
     "name": "CAND_003",
-    "mean_plddt": 0.33,
+    "mean_plddt": 32.5,
     "ser_asp_dist": 15.1,
     "asp_his_dist": 29.43,
     "ser_his_dist": 18.97,
@@ -49,7 +49,7 @@
   },
   {
     "name": "CAND_004",
-    "mean_plddt": 0.33,
+    "mean_plddt": 32.92,
     "ser_asp_dist": 15.34,
     "asp_his_dist": 25.04,
     "ser_his_dist": 19.86,
@@ -57,7 +57,7 @@
   },
   {
     "name": "CAND_005",
-    "mean_plddt": 0.31,
+    "mean_plddt": 31.38,
     "ser_asp_dist": 19.02,
     "asp_his_dist": 35.7,
     "ser_his_dist": 20.08,
@@ -65,7 +65,7 @@
   },
   {
     "name": "CAND_006",
-    "mean_plddt": 0.34,
+    "mean_plddt": 33.78,
     "ser_asp_dist": 16.56,
     "asp_his_dist": 24.64,
     "ser_his_dist": 15.97,
@@ -73,7 +73,7 @@
   },
   {
     "name": "CAND_007",
-    "mean_plddt": 0.33,
+    "mean_plddt": 33.17,
     "ser_asp_dist": 16.48,
     "asp_his_dist": 26.15,
     "ser_his_dist": 16.28,
@@ -81,7 +81,7 @@
   },
   {
     "name": "CAND_008",
-    "mean_plddt": 0.32,
+    "mean_plddt": 32.11,
     "ser_asp_dist": 18.29,
     "asp_his_dist": 24.84,
     "ser_his_dist": 22.53,
@@ -89,7 +89,7 @@
   },
   {
     "name": "CAND_009",
-    "mean_plddt": 0.33,
+    "mean_plddt": 33.07,
     "ser_asp_dist": 15.64,
     "asp_his_dist": 27.92,
     "ser_his_dist": 17.55,
@@ -97,7 +97,7 @@
   },
   {
     "name": "CAND_010",
-    "mean_plddt": 0.33,
+    "mean_plddt": 33.32,
     "ser_asp_dist": 16.69,
     "asp_his_dist": 29.15,
     "ser_his_dist": 17.0,

@@ -20,6 +20,7 @@ notes/FORLATERUSE.md
 # Generated experiment outputs
 reports/
 data/
+archive/
 *.log
 *.tmp
 
