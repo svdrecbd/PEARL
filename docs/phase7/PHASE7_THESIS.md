@@ -176,19 +176,18 @@ Track 2 is the route to a generalizable ML contribution: training protein genera
 
 ### Final Empirical Verdict (Poster Headline)
 
-**Positive-only SFT could not expand the clean topology-independent bridge manifold, producing 0 clean hits across 9,216 generated sequences. In contrast, offline local library design around True Unicorn v1 produced 2,434 stable topology-preserving variants from 2,500 attempts and a diverse 96-candidate validation panel. This suggests that once a clean scaffold is identified, constrained local design is a more reliable route to candidate generation than further positive-only SFT.**
+**Positive-only SFT could not expand the clean topology-independent bridge manifold, producing 0 clean hits across 9,216 generated sequences. The offline local library around True Unicorn v1 produced 2,434 sequence-level survivors from 2,500 attempts, but ColabFold and repeat audit falsified them as positives. The practical lesson is that PEARL needs structural/negative supervision before another paid generative pass.**
 
 | Approach | Result |
 | :--- | :--- |
 | Positive-only SFT | 0 clean hits / 9,216 generated |
-| Offline local library around True Unicorn v1 | 2,434 stable topology-preserving variants / 2,500 generated |
-| Curated DPO dataset | 170 chosen/rejected pairs from real artifact failures |
+| Offline local library around True Unicorn v1 | 2,434 sequence-level survivors, rejected as structural positives |
+| Curated DPO dataset | Natural reviewed positives vs. generated/synthetic artifact negatives |
 
 ### Structural Validation (ColabFold)
 Even with strict oracle filtering, the generative mirage persists until deep evolutionary alignment:
 - **Natural Cutinase Reference:** Folded perfectly (pLDDT: 94.23), tight active site geometry.
 - **SFT Artifacts (e.g. Old v2 Unicorn):** Structurally collapsed (pLDDT: 34.97) due to generative repeats being physically impossible to align evolutionarily.
-- **Track 1 Clean Scaffold (True Unicorn v1 & Panel):** Despite zero obvious repeats and passing stringent topology/ESM tests, the generated sequences lacked sufficient evolutionary co-variation to fold in AF3/ColabFold (pLDDT ~34).
+- **Track 1 Generated Scaffold (True Unicorn v1 & Panel):** Despite passing sequence-level topology/ESM tests, the generated sequences carried a long duplicated scaffold block and lacked sufficient evolutionary co-variation to fold in AF3/ColabFold (pLDDT ~34).
 
-**Conclusion:** PEARL suggests a practical workflow for protein generative design: use generative models for rare discovery, topology-aware authentication to remove proxy artifacts, local library design for clean candidate expansion, and preference learning to teach future models which shortcuts are forbidden.
-
+**Conclusion:** PEARL suggests a practical workflow for protein generative design: use natural or structurally validated positives for preference learning, demote sequence-level generative mirages to hard negatives, and require structural confidence before treating a candidate as a paid-run positive.

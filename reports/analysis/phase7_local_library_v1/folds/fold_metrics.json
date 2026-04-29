@@ -5,7 +5,11 @@
     "ser_asp_dist": 18.56,
     "asp_his_dist": 15.25,
     "ser_his_dist": 13.3,
-    "geometry_passes": true
+    "sequence_geometry_passes": true,
+    "ca_triad_distance_passes": true,
+    "structure_confident": false,
+    "structural_gate_passes": false,
+    "geometry_passes": false
   },
   {
     "name": "Old_v2_Unicorn_Artifact",
@@ -13,7 +17,11 @@
     "ser_asp_dist": 18.82,
     "asp_his_dist": 23.91,
     "ser_his_dist": 35.75,
-    "geometry_passes": true
+    "sequence_geometry_passes": true,
+    "ca_triad_distance_passes": false,
+    "structure_confident": false,
+    "structural_gate_passes": false,
+    "geometry_passes": false
   },
   {
     "name": "Natural_Cutinase_Ref",
@@ -21,6 +29,10 @@
     "ser_asp_dist": 14.04,
     "asp_his_dist": 11.46,
     "ser_his_dist": 9.89,
+    "sequence_geometry_passes": true,
+    "ca_triad_distance_passes": true,
+    "structure_confident": true,
+    "structural_gate_passes": true,
     "geometry_passes": true
   },
   {
@@ -29,7 +41,11 @@
     "ser_asp_dist": 15.3,
     "asp_his_dist": 27.61,
     "ser_his_dist": 17.6,
-    "geometry_passes": true
+    "sequence_geometry_passes": true,
+    "ca_triad_distance_passes": false,
+    "structure_confident": false,
+    "structural_gate_passes": false,
+    "geometry_passes": false
   },
   {
     "name": "CAND_002",
@@ -37,7 +53,11 @@
     "ser_asp_dist": 17.16,
     "asp_his_dist": 28.96,
     "ser_his_dist": 19.54,
-    "geometry_passes": true
+    "sequence_geometry_passes": true,
+    "ca_triad_distance_passes": false,
+    "structure_confident": false,
+    "structural_gate_passes": false,
+    "geometry_passes": false
   },
   {
     "name": "CAND_003",
@@ -45,7 +65,11 @@
     "ser_asp_dist": 15.1,
     "asp_his_dist": 29.43,
     "ser_his_dist": 18.97,
-    "geometry_passes": true
+    "sequence_geometry_passes": true,
+    "ca_triad_distance_passes": false,
+    "structure_confident": false,
+    "structural_gate_passes": false,
+    "geometry_passes": false
   },
   {
     "name": "CAND_004",
@@ -53,7 +77,11 @@
     "ser_asp_dist": 15.34,
     "asp_his_dist": 25.04,
     "ser_his_dist": 19.86,
-    "geometry_passes": true
+    "sequence_geometry_passes": true,
+    "ca_triad_distance_passes": false,
+    "structure_confident": false,
+    "structural_gate_passes": false,
+    "geometry_passes": false
   },
   {
     "name": "CAND_005",
@@ -61,7 +89,11 @@
     "ser_asp_dist": 19.02,
     "asp_his_dist": 35.7,
     "ser_his_dist": 20.08,
-    "geometry_passes": true
+    "sequence_geometry_passes": true,
+    "ca_triad_distance_passes": false,
+    "structure_confident": false,
+    "structural_gate_passes": false,
+    "geometry_passes": false
   },
   {
     "name": "CAND_006",
@@ -69,7 +101,11 @@
     "ser_asp_dist": 16.56,
     "asp_his_dist": 24.64,
     "ser_his_dist": 15.97,
-    "geometry_passes": true
+    "sequence_geometry_passes": true,
+    "ca_triad_distance_passes": false,
+    "structure_confident": false,
+    "structural_gate_passes": false,
+    "geometry_passes": false
   },
   {
     "name": "CAND_007",
@@ -77,7 +113,11 @@
     "ser_asp_dist": 16.48,
     "asp_his_dist": 26.15,
     "ser_his_dist": 16.28,
-    "geometry_passes": true
+    "sequence_geometry_passes": true,
+    "ca_triad_distance_passes": false,
+    "structure_confident": false,
+    "structural_gate_passes": false,
+    "geometry_passes": false
   },
   {
     "name": "CAND_008",
@@ -85,7 +125,11 @@
     "ser_asp_dist": 18.29,
     "asp_his_dist": 24.84,
     "ser_his_dist": 22.53,
-    "geometry_passes": true
+    "sequence_geometry_passes": true,
+    "ca_triad_distance_passes": false,
+    "structure_confident": false,
+    "structural_gate_passes": false,
+    "geometry_passes": false
   },
   {
     "name": "CAND_009",
@@ -93,7 +137,11 @@
     "ser_asp_dist": 15.64,
     "asp_his_dist": 27.92,
     "ser_his_dist": 17.55,
-    "geometry_passes": true
+    "sequence_geometry_passes": true,
+    "ca_triad_distance_passes": false,
+    "structure_confident": false,
+    "structural_gate_passes": false,
+    "geometry_passes": false
   },
   {
     "name": "CAND_010",
@@ -101,6 +149,10 @@
     "ser_asp_dist": 16.69,
     "asp_his_dist": 29.15,
     "ser_his_dist": 17.0,
-    "geometry_passes": true
+    "sequence_geometry_passes": true,
+    "ca_triad_distance_passes": false,
+    "structure_confident": false,
+    "structural_gate_passes": false,
+    "geometry_passes": false
   }
 ]

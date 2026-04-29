@@ -61,6 +61,11 @@ def inspect_raw_sequence_text(text: str) -> dict[str, object]:
     if not stripped:
         return _inspection_result(error="empty_output")
 
+    # Handle <think> tags or other XML tags by stripping them if they don't look like sequence data
+    if "<think>" in stripped and "</think>" in stripped:
+        import re
+        stripped = re.sub(r"<think>.*?</think>", "", stripped, flags=re.DOTALL).strip()
+
     if "<" in stripped or ">" in stripped:
         return _inspection_result(error="formatting_xml_tag", formatting_xml_tag=True)
 

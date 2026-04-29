@@ -15,11 +15,12 @@ This repository explores PETase-family sequence design through remote generation
 - Manifold-construction pivot: [`docs/manifold_construction.md`](docs/manifold_construction.md)
 - Experiment configs: [`configs/experiments/README.md`](configs/experiments/README.md)
 - Full experimental history: [`notes/LABNOTES.md`](notes/LABNOTES.md)
-- Historical campaign wrapper inventory: [`archive/2026q1_topoff1m_a/README.md`](archive/2026q1_topoff1m_a/README.md)
 
 ## Current State
 
-April 28, 2026 cleanup note: the active workspace is now focused on Phase 8 DPO readiness. The length-controlled 10k DPO dataset lives in `data/phase8_dpo/`, its structural evidence lives in `reports/analysis/phase7_local_library_v1/`, and old run outputs/scripts/configs were moved to `archive/2026-04-28-labyrinth-cleanup/`. See `REPO_MAP.md` and `notes/LABNOTES.md` for the current map and latest scientific status.
+April 29, 2026 DPO correction: Phase 7 generated/local-library sequences are no longer allowed on the chosen side of the paid-run DPO dataset. The current local Phase 8 build uses reviewed natural PETase/cutinase records as chosen positives and demotes the fold-failed Phase 7 generated panel to hard negatives.
+
+April 28, 2026 cleanup note: the active workspace is now focused on Phase 8 DPO readiness. The current 10k DPO dataset lives locally in `data/phase8_dpo/`, its structural evidence lives in `reports/analysis/phase7_local_library_v1/`, and old run outputs/scripts/configs were moved to the local ignored archive at `archive/2026-04-28-labyrinth-cleanup/`. See `REPO_MAP.md` and `notes/LABNOTES.md` for the current map and latest scientific status.
 
 As of April 23, 2026:
 

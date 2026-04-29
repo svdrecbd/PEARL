@@ -19,6 +19,12 @@ from pearl.family import (
 TRUE_UNICORN = "MYKSLVFIALLLSFTVLSAQASPLQSVQKLDGVVKAVVVDGVEGHIFAPQSFVMNLLEHDSVVKQGDVVKVEMPQTGLTFSDVANVYDSLKLGVHRVQVVGDHSLFANVSNFSYVGVQDSKAILSVQGASVSSVGSITVVAQSFRGVKANQLPVFVDRLDSASPFLSHYFPDPSVLDQELVKGVSVGMTMHAELSPQERSAMFAAIRDEVGDSKVDQVFVVKNEQFESVPEKLDVTVPVASQDHVWSMTFAPQSFVMNLLEHDSVVKQGDVVKVEMPQTGLTFSDVANVYDSLKLGVHRVQVV"
 V2_UNICORN = "MGWSKRKMAAALAVVATLAAPAVAAPVAAVAPVAAASQGDAYVNGYTAGQWGPVYVLDSRFGRTFAVSGRNEFGDSGDPEIWVSDNGSALGQVSNHGANYSILLSNNSVLIEPGSVYAAVDSYNNYGNEYQIVYGDGDGDNGSPGDSEYFVAINAASNSQQTGSWADLVKDFGRQLAFAPLGLFCCSSSEYTVADGASAGLTPQSDQKVNFGWYAPAMYVDSRFGRTFGVAAANQYNGDAGDPEIWVQDYGSALGQVSNHGANYAILLSNNSVLIEPGSIYAAVDSYNNYGNE"
 NATURAL_REF = "MAVMTPRRERSSLLSRALQVTAAAATALVTAVSLAAPAHAANPYERGPNPTDALLEASSGPFSVSEENVSRLSASGFGGGTIYYPRENNTYGAVAISPGYTGTEASIAWLGERIASHGFVVITIDTITTLDQPDSRAEQLNAALNHMINRASSTVRSRIDSSRLAVMGHSMGGGGTLRLASQRPDLKAAIPLTPWHLNKNWSSVTVPTLIIGADLDTIAPVATHAKPFYNSLPSSISKAYLELDGATHFAPNIPNKIIGKYSVAWLKRFVDNDTRYTQFLCPGPRDGLFGEVEEYRSTCPF"
+STRUCTURAL_PLDDT_GATE = 70.0
+CA_TRIAD_DISTANCE_LIMITS = {
+    "ser_asp": (4.0, 20.0),
+    "asp_his": (4.0, 20.0),
+    "ser_his": (4.0, 20.0),
+}
 
 def fold_sequence(seq: str, name: str, out_dir: Path) -> Path:
     out_path = out_dir / f"{name}.pdb"
@@ -63,6 +69,16 @@ def parse_pdb(pdb_path: Path):
 
 def dist(p1, p2):
     return math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2 + (p1[2]-p2[2])**2)
+
+def in_range(value, lower, upper):
+    return value is not None and lower <= value <= upper
+
+def ca_triad_distance_passes(ser_asp, asp_his, ser_his):
+    return (
+        in_range(ser_asp, *CA_TRIAD_DISTANCE_LIMITS["ser_asp"])
+        and in_range(asp_his, *CA_TRIAD_DISTANCE_LIMITS["asp_his"])
+        and in_range(ser_his, *CA_TRIAD_DISTANCE_LIMITS["ser_his"])
+    )
 
 def main():
     out_dir = Path("reports/analysis/phase7_local_library_v1/folds")
@@ -124,13 +140,22 @@ def main():
                 asp_dist = dist(coords[a_idx], coords[h_idx])
                 his_dist = dist(coords[s_idx], coords[h_idx])
                 
+        sequence_geometry_passes = bool(geom["passes"])
+        ca_triad_passes = ca_triad_distance_passes(ser_dist, asp_dist, his_dist)
+        structure_confident = mean_plddt >= STRUCTURAL_PLDDT_GATE
+        structural_gate_passes = structure_confident and ca_triad_passes
+
         results.append({
             "name": name,
             "mean_plddt": round(mean_plddt, 2),
             "ser_asp_dist": round(ser_dist, 2) if ser_dist else None,
             "asp_his_dist": round(asp_dist, 2) if asp_dist else None,
             "ser_his_dist": round(his_dist, 2) if his_dist else None,
-            "geometry_passes": geom["passes"]
+            "sequence_geometry_passes": sequence_geometry_passes,
+            "ca_triad_distance_passes": ca_triad_passes,
+            "structure_confident": structure_confident,
+            "structural_gate_passes": structural_gate_passes,
+            "geometry_passes": structural_gate_passes,
         })
         
     out_json = out_dir / "fold_metrics.json"
@@ -138,7 +163,12 @@ def main():
     
     print("\n--- Folding & Structural Metrics ---")
     for r in results:
-        print(f"[{r['name']}] pLDDT: {r['mean_plddt']} | S-A: {r['ser_asp_dist']}A, A-H: {r['asp_his_dist']}A | Geom Pass: {r['geometry_passes']}")
+        print(
+            f"[{r['name']}] pLDDT: {r['mean_plddt']} | "
+            f"S-A: {r['ser_asp_dist']}A, A-H: {r['asp_his_dist']}A | "
+            f"Sequence geom: {r['sequence_geometry_passes']} | "
+            f"Structural gate: {r['structural_gate_passes']}"
+        )
         
     print(f"\nAll data saved to {out_dir}")
 

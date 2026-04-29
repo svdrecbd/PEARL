@@ -29,6 +29,24 @@ def find_all_repeats(seq, min_len=8, threshold=0.85):
                 found.append({"pos2": j, "len": min_len})
     return found
 
+def longest_exact_repeat(seq, min_len=16):
+    best = None
+    for window in range(min_len, (len(seq) // 2) + 1):
+        seen = {}
+        for i in range(0, len(seq) - window + 1):
+            fragment = seq[i:i + window]
+            previous = seen.get(fragment)
+            if previous is not None and i - previous >= window:
+                best = {
+                    "len": window,
+                    "pos1": previous,
+                    "pos2": i,
+                    "fragment": fragment,
+                }
+            else:
+                seen.setdefault(fragment, i)
+    return best
+
 def check_topology_masking(seq, family_stats, reference_records):
     repeats = find_all_repeats(seq, min_len=8)
     if not repeats:
@@ -87,7 +105,8 @@ def main():
         header = [
             "candidate_id", "sequence", "mutations_from_v2.5_Hit2", "mutation_positions", 
             "ESM2_score", "topology_masking_pass", "family_core_pass", "motif_pass", 
-            "geometry_pass", "cluster_id", "nearest_panel_neighbor", "nearest_natural_neighbor"
+            "geometry_pass", "long_exact_repeat_len", "long_exact_repeat_positions",
+            "positive_use_allowed", "cluster_id", "nearest_panel_neighbor", "nearest_natural_neighbor"
         ]
         out.write("\t".join(header) + "\n")
         
@@ -102,6 +121,14 @@ def main():
             core_pass = eval_res.get("passes_core_screen", False)
             motif_pass = len(eval_res.get("serine_motifs", [])) == 1
             geom_pass = eval_res.get("catalytic_geometry", {}).get("passes", False)
+            long_repeat = longest_exact_repeat(seq, min_len=16)
+            long_repeat_len = long_repeat["len"] if long_repeat else 0
+            long_repeat_positions = (
+                f"{long_repeat['pos1'] + 1},{long_repeat['pos2'] + 1}"
+                if long_repeat
+                else ""
+            )
+            positive_use_allowed = bool(top_pass and core_pass and motif_pass and geom_pass and not long_repeat)
             
             # nearest panel neighbor
             nearest_dist = 9999
@@ -125,6 +152,9 @@ def main():
                 str(core_pass),
                 str(motif_pass),
                 str(geom_pass),
+                str(long_repeat_len),
+                long_repeat_positions,
+                str(positive_use_allowed),
                 str(c["cluster_id"]),
                 f"{nearest_id} (d={nearest_dist})",
                 f"{nearest_natural:.4f}"

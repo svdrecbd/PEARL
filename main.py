@@ -200,6 +200,7 @@ Constraint: produce a complete full-length protein close to the requested length
 Constraint: avoid tandem repeats and low-complexity residue patterns
 Format: SEQUENCE=<sequence>
 SEQUENCE="""
+
 MOTIF_PRIOR_SEQUENCE_PROMPT_TEMPLATE = """<protein_design>
 Request: {request}
 Constraint: output exactly one sequence in uppercase amino acid letters ACDEFGHIKLMNPQRSTVWY
@@ -210,6 +211,7 @@ Constraint: prefer a PETase/cutinase-like nucleophile motif chosen from {motif_h
 Constraint: place catalytic serine around {serine_window}, aspartate around {aspartate_window}, and histidine around {histidine_window} of sequence length
 Format: SEQUENCE=<sequence>
 SEQUENCE="""
+
 SOFT_MOTIF_PRIOR_SEQUENCE_PROMPT_TEMPLATE = """<protein_design>
 Request: {request}
 Constraint: output exactly one sequence in uppercase amino acid letters ACDEFGHIKLMNPQRSTVWY
@@ -221,6 +223,7 @@ Hint: PETase/cutinase-family proteins often include a nucleophile motif such as 
 Hint: if using a serine motif, prefer a single plausible family-like motif rather than repeated copies
 Format: SEQUENCE=<sequence>
 SEQUENCE="""
+
 SOFT_MOTIF_PRIOR_CONTROLLED_SEQUENCE_PROMPT_TEMPLATE = """<protein_design>
 Request: {request}
 Constraint: output exactly one sequence in uppercase amino acid letters ACDEFGHIKLMNPQRSTVWY
@@ -1168,7 +1171,16 @@ def sample_valid_sequence(
         if sampled_sequence.logprobs is None and not EVAL_ONLY:
             raise RuntimeError("Tinker sampling response did not include token logprobs")
 
-        sampled_text = tokenizer.decode(sampled_sequence.tokens, skip_special_tokens=True).strip()
+        sampled_text = tokenizer.decode(sampled_sequence.tokens, skip_special_tokens=False).strip()
+
+        # Aggressive extraction for 'chatty' or 'thinking' models
+        if "SEQUENCE=" in sampled_text:
+            sampled_text = sampled_text.split("SEQUENCE=")[-1].strip()
+        elif "<think>" in sampled_text and "</think>" in sampled_text:
+            # If think tags are present but SEQUENCE= is missing (e.g. truncated), try to extract from what remains
+            import re
+            sampled_text = re.sub(r"<think>.*?</think>", "", sampled_text, flags=re.DOTALL).strip()
+
         extracted_sequence = extract_amino_acid_sequence(sampled_text)
         quality = assess_sequence_quality(sampled_text, extracted_sequence)
         family_evaluation = (

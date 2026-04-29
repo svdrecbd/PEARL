@@ -3786,6 +3786,8 @@ The next session will focus entirely on **Track 2 (PEARL-DPO)** using the 10k hy
 
 The original hybrid DPO artifact used insertion-based synthetic negatives. That created a length shortcut because rejected sequences were often longer than chosen sequences. The dataset was rebuilt with `scripts/build_hybrid_10k_dpo.py` using deterministic, length-preserving artifact replacement.
 
+**Superseded April 29:** this build still treated Phase 7 local-library variants as chosen positives. ColabFold and repeat audit later showed those sequences are fold-failed generated artifacts, so the chosen side was rebuilt from reviewed natural PETase/cutinase records instead.
+
 **Preflight Result:**
 - Dataset: `data/phase8_dpo/dpo_preferences_hybrid_10k.jsonl`
 - SHA256: `6657886dd40c9bce6b4d0a69e56ec17ec42fd7e53d936badbcd435e5522dbbfb`
@@ -3799,3 +3801,26 @@ The original hybrid DPO artifact used insertion-based synthetic negatives. That 
 
 **Operational Note:**
 No repo-native Tinker DPO runner exists yet. The installed Tinker client exposes `cross_entropy`, `importance_sampling`, `ppo`, `cispo`, and `dro` loss names, but not a native `dpo` loss. Do not launch a paid Phase 8 run until the preference-training entrypoint is implemented or the correct supported Tinker preference objective is confirmed.
+
+## April 29, 2026: Natural-Positive DPO Rebuild
+
+The Phase 7 ColabFold panel exposed a second paid-run blocker: the natural cutinase control folded cleanly (`pLDDT=94.23`), while True Unicorn v1 and the generated local-library panel collapsed around `pLDDT=31-35`. The generated panel also contains a long duplicated scaffold block (`FAPQSFVMNLLEHDSVVKQGDVVK...`) around positions `47` and `250`. Those rows are therefore hard negatives, not training positives.
+
+**Code changes:**
+- `scripts/build_hybrid_10k_dpo.py` now restricts chosen positives to reviewed natural PETase/cutinase records with active-site annotation and no chosen-side exact repeat longer than `15 aa`.
+- Phase 7 generated local-library rows are loaded only as rejected hard negatives.
+- `scripts/preflight_phase8_dpo_dataset.py` now fails rows without chosen-positive audit metadata and fails any chosen sequence with a long exact repeat.
+- `scripts/fold_phase7_subset.py` now distinguishes sequence-level geometry from structural confidence; `geometry_passes` now means the structural gate passed, not merely that the sequence-level motif proxy passed.
+
+**Current local DPO artifact:**
+- Dataset: `data/phase8_dpo/dpo_preferences_hybrid_10k.jsonl`
+- SHA256: `083ccc9ffa4c66f43451abc26664f548262162d3ab7ff5eba120ffd0de1b0e9c`
+- Rows: `10,000`
+- Length delta: `0` for all pairs
+- Chosen source: `10,000 / 10,000` reviewed natural reference records
+- Rejected source: `2,434` Phase 7 generated fold-failed hard negatives + `7,566` synthetic length-preserving artifact replacements
+- Chosen repeat violations: `0`
+- Status: `ready_for_paid_dpo_smoke: true`
+
+**Interpretation:**
+The paid DPO smoke is back on scientific footing only under the natural-positive rebuild. The paid run should not use the April 28 hash.

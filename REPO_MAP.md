@@ -8,10 +8,10 @@ Historical experiment material was moved to `archive/2026-04-28-labyrinth-cleanu
 - `main.py`: primary PEARL sampling/evaluation entrypoint.
 - `src/pearl/`: supported library code for family scoring, reports, paths, watchers, and sampler utilities.
 - `scripts/`: active operational scripts only.
-  - Phase 8 DPO data: `build_hybrid_10k_dpo.py`, `preflight_phase8_dpo_dataset.py`.
+  - Phase 8 DPO data: `build_hybrid_10k_dpo.py`, `preflight_phase8_dpo_dataset.py`. Chosen positives must be audited natural reference records; generated Phase 7 library rows are hard negatives only.
   - Phase 7 evidence: `phase7_mcmc_library_builder.py`, `build_phase7_manifest.py`, `fold_phase7_subset.py`, plotting/PyMOL helpers.
   - Runtime/eval support: `run_sft_warmstart.py`, `run_robustness_two_phase.py`, `run_robustness_suite.py`, `run_ablation.py`, `strict_experiment.py`, detached job helpers.
-- `data/phase8_dpo/`: current length-controlled DPO dataset and manifests.
+- `data/phase8_dpo/`: current local length-controlled DPO dataset and manifests. This directory is ignored by Git because generated datasets are local artifacts.
 - `reports/analysis/phase7_local_library_v1/`: distilled Phase 7 library, fold metrics, canonical PDBs, figures, and FASTA batches.
 - `reports/analysis/postmortems/`: current scientific postmortems.
 - `docs/` and `notes/`: human-readable project state and working log.
