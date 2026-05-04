@@ -1,0 +1,49 @@
+{
+  "output_dir": "reports/poster_figures/phase8_strategy_20260504",
+  "source_artifacts": {
+    "fold_metrics": "reports/analysis/phase7_local_library_v1/folds/fold_metrics.json",
+    "full_library": "reports/analysis/phase7_local_library_v1/full_library.jsonl",
+    "candidate_manifest": "reports/analysis/phase7_local_library_v1/candidate_manifest.tsv",
+    "dpo_preflight": "data/phase8_dpo/dpo_preferences_hybrid_10k_preflight.json",
+    "dpo_build_manifest": "data/phase8_dpo/dpo_preferences_hybrid_10k_build_manifest.json"
+  },
+  "figures": {
+    "generative_mirage_map": [
+      "reports/poster_figures/phase8_strategy_20260504/01_generative_mirage_map.png",
+      "reports/poster_figures/phase8_strategy_20260504/01_generative_mirage_map.pdf"
+    ],
+    "esm_landscape_heatmap": [
+      "reports/poster_figures/phase8_strategy_20260504/02_esm_landscape_heatmap.png",
+      "reports/poster_figures/phase8_strategy_20260504/02_esm_landscape_heatmap.pdf"
+    ],
+    "repeat_scar_heatmap": [
+      "reports/poster_figures/phase8_strategy_20260504/03_repeat_scar_heatmap.png",
+      "reports/poster_figures/phase8_strategy_20260504/03_repeat_scar_heatmap.pdf"
+    ],
+    "dpo_length_control_fingerprint": [
+      "reports/poster_figures/phase8_strategy_20260504/04_dpo_length_control_fingerprint.png",
+      "reports/poster_figures/phase8_strategy_20260504/04_dpo_length_control_fingerprint.pdf"
+    ],
+    "local_vs_structural_diagnostic_matrix": [
+      "reports/poster_figures/phase8_strategy_20260504/05_local_vs_structural_diagnostic_matrix.png",
+      "reports/poster_figures/phase8_strategy_20260504/05_local_vs_structural_diagnostic_matrix.pdf"
+    ],
+    "fold_evidence_triptych": [
+      "reports/poster_figures/phase8_strategy_20260504/06_fold_evidence_triptych.png",
+      "reports/poster_figures/phase8_strategy_20260504/06_fold_evidence_triptych.pdf"
+    ],
+    "contact_sheet": [
+      "reports/poster_figures/phase8_strategy_20260504/00_contact_sheet.png"
+    ],
+    "source_phase7_pngs": [
+      "reports/poster_figures/phase8_strategy_20260504/source_phase7_pngs/dpo_flowchart.png",
+      "reports/poster_figures/phase8_strategy_20260504/source_phase7_pngs/fold_artifact_v2.png",
+      "reports/poster_figures/phase8_strategy_20260504/source_phase7_pngs/fold_natural_ref.png",
+      "reports/poster_figures/phase8_strategy_20260504/source_phase7_pngs/fold_phase7_cand1.png",
+      "reports/poster_figures/phase8_strategy_20260504/source_phase7_pngs/fold_superposition.png",
+      "reports/poster_figures/phase8_strategy_20260504/source_phase7_pngs/fold_true_unicorn.png",
+      "reports/poster_figures/phase8_strategy_20260504/source_phase7_pngs/mutation_neighborhood.png",
+      "reports/poster_figures/phase8_strategy_20260504/source_phase7_pngs/yield_funnel.png"
+    ]
+  }
+}

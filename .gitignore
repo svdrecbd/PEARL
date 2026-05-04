@@ -18,7 +18,9 @@ notes/FORLATERUSE.md
 .tinker_sampler_checkpoint_map.json
 
 # Generated experiment outputs
-reports/
+reports/*
+!reports/poster_figures/
+!reports/poster_figures/**
 data/
 archive/
 *.log
