@@ -1,5 +1,56 @@
 # Science Status
 
+## Strategy Heat Check (May 2026)
+
+The project is no longer short on individual components. The repo has working sampling/eval harnesses, strict sequence validators, ESM proxy scoring, mined historical failures, Phase 7 structural evidence, and a hardened Phase 8 DPO dataset. The gap is that these pieces are still bricks, not a finished house: we need a coherent training-and-validation loop that teaches the model what physical protein realism means instead of repeatedly asking SFT to imitate narrow positive pockets.
+
+Current checkpoint:
+
+- repo state: `main` tagged at `phase8-natural-positive-dpo-checkpoint`
+- active local dataset: `data/phase8_dpo/dpo_preferences_hybrid_10k.jsonl`
+- dataset hash: `083ccc9ffa4c66f43451abc26664f548262162d3ab7ff5eba120ffd0de1b0e9c`
+- rows: `10,000`
+- chosen side: reviewed natural PETase/cutinase reference records only
+- rejected side: Phase 7 fold-failed generated hard negatives plus length-preserving synthetic artifact replacements
+- current preflight status: `ready_for_paid_dpo_smoke: true`
+
+### What Is Solid
+
+- The old positive-only SFT path has a clear empirical limit. It can learn local sequence motifs and shortcut geometry proxies, but it repeatedly failed to produce durable clean single-domain fold behavior.
+- Phase 7 converted that failure into useful supervision. ColabFold separated the natural cutinase control from the generated panel, showing that high sequence-level scores were not enough.
+- The April 29 natural-positive DPO rebuild fixed the largest paid-run blocker: generated fold-failed rows are no longer used as chosen positives.
+- The active repo surface is clean enough to iterate from: current code, current docs, ignored local data, and archived historical clutter have distinct roles.
+
+### What Is Still Not Proven
+
+- We do not yet have evidence that one DPO/preference pass will produce a foldable novel enzyme.
+- We do not yet know whether the Tinker-side objective should be true DPO, another supported preference objective, or a small custom wrapper around the available loss surface.
+- The project has not yet shown closed-loop improvement from structural failure evidence back into generation quality.
+- ESM and sequence-level catalytic geometry remain useful filters, but they are not proof of fold or function.
+
+### Best Current Direction
+
+The next scientific shape should be a PLM plus RLM/preference loop:
+
+1. Use the base PLM as the natural protein-language prior.
+2. Use natural PETase/cutinase records as the positive manifold anchor.
+3. Use fold-failed generated artifacts as explicit rejected examples.
+4. Train a small preference/RL step to penalize structural mirages and repeat shortcuts.
+5. Validate with a paid smoke run, then fold a compact candidate panel before scaling.
+
+This direction is stronger than another SFT replay because it directly targets the failure mode we actually observed: the model can satisfy local sequence screens while missing global structural realism.
+
+### Heat
+
+- infrastructure/readiness: green
+- dataset/preflight quality: green for a paid smoke, not for a production claim
+- immediate novel functional protein odds: yellow/red until a folded post-DPO candidate exists
+- in-silico foldable novel candidate odds: yellow, plausible but unproven
+- novel ML discovery odds: yellow/green, because the failure mode, dataset construction, and validation loop are already concrete
+- main risk: spending on training before the exact preference objective and post-train fold gate are nailed down
+
+The practical conclusion: proceed, but with a small paid smoke whose job is to test the loop, not to declare discovery.
+
 ## Current State (April 23, 2026)
 
 The project is at a strategy reset.

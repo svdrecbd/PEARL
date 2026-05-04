@@ -3824,3 +3824,28 @@ The Phase 7 ColabFold panel exposed a second paid-run blocker: the natural cutin
 
 **Interpretation:**
 The paid DPO smoke is back on scientific footing only under the natural-positive rebuild. The paid run should not use the April 28 hash.
+
+## May 2026: Strategy Heat Check and Reset Point
+
+We are at a useful rest point. The repo is no longer the main blocker after the housekeeping pass: active scripts, active docs, ignored local datasets, and archived historical material now have separate places. The scientific blocker is clearer than before. We have many working bricks, but the house still has to be assembled into one feedback loop.
+
+**Working bricks:**
+- sampling/eval harnesses and robustness gates
+- strict sequence validators and ESM proxy scoring
+- Phase 7 ColabFold evidence separating the natural cutinase control from generated fold failures
+- fold-failed generated sequences that now serve as hard negatives
+- natural-positive Phase 8 DPO dataset with paid-smoke preflight passing
+- current checkpoint tag: `phase8-natural-positive-dpo-checkpoint`
+
+**House shape:**
+The next pass should be a small PLM plus preference/RL loop, not another broad SFT branch. The PLM supplies the natural protein prior. Reviewed natural PETase/cutinase records anchor the positive side. Fold-failed generated artifacts teach the model what structural mirages and repeat shortcuts look like. The paid smoke should test whether that preference signal changes generation behavior before we spend on wider candidate mining or library expansion.
+
+**Heat check:**
+- Infrastructure: green.
+- Dataset/preflight: green for a paid smoke, not a final claim.
+- Novel protein-from-scratch probability: still yellow/red until a post-DPO candidate folds cleanly.
+- Novel ML-discovery probability: yellow/green because the failure mode, contrastive data, and validation loop are concrete.
+- Main risk: launching training before the exact Tinker-side preference objective and post-train fold gate are confirmed.
+
+**Next pass:**
+Confirm the preference-training objective/runner, run the smallest paid smoke that can answer whether the model learned from structural negatives, generate a compact candidate panel, and fold before scaling.

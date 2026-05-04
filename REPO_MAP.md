@@ -17,6 +17,12 @@ Historical experiment material was moved to `archive/2026-04-28-labyrinth-cleanu
 - `docs/` and `notes/`: human-readable project state and working log.
 - `tests/`: supported tests for the active surface.
 
+## Strategic Direction
+
+The active pass is not another broad SFT replay. The current house shape is a small PLM plus preference/RL loop that uses natural PETase/cutinase records as the positive manifold and fold-failed generated sequences as hard negatives. New work should strengthen that loop: preference-training entrypoint, paid smoke preflight, compact post-train candidate generation, structural fold validation, and only then any larger library expansion.
+
+Treat Phase 7 generated/local-library rows as evidence, not trusted positives. They are useful because they expose structural mirages, repeat shortcuts, and score/structure mismatches.
+
 ## Archived Material
 
 `archive/2026-04-28-labyrinth-cleanup/` contains historical paid-run outputs, old manifold/repair/mining configs, one-off experiment scripts, raw ColabFold batch dumps, stale tests, and scratch files. Nothing was intentionally deleted.

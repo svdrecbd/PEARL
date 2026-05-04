@@ -18,6 +18,8 @@ This repository explores PETase-family sequence design through remote generation
 
 ## Current State
 
+May 2026 heat check: the project has enough working components to justify the next paid smoke, but not enough evidence to claim the protein-design thesis is solved. The strongest direction is a small PLM plus preference/RL loop: natural PETase/cutinase records as positives, Phase 7 fold-failed generated artifacts as hard negatives, then compact post-train generation and structural validation before any larger library expansion.
+
 April 29, 2026 DPO correction: Phase 7 generated/local-library sequences are no longer allowed on the chosen side of the paid-run DPO dataset. The current local Phase 8 build uses reviewed natural PETase/cutinase records as chosen positives and demotes the fold-failed Phase 7 generated panel to hard negatives.
 
 April 28, 2026 cleanup note: the active workspace is now focused on Phase 8 DPO readiness. The current 10k DPO dataset lives locally in `data/phase8_dpo/`, its structural evidence lives in `reports/analysis/phase7_local_library_v1/`, and old run outputs/scripts/configs were moved to the local ignored archive at `archive/2026-04-28-labyrinth-cleanup/`. See `REPO_MAP.md` and `notes/LABNOTES.md` for the current map and latest scientific status.
