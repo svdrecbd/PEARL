@@ -42,6 +42,10 @@ SUPPORTED_CODE_PATHS = [
     ROOT / "scripts" / "launch_detached_job.py",
     ROOT / "scripts" / "stop_detached_job.py",
     ROOT / "scripts" / "run_rl_pilot.py",
+    ROOT / "scripts" / "run_physical_to_sequence_loop.py",
+    ROOT / "scripts" / "run_tinker_dpo_smoke.py",
+    ROOT / "src" / "pearl" / "preference_distillation.py",
+    ROOT / "src" / "pearl" / "tinker_dpo.py",
 ]
 
 ROOT_SHIM_MODULES = {"petase_family", "local_proxy"}

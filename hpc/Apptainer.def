@@ -23,8 +23,8 @@ From: nvcr.io/nvidia/pytorch:23.10-py3
 
     python -m pip install --upgrade pip setuptools wheel
 
-    # Torch comes from the NVIDIA base image.
-    # Keep this list aligned with repository requirements except torch.
+    # Torch comes from the NVIDIA base image. This Python 3.10/CUDA image is
+    # intentionally pinned separately from the Python 3.13 local/dev baseline.
     python -m pip install \
         tinker==0.16.1 \
         transformers==5.2.0 \

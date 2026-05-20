@@ -1,0 +1,45 @@
+# Physical-to-sequence DPO + OPD offline artifact build template.
+#
+# This file is intentionally human-readable. The first implementation uses
+# scripts/run_physical_to_sequence_loop.py flags directly so it does not require
+# a YAML parser dependency.
+
+name: phase8-physical-to-sequence-loop-v1
+
+inputs:
+  candidate_path: reports/preference_distillation/example_candidates.jsonl
+  evaluator_version: phase8_local_v1
+
+outputs:
+  output_dir: reports/preference_distillation
+
+gates:
+  min_length: 120
+  max_length: 360
+  min_local_entropy: 2.7
+  max_tandem_repeat_similarity: 0.85
+  max_motif_count: 1
+  min_fold_confidence: 85.0
+  novelty_identity_min: 0.0
+  novelty_identity_max: 0.9
+
+pairing:
+  preference_family: on_policy_physical
+  length_bucket_size: 10
+  novelty_bucket_size: 0.05
+  min_score_margin: 0.05
+  max_pairs_per_bucket: 128
+  max_total_pairs: null
+
+distillation:
+  require_independent_audit: false
+  min_winner_weight: 0.0
+  max_winners: null
+
+next_backend_hooks:
+  sample_policy: pending
+  fold_candidates: pending
+  validate_preference_shape: scripts/run_tinker_dpo_smoke.py --shape-only
+  preference_train: scripts/run_tinker_dpo_smoke.py
+  distill_train: scripts/run_sft_warmstart.py
+  evaluate_smoke: scripts/run_robustness_two_phase.py

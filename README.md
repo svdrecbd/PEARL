@@ -90,21 +90,23 @@ Versioned `strict_core_*` and `strict_first_union` wrappers now live under the a
 ## Installation
 
 ```bash
-python -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Pinned local/dev requirements are in [`requirements.txt`](requirements.txt):
+Pinned local/dev requirements are in [`requirements.txt`](requirements.txt). The local baseline
+uses Python 3.13 because the current Tinker SDK requires Python >=3.11:
 
-- `tinker==0.16.1`
-- `torch==2.10.0`
-- `transformers==5.2.0`
-- `tiktoken==0.12.0`
-- `numpy==2.4.2`
+- `tinker==0.21.0`
+- `torch==2.12.0`
+- `transformers==5.8.1`
+- `tiktoken==0.13.0`
+- `numpy==2.4.6`
 - `safetensors==0.7.0`
 - `sentencepiece==0.2.1`
 - `rapidfuzz==3.14.5`
+- `charset-normalizer==3.4.6`
 
 Production CUDA environments used on Nebius are separate from the local/dev baseline.
 

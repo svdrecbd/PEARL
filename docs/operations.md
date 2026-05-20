@@ -5,10 +5,13 @@
 Local/dev environment:
 
 ```bash
-python -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+The local/dev requirements track the current Tinker SDK and therefore need Python >=3.11.
+CUDA/HPC containers remain pinned separately.
 
 Runtime requirements:
 - `TINKER_API_KEY`
