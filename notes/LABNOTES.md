@@ -3849,3 +3849,79 @@ The next pass should be a small PLM plus preference/RL loop, not another broad S
 
 **Next pass:**
 Confirm the preference-training objective/runner, run the smallest paid smoke that can answer whether the model learned from structural negatives, generate a compact candidate panel, and fold before scaling.
+
+## May 21, 2026: Phase 8 Preference Runner Readiness
+
+Phase 8 is now locally ready for the smallest paid Tinker DPO smoke. The remaining blocker is no longer missing repo infrastructure; it is running and inspecting one intentionally paid custom-loss smoke before scaling.
+
+**Tinker / dependency check:**
+- Local/dev baseline updated to Python 3.13-compatible current pins:
+  - `tinker==0.21.0`
+  - `torch==2.12.0`
+  - `transformers==5.8.1`
+  - `tiktoken==0.13.0`
+  - `numpy==2.4.6`
+  - `safetensors==0.7.0`
+  - `sentencepiece==0.2.1`
+  - `rapidfuzz==3.14.5`
+  - `charset-normalizer==3.4.6`
+- Tinker SDK 0.21 still does not expose native `dpo` loss names. Supported loss names remain `cross_entropy`, `importance_sampling`, `ppo`, `cispo`, and `dro`.
+- Tinker SDK 0.21 does expose `TrainingClient.forward_backward_custom(..., loss_type_input="logprobs")`, which is sufficient for a repo-native DPO custom loss.
+
+**Code added:**
+- `src/pearl/preference_distillation.py`
+  - backend-agnostic physical preference pair and OPD winner builder
+  - supports JSONL, PEARL `candidate_audit.json`, and PEARL `report.json`
+  - applies hard gates, comparable buckets, pair rules, Pareto winner selection, and manifests
+- `scripts/run_physical_to_sequence_loop.py`
+  - builds `physical_dpo_pairs.jsonl`, `opd_distillation_winners.jsonl`, and `manifest.json`
+- `src/pearl/tinker_dpo.py`
+  - builds chosen/rejected Tinker cross-entropy datums
+  - computes reference log-prob margins
+  - implements DPO as a custom log-prob loss
+- `scripts/run_tinker_dpo_smoke.py`
+  - runs small custom-loss DPO on Phase 8 or physical preference pairs
+  - includes `--shape-only` for a no-cost local validation path that does not create a Tinker client
+- `configs/experiments/physical_to_sequence_dpo_opd.yaml`
+  - offline artifact-build template and backend hook map
+
+**No-cost validation completed:**
+- Command:
+  - `.venv/bin/python scripts/run_tinker_dpo_smoke.py --name phase8-bio-dpo-shape --pairs-path data/phase8_dpo/dpo_preferences_hybrid_10k.jsonl --shape-only`
+- Result:
+  - `10,000` pairs
+  - `20,000` datums
+  - `2,080` unique prompts
+  - `0` duplicate pairs
+  - `0` identical chosen/rejected pairs
+  - no Tinker client created
+- Report:
+  - `reports/tinker_dpo_smoke/phase8-bio-dpo-shape/report.json`
+
+**Verification completed:**
+- `.venv/bin/python -m pip check` passed.
+- `python3 -m compileall -q src scripts tests` passed.
+- `.venv/bin/python -m unittest discover -s tests -p 'test_*.py'` passed: `36` tests.
+- `python3 -m unittest discover -s tests -p 'test_*.py'` passed: `36` tests.
+
+**Paid smoke command, not yet run:**
+
+```bash
+.venv/bin/python scripts/run_tinker_dpo_smoke.py \
+  --name phase8-bio-dpo-smoke \
+  --pairs-path data/phase8_dpo/dpo_preferences_hybrid_10k.jsonl \
+  --max-pairs 8 \
+  --batch-pairs 2
+```
+
+**Decision:**
+- The repo is ready for the tiny paid static DPO smoke.
+- The full intended Phase 8 loop is dual-stage/dual-policy, not DPO-only:
+  1. static natural-positive DPO to move the policy away from known generated/fold-failed artifacts
+  2. post-DPO on-policy sampling from that updated policy
+  3. physical evaluation/folding into `candidate_audit.json`
+  4. physical-to-sequence pair construction plus OPD winner selection
+  5. another preference/distillation update using those on-policy physical pairs and winners
+- The OPD artifact builder is implemented, but the sampling/folding/distillation stages are not yet wrapped as a single paid-run orchestrator. `configs/experiments/physical_to_sequence_dpo_opd.yaml` correctly marks `sample_policy` and `fold_candidates` as pending backend hooks.
+- Do not launch the full 10k paid campaign or a full dual-policy loop until the tiny smoke produces sane `dpo_loss`, reward-margin metrics, optimizer metrics, and a saved checkpoint in `reports/tinker_dpo_smoke/phase8-bio-dpo-smoke/report.json`.
+- After the tiny smoke passes, the next decision point is compact post-DPO generation, physical pair/OPD artifact build, and structural validation before scaling.
