@@ -43,9 +43,27 @@ def main() -> None:
 
     service_client = tinker.ServiceClient()
     base_model = resolve_base_model(service_client, args.model)
+    checkpoint_meta_path = output_dir / "checkpoint_meta.json"
+    start_epoch = 0
+    start_batch_index = 0
+    current_state_path = args.init_state_path
+
+    if checkpoint_meta_path.exists():
+        try:
+            with open(checkpoint_meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            start_epoch = meta.get("epoch", 0)
+            start_batch_index = meta.get("batch_index", 0)
+            current_state_path = meta.get("state_path", current_state_path)
+            print(f"--- AUTO-RESUME DETECTED ---", flush=True)
+            print(f"Resuming training from state: {current_state_path}", flush=True)
+            print(f"Starting at Epoch {start_epoch}, Batch Index {start_batch_index}", flush=True)
+        except Exception as exc:
+            print(f"Warning: Failed to load checkpoint metadata. Error: {exc}", flush=True)
+
     training_client = (
-        service_client.create_training_client_from_state(path=args.init_state_path)
-        if args.init_state_path
+        service_client.create_training_client_from_state(path=current_state_path)
+        if current_state_path
         else service_client.create_lora_training_client(
             base_model=base_model,
             rank=args.rank,
@@ -62,21 +80,44 @@ def main() -> None:
             pair_rows=pair_rows,
             metadata=metadata,
             shape_summary=shape_summary,
-            checkpoint_path=args.init_state_path,
+            checkpoint_path=current_state_path,
         )
         atomic_write_json(report_path, payload)
         print(json.dumps(payload, indent=2, sort_keys=True))
         return
 
-    # If no explicit reference checkpoint is supplied, freeze the initial policy
-    # by computing all reference margins before any optimizer step.
-    reference_client = (
-        service_client.create_training_client_from_state(path=args.reference_state_path)
-        if args.reference_state_path
-        else training_client
-    )
-    reference_forward = reference_client.forward(datums, "cross_entropy").result()
-    reference_margins = reference_margins_from_forward_result(reference_forward, datums)
+    reference_margins_path = output_dir / "reference_margins.json"
+    reference_margins: list[float] = []
+
+    if reference_margins_path.exists():
+        try:
+            with open(reference_margins_path, "r", encoding="utf-8") as f:
+                reference_margins = json.load(f)
+            print("--- LOADED REFERENCE MARGINS (Skipping expensive forward pass!) ---", flush=True)
+        except Exception as exc:
+            print(f"Warning: Failed to load reference margins: {exc}", flush=True)
+
+    if not reference_margins:
+        print("--- COMPUTING REFERENCE MARGINS (Upfront Forward Pass) ---", flush=True)
+        # If no explicit reference checkpoint is supplied, freeze the initial policy
+        # by computing all reference margins before any optimizer step.
+        reference_client = (
+            service_client.create_training_client_from_state(path=args.reference_state_path)
+            if args.reference_state_path
+            else service_client.create_lora_training_client(
+                base_model=base_model,
+                rank=args.rank,
+                user_metadata={"pearl_task": "reference_policy"},
+            )
+        )
+        reference_forward = reference_client.forward(datums, "cross_entropy").result()
+        reference_margins = reference_margins_from_forward_result(reference_forward, datums)
+        try:
+            with open(reference_margins_path, "w", encoding="utf-8") as f:
+                json.dump(reference_margins, f, indent=2)
+            print(f"Saved reference margins to: {reference_margins_path}", flush=True)
+        except Exception as exc:
+            print(f"Warning: Failed to save reference margins: {exc}", flush=True)
 
     adam_params = types.AdamParams(
         learning_rate=args.learning_rate,
@@ -85,8 +126,24 @@ def main() -> None:
         eps=1e-8,
     )
     batch_reports: list[dict[str, Any]] = []
-    for epoch in range(args.epochs):
+
+    # If resuming, load existing batch reports from earlier checkpoint
+    if start_batch_index > 0:
+        reports_file = output_dir / "batch_reports_checkpoint.json"
+        if reports_file.exists():
+            try:
+                with open(reports_file, "r", encoding="utf-8") as f:
+                    batch_reports = json.load(f)
+                print(f"Loaded {len(batch_reports)} historical batch reports.", flush=True)
+            except Exception as exc:
+                print(f"Warning: Failed to load historical batch reports: {exc}", flush=True)
+
+    for epoch in range(start_epoch, args.epochs):
+        current_start_batch = start_batch_index if epoch == start_epoch else 0
         for batch_index, batch_start in enumerate(range(0, len(pair_rows), args.batch_pairs)):
+            if batch_index < current_start_batch:
+                continue
+
             batch_pair_count = min(args.batch_pairs, len(pair_rows) - batch_start)
             datum_start = batch_start * 2
             datum_end = datum_start + (batch_pair_count * 2)
@@ -95,6 +152,7 @@ def main() -> None:
             dpo_loss_fn = build_tinker_dpo_loss_fn(reference_margins=batch_reference_margins, beta=args.beta)
             forward_backward_result = forward_backward_custom_logprobs(training_client, batch_datums, dpo_loss_fn)
             optim_step_result = training_client.optim_step(adam_params).result()
+            
             batch_report = {
                 "epoch": epoch,
                 "batch_index": batch_index,
@@ -104,6 +162,41 @@ def main() -> None:
             }
             batch_reports.append(batch_report)
             print(json.dumps(batch_report), flush=True)
+
+            # Auto-save state every 50 batches (but not on the very last batch of training)
+            is_last_batch = (epoch == args.epochs - 1) and (batch_start + args.batch_pairs >= len(pair_rows))
+            if (batch_index + 1) % 50 == 0 and not is_last_batch:
+                print(f"--- AUTO-CHECKPOINTING (Batch {batch_index}) ---", flush=True)
+                checkpoint_name = f"{sanitize_name(args.name)}-chkpt-e{epoch}-b{batch_index}"
+                try:
+                    chkpt_result = training_client.save_state(checkpoint_name).result()
+                    meta_payload = {
+                        "epoch": epoch,
+                        "batch_index": batch_index + 1,
+                        "state_path": chkpt_result.path,
+                        "checkpoint_name": checkpoint_name,
+                    }
+                    with open(checkpoint_meta_path, "w", encoding="utf-8") as f:
+                        json.dump(meta_payload, f, indent=2)
+                    
+                    with open(output_dir / "batch_reports_checkpoint.json", "w", encoding="utf-8") as f:
+                        json.dump(batch_reports, f, indent=2)
+                        
+                    print(f"Checkpoint saved: {chkpt_result.path}", flush=True)
+                except Exception as exc:
+                    print(f"Warning: Failed to save intermediate checkpoint: {exc}", flush=True)
+
+    # Clean up checkpoint metadata if training finished successfully
+    if checkpoint_meta_path.exists():
+        try:
+            checkpoint_meta_path.unlink()
+            reports_file = output_dir / "batch_reports_checkpoint.json"
+            if reports_file.exists():
+                reports_file.unlink()
+            if reference_margins_path.exists():
+                reference_margins_path.unlink()
+        except Exception:
+            pass
 
     save_result = training_client.save_state(args.checkpoint_name or sanitize_name(args.name)).result()
     report = {

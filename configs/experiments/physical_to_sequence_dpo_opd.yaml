@@ -6,6 +6,23 @@
 
 name: phase8-physical-to-sequence-loop-v1
 
+current_dpo_baseline:
+  status: unresolved_preliminary_single_slice_only
+  readout_doc: docs/phase8_dpo_pilot_readout.md
+  checkpoint: tinker://68b86c30-7c34-5c97-bb55-01e139610267:train:0/weights/phase8-bio-dpo-pilot-3k-final
+  trained_pairs: 3000
+  eval_slice: p12_t0p8_seed7
+  functional_bridge_hits: 0
+  family_faithful_bridge_hits: 0
+  folded_subset_ca_triad_passes: 0
+  folded_subset_count: 5
+  interpretation: dpo_is_working_baseline_thin_slice_not_verdict
+  recommended_dpo_followup:
+    prompt_counts: [12, 24]
+    temperatures: [0.6, 0.8]
+    seeds: [7, 19, 31]
+    fold_selected_subset: true
+
 inputs:
   candidate_path: reports/preference_distillation/example_candidates.jsonl
   evaluator_version: phase8_local_v1
@@ -31,15 +48,79 @@ pairing:
   max_pairs_per_bucket: 128
   max_total_pairs: null
 
+objectives:
+  milestone: reduce_structural_hallucination_while_preserving_novelty
+  primary_comparison:
+    - base_model
+    - sft_model
+    - dpo_model
+    - dpo_opd_model
+  pareto_axes:
+    - anti_hallucination
+    - foldability
+    - family_plausibility
+    - active_site_geometry
+    - thermodynamic_stability
+    - solubility
+    - aggregation
+    - expression_likelihood
+    - novelty
+    - diversity
+    - functional_proxy
+    - manufacturability
+    - biosafety
+  required_readout:
+    - plddt_ptm
+    - active_site_geometry
+    - repeat_domain_duplication_artifacts
+    - novelty_distance
+    - family_hmm_score
+    - diversity
+    - solubility_aggregation_proxies
+    - expression_manufacturability_biosafety_proxies
+
 distillation:
   require_independent_audit: false
   min_winner_weight: 0.0
   max_winners: null
 
+no_logits_opd:
+  status: ready_for_sparse_topk_materials
+  exact_proteinopd_blocker: full_vocab_student_and_teacher_logits
+  paid_preflight: scripts/phase8_paid_run_preflight.py
+  rollout_seed_builder: scripts/build_sparse_opd_rollout_seed.py
+  teacher_trace_builder: scripts/build_tinker_teacher_traces.py
+  sparse_target_builder: scripts/build_sparse_opd_targets.py
+  sparse_smoke_runner: scripts/run_tinker_sparse_opd_smoke.py
+  rollout_seed_path: reports/opd_lite/rollouts.jsonl
+  teacher_trace_path: reports/opd_lite/teacher_traces.jsonl
+  default_output_dir: reports/opd_lite
+  top_k: 20
+  teacher_temperature: 0.7
+  missing_logprob: -30.0
+  teachers:
+    - name: foldability_anti_hallucination
+      weight: 0.35
+      role: reduce_fold_mirages_repeat_domain_duplication
+    - name: family_active_site
+      weight: 0.35
+      role: preserve_petase_family_identity_and_catalytic_geometry
+    - name: developability
+      weight: 0.20
+      role: solubility_aggregation_expression_manufacturability_biosafety
+    - name: novelty_diversity
+      weight: 0.10
+      role: gate_or_light_teacher_to_avoid_memorized_collapse
+
 next_backend_hooks:
   sample_policy: pending
   fold_candidates: pending
+  paid_preflight: scripts/phase8_paid_run_preflight.py
   validate_preference_shape: scripts/run_tinker_dpo_smoke.py --shape-only
   preference_train: scripts/run_tinker_dpo_smoke.py
-  distill_train: scripts/run_sft_warmstart.py
+  static_rollout_seed: scripts/build_sparse_opd_rollout_seed.py
+  teacher_trace_build: scripts/build_tinker_teacher_traces.py
+  sparse_opd_target_build: scripts/build_sparse_opd_targets.py
+  sparse_opd_shape: scripts/run_tinker_sparse_opd_smoke.py --shape-only
+  distill_train: scripts/run_tinker_sparse_opd_smoke.py
   evaluate_smoke: scripts/run_robustness_two_phase.py

@@ -12,7 +12,13 @@ Current checkpoint:
 - rows: `10,000`
 - chosen side: reviewed natural PETase/cutinase reference records only
 - rejected side: Phase 7 fold-failed generated hard negatives plus length-preserving synthetic artifact replacements
-- current preflight status: `ready_for_paid_dpo_smoke: true`
+- DPO smoke status: completed
+- DPO pilot status: `3,000` pairs trained for `1` epoch
+- DPO pilot checkpoint: `tinker://68b86c30-7c34-5c97-bb55-01e139610267:train:0/weights/phase8-bio-dpo-pilot-3k-final`
+- current DPO-only evidence: one completed post-DPO slice, `p12`, temperature `0.8`, seed `7`
+- current structural evidence: folded subset remains weak, `0 / 5` CA-triad passes and mean pLDDT `25.61-36.27`
+- interpretation: this is a budget-limited warning slice, not a high-resolution estimate of DPO-only yield
+- canonical Phase 8 pilot note: [phase8_dpo_pilot_readout.md](phase8_dpo_pilot_readout.md)
 
 ### What Is Solid
 
@@ -20,36 +26,41 @@ Current checkpoint:
 - Phase 7 converted that failure into useful supervision. ColabFold separated the natural cutinase control from the generated panel, showing that high sequence-level scores were not enough.
 - The April 29 natural-positive DPO rebuild fixed the largest paid-run blocker: generated fold-failed rows are no longer used as chosen positives.
 - The active repo surface is clean enough to iterate from: current code, current docs, ignored local data, and archived historical clutter have distinct roles.
+- The May 30 paid DPO pilot showed that the custom-loss DPO path is operational: DPO loss fell and reward margins rose across the 3k-pair run.
 
 ### What Is Still Not Proven
 
 - We do not yet have evidence that one DPO/preference pass will produce a foldable novel enzyme.
-- We do not yet know whether the Tinker-side objective should be true DPO, another supported preference objective, or a small custom wrapper around the available loss surface.
+- The one completed DPO-only eval slice is too small to estimate DPO-only yield.
+- The folded DPO subset did not validate structurally, but the slice is too thin to determine whether this is objective failure, sampling variance, prompt/temperature sensitivity, or selection/folding noise.
+- We do not yet know whether sparse OPD is sufficient without full-vocabulary logits.
 - The project has not yet shown closed-loop improvement from structural failure evidence back into generation quality.
 - ESM and sequence-level catalytic geometry remain useful filters, but they are not proof of fold or function.
 
 ### Best Current Direction
 
-The next scientific shape should be a PLM plus RLM/preference loop:
+The next scientific shape should be DPO characterization plus sparse OPD/multi-teacher comparison:
 
 1. Use the base PLM as the natural protein-language prior.
 2. Use natural PETase/cutinase records as the positive manifold anchor.
-3. Use fold-failed generated artifacts as explicit rejected examples.
-4. Train a small preference/RL step to penalize structural mirages and repeat shortcuts.
-5. Validate with a paid smoke run, then fold a compact candidate panel before scaling.
+3. Keep the May 30 DPO checkpoint as the active DPO-only baseline.
+4. When budget permits, run more DPO-only slices across prompts, temperatures, and seeds to locate where DPO helps or fails.
+5. Use fold-failed generated artifacts and new low-confidence generated candidates as explicit rejected examples.
+6. Prepare sparse OPD as the comparison branch for structural hallucination versus novelty.
+7. Validate DPO versus DPO + sparse OPD on matched compact structural slices before scaling either path.
 
 This direction is stronger than another SFT replay because it directly targets the failure mode we actually observed: the model can satisfy local sequence screens while missing global structural realism.
 
 ### Heat
 
-- infrastructure/readiness: green
-- dataset/preflight quality: green for a paid smoke, not for a production claim
+- infrastructure/readiness: green for DPO; yellow for sparse OPD because teacher traces and target build still need to run
+- dataset/preflight quality: green for DPO, not for a production claim
 - immediate novel functional protein odds: yellow/red until a folded post-DPO candidate exists
 - in-silico foldable novel candidate odds: yellow, plausible but unproven
 - novel ML discovery odds: yellow/green, because the failure mode, dataset construction, and validation loop are already concrete
-- main risk: spending on training before the exact preference objective and post-train fold gate are nailed down
+- main risk: mistaking one budget-limited DPO slice for a verdict, in either direction
 
-The practical conclusion: proceed, but with a small paid smoke whose job is to test the loop, not to declare discovery.
+The practical conclusion: proceed, but treat solo DPO as unresolved. The next paid work should either characterize DPO-only at higher resolution or run a matched sparse-OPD comparison, depending on budget.
 
 ## Current State (April 23, 2026)
 

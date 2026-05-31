@@ -91,6 +91,44 @@ class PreferenceDistillationTests(unittest.TestCase):
         audited_winners = select_distillation_winners(candidates, require_independent_audit=True)
         self.assertEqual([winner.candidate_id for winner in audited_winners], ["front-a"])
 
+    def test_multi_objective_axes_drive_pareto_preferences_when_present(self) -> None:
+        rows = [
+            candidate_row(
+                "developable",
+                solubility_score=0.82,
+                aggregation_risk=0.08,
+                expression_likelihood=0.74,
+                manufacturability_score=0.9,
+                biosafety_score=1.0,
+                thermodynamic_stability_score=0.86,
+                diversity_score=0.62,
+                functional_proxy_score=0.7,
+                physical_score=0.8,
+            ),
+            candidate_row(
+                "fragile",
+                sequence=BASE_SEQUENCE[:-1] + "A",
+                solubility_score=0.55,
+                aggregation_risk=0.35,
+                expression_likelihood=0.51,
+                manufacturability_score=0.52,
+                biosafety_score=0.7,
+                thermodynamic_stability_score=0.6,
+                diversity_score=0.4,
+                functional_proxy_score=0.5,
+                physical_score=0.8,
+            ),
+        ]
+        candidates = normalize_candidate_rows(rows)
+        pairs = build_preference_pairs(candidates, config=PairingConfig(max_pairs_per_bucket=10))
+
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual(pairs[0].chosen_id, "developable")
+        self.assertEqual(pairs[0].preference_rule, "pareto_dominance")
+        self.assertAlmostEqual(candidates[0].objective_scores["aggregation"], 0.92)
+        self.assertIn("solubility", candidates[0].objective_scores)
+        self.assertIn("manufacturability", pairs[0].preference_basis["chosen"]["objective_scores"])
+
     def test_cli_writes_pairs_winners_and_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

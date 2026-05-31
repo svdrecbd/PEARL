@@ -19,7 +19,112 @@ NESTED_METRIC_KEYS = (
     "reward_components",
     "family_evaluation",
     "physical_metrics",
+    "fold_metrics",
+    "structure_metrics",
+    "stability_metrics",
+    "developability",
+    "manufacturability",
+    "biosafety",
+    "functional_metrics",
+    "docking_metrics",
+    "diversity_metrics",
 )
+
+OBJECTIVE_AXES = (
+    "anti_hallucination",
+    "foldability",
+    "family_plausibility",
+    "active_site_geometry",
+    "thermodynamic_stability",
+    "solubility",
+    "aggregation",
+    "expression_likelihood",
+    "novelty",
+    "diversity",
+    "functional_proxy",
+    "manufacturability",
+    "biosafety",
+)
+
+OBJECTIVE_SCORE_KEYS: dict[str, tuple[str, ...]] = {
+    "anti_hallucination": ("anti_hallucination_score", "artifact_free_score", "topology_score"),
+    "foldability": (
+        "foldability_score",
+        "fold_score",
+        "structure_score",
+        "structural_confidence",
+        "fold_confidence",
+        "mean_plddt",
+        "plddt",
+        "ptm",
+        "pTM",
+    ),
+    "family_plausibility": (
+        "family_plausibility_score",
+        "family_identity_score",
+        "family_hmm_score",
+        "hmm_score",
+        "family_score",
+    ),
+    "active_site_geometry": (
+        "active_site_geometry_score",
+        "active_site_score",
+        "catalytic_geometry_score",
+        "catalytic_context_score",
+        "geometry_score",
+        "substrate_facing_geometry_score",
+    ),
+    "thermodynamic_stability": (
+        "thermodynamic_stability_score",
+        "stability_score",
+        "esm_score",
+        "raw_esm_score",
+        "esm_plddt",
+        "tm_stability_score",
+    ),
+    "solubility": ("solubility_score", "soluble_score"),
+    "aggregation": ("aggregation_score", "anti_aggregation_score"),
+    "expression_likelihood": (
+        "expression_likelihood",
+        "expression_score",
+        "expression_likelihood_score",
+        "secretion_score",
+    ),
+    "novelty": ("novelty_score", "divergence_score"),
+    "diversity": ("diversity_score", "cluster_diversity_score", "scaffold_diversity_score"),
+    "functional_proxy": (
+        "functional_proxy_score",
+        "catalytic_proxy_score",
+        "physical_score",
+        "stage2_score",
+        "reward",
+        "docking_affinity_score",
+    ),
+    "manufacturability": (
+        "manufacturability_score",
+        "developability_score",
+        "synthesis_feasibility_score",
+        "synthesis_score",
+    ),
+    "biosafety": ("biosafety_score", "safety_score", "nonpathogenicity_score"),
+}
+
+OBJECTIVE_INVERTED_SCORE_KEYS: dict[str, tuple[str, ...]] = {
+    "aggregation": ("aggregation_risk", "aggregation_propensity", "amyloid_risk"),
+    "functional_proxy": ("docking_energy", "binding_energy"),
+    "manufacturability": ("synthesis_difficulty", "manufacturing_risk"),
+    "biosafety": ("biosafety_risk", "toxicity_risk", "pathogenicity_risk", "host_homology_risk"),
+}
+
+OBJECTIVE_PASS_KEYS: dict[str, tuple[str, ...]] = {
+    "thermodynamic_stability": ("thermodynamic_stability_pass", "stability_pass", "esm_gate_pass"),
+    "solubility": ("solubility_pass", "soluble_pass"),
+    "aggregation": ("aggregation_pass", "anti_aggregation_pass"),
+    "expression_likelihood": ("expression_pass", "expression_likelihood_pass"),
+    "functional_proxy": ("functional_proxy_pass", "docking_pass", "substrate_geometry_pass"),
+    "manufacturability": ("manufacturability_pass", "developability_pass", "synthesis_feasibility_pass"),
+    "biosafety": ("biosafety_pass", "safety_pass"),
+}
 
 
 @dataclass(frozen=True)
@@ -67,6 +172,8 @@ class CandidateMetrics:
     novelty_pass: bool
     independent_audit_pass: bool
     scalar_score: float
+    objective_scores: dict[str, float]
+    objective_passes: dict[str, bool]
     pareto_scores: dict[str, float]
     rejection_reasons: tuple[str, ...]
     source_row: dict[str, Any] = field(default_factory=dict)
@@ -449,6 +556,8 @@ def candidate_from_row(
     independent_audit_pass = as_bool(
         first_present(row, ("independent_audit_pass", "heldout_audit_pass", "structural_gate_passes"), default=False)
     )
+    objective_passes = resolve_objective_passes(row)
+    optional_objective_pass = all(objective_passes.values()) if objective_passes else True
 
     explicit_hard_gate = as_bool(first_present(row, ("hard_gate_pass", "hard_gate_passes"), default=None))
     computed_hard_gate = (
@@ -458,6 +567,7 @@ def candidate_from_row(
         and catalytic_context_pass
         and novelty_pass
         and fold_confidence_pass
+        and optional_objective_pass
     )
     hard_gate_pass = computed_hard_gate if explicit_hard_gate is None else bool(explicit_hard_gate and computed_hard_gate)
 
@@ -470,6 +580,18 @@ def candidate_from_row(
         novelty_pass=novelty_pass,
         fold_confidence=fold_confidence,
     )
+    objective_scores = resolve_objective_scores(
+        row=row,
+        artifact_free=artifact_free,
+        family_faithful_pass=family_faithful_pass,
+        family_plausible=family_plausible,
+        catalytic_context_pass=catalytic_context_pass,
+        fold_confidence_pass=fold_confidence_pass,
+        novelty_pass=novelty_pass,
+        novelty_identity=novelty_identity,
+        fold_confidence=fold_confidence,
+        scalar_score=scalar_score,
+    )
     pareto_scores = resolve_pareto_scores(
         row=row,
         artifact_free=artifact_free,
@@ -479,6 +601,7 @@ def candidate_from_row(
         novelty_pass=novelty_pass,
         fold_confidence=fold_confidence,
         scalar_score=scalar_score,
+        objective_scores=objective_scores,
     )
     rejection_reasons = build_rejection_reasons(
         sequence_valid=sequence_valid,
@@ -491,6 +614,7 @@ def candidate_from_row(
         novelty_pass=novelty_pass,
         fold_confidence_available=fold_confidence_available,
         fold_confidence_pass=fold_confidence_pass,
+        objective_passes=objective_passes,
         hard_gate_pass=hard_gate_pass,
     )
 
@@ -518,6 +642,8 @@ def candidate_from_row(
         novelty_pass=novelty_pass,
         independent_audit_pass=bool(independent_audit_pass),
         scalar_score=scalar_score,
+        objective_scores=objective_scores,
+        objective_passes=objective_passes,
         pareto_scores=pareto_scores,
         rejection_reasons=tuple(rejection_reasons),
         source_row=dict(row),
@@ -656,6 +782,8 @@ def select_distillation_winners(
                     "novelty_pass": candidate.novelty_pass,
                     "independent_audit_pass": candidate.independent_audit_pass,
                     "scalar_score": round(candidate.scalar_score, 6),
+                    "objective_scores": candidate.objective_scores,
+                    "objective_passes": candidate.objective_passes,
                     "pareto_scores": candidate.pareto_scores,
                 },
             )
@@ -679,6 +807,7 @@ def build_manifest(
     bucket_counts = Counter("|".join(candidate.bucket_key(config)) for candidate in candidates)
     pair_rule_counts = Counter(pair.preference_rule for pair in pairs)
     rejection_counts = Counter(reason for candidate in candidates for reason in candidate.rejection_reasons)
+    objective_axis_counts = Counter(axis for candidate in candidates for axis in candidate.objective_scores)
     return {
         "candidate_path": str(candidate_path),
         "pairs_path": str(pairs_path),
@@ -692,6 +821,8 @@ def build_manifest(
         "largest_bucket_size": max(bucket_counts.values(), default=0),
         "pair_rule_counts": dict(sorted(pair_rule_counts.items())),
         "rejection_reason_counts": dict(sorted(rejection_counts.items())),
+        "objective_axes": list(OBJECTIVE_AXES),
+        "objective_axis_counts": dict(sorted(objective_axis_counts.items())),
         "pairing_config": {
             "length_bucket_size": config.length_bucket_size,
             "novelty_bucket_size": config.novelty_bucket_size,
@@ -739,7 +870,7 @@ def pareto_dominates(left: dict[str, float], right: dict[str, float]) -> bool:
 
 
 def confidence_weight(candidate: CandidateMetrics) -> float:
-    components = [
+    components = list(candidate.objective_scores.values()) or [
         1.0 if candidate.artifact_free else 0.0,
         1.0 if candidate.family_faithful_pass else 0.0,
         1.0 if candidate.catalytic_context_pass else 0.0,
@@ -790,6 +921,8 @@ def candidate_summary(candidate: CandidateMetrics) -> dict[str, Any]:
         "novelty_pass": candidate.novelty_pass,
         "independent_audit_pass": candidate.independent_audit_pass,
         "scalar_score": round(candidate.scalar_score, 6),
+        "objective_scores": candidate.objective_scores,
+        "objective_passes": candidate.objective_passes,
         "pareto_scores": candidate.pareto_scores,
         "rejection_reasons": list(candidate.rejection_reasons),
     }
@@ -837,22 +970,111 @@ def resolve_pareto_scores(
     novelty_pass: bool,
     fold_confidence: float | None,
     scalar_score: float,
+    objective_scores: dict[str, float],
 ) -> dict[str, float]:
+    scores = dict(objective_scores)
     explicit = first_present(row, ("pareto_scores",), default=None)
     if isinstance(explicit, dict):
-        return {str(key): float(value) for key, value in explicit.items() if is_number(value)}
+        scores.update({str(key): normalize_score(float(value)) for key, value in explicit.items() if is_number(value)})
+        return scores
 
     novelty_score = as_float(first_present(row, ("novelty_score",), default=None), default=None)
     fold_score = max(0.0, min(1.0, fold_confidence / 100.0)) if fold_confidence is not None else float(fold_confidence_pass)
     normalized_scalar = scalar_score if scalar_score <= 1.0 else scalar_score / 100.0
-    return {
-        "artifact": float(artifact_free),
-        "family": float(family_faithful_pass),
-        "catalytic_context": float(catalytic_context_pass),
-        "fold_confidence": fold_score,
-        "novelty": float(novelty_pass) if novelty_score is None else novelty_score,
-        "physical_score": max(0.0, min(1.0, normalized_scalar)),
+    scores.update(
+        {
+            "artifact": float(artifact_free),
+            "family": float(family_faithful_pass),
+            "catalytic_context": float(catalytic_context_pass),
+            "fold_confidence": fold_score,
+            "novelty": float(novelty_pass) if novelty_score is None else normalize_score(novelty_score),
+            "physical_score": max(0.0, min(1.0, normalized_scalar)),
+        }
+    )
+    return scores
+
+
+def resolve_objective_scores(
+    *,
+    row: dict[str, Any],
+    artifact_free: bool,
+    family_faithful_pass: bool,
+    family_plausible: bool,
+    catalytic_context_pass: bool,
+    fold_confidence_pass: bool,
+    novelty_pass: bool,
+    novelty_identity: float | None,
+    fold_confidence: float | None,
+    scalar_score: float,
+) -> dict[str, float]:
+    scores: dict[str, float] = {
+        "anti_hallucination": float(artifact_free),
+        "foldability": (
+            max(0.0, min(1.0, fold_confidence / 100.0))
+            if fold_confidence is not None
+            else float(fold_confidence_pass)
+        ),
+        "family_plausibility": float(family_faithful_pass or family_plausible),
+        "active_site_geometry": float(catalytic_context_pass),
+        "novelty": (
+            max(0.0, min(1.0, 1.0 - novelty_identity))
+            if novelty_identity is not None
+            else float(novelty_pass)
+        ),
+        "functional_proxy": normalize_score(scalar_score),
     }
+
+    for axis in OBJECTIVE_AXES:
+        explicit_score = score_from_aliases(row, OBJECTIVE_SCORE_KEYS.get(axis, ()))
+        inverted_score = inverted_score_from_aliases(row, OBJECTIVE_INVERTED_SCORE_KEYS.get(axis, ()))
+        if explicit_score is None and inverted_score is None:
+            continue
+        if explicit_score is None:
+            resolved = inverted_score
+        elif inverted_score is None:
+            resolved = explicit_score
+        else:
+            resolved = (explicit_score + inverted_score) / 2.0
+        if resolved is not None:
+            scores[axis] = resolved
+    return {axis: round(value, 6) for axis, value in scores.items()}
+
+
+def resolve_objective_passes(row: dict[str, Any]) -> dict[str, bool]:
+    passes: dict[str, bool] = {}
+    for axis, keys in OBJECTIVE_PASS_KEYS.items():
+        sentinel = object()
+        value = first_present(row, keys, default=sentinel)
+        if value is sentinel:
+            continue
+        resolved = as_bool(value)
+        if resolved is not None:
+            passes[axis] = resolved
+    return passes
+
+
+def score_from_aliases(row: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    if not keys:
+        return None
+    value = as_float(first_present(row, keys, default=None), default=None)
+    if value is None:
+        return None
+    return normalize_score(value)
+
+
+def inverted_score_from_aliases(row: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    score = score_from_aliases(row, keys)
+    if score is None:
+        return None
+    return max(0.0, min(1.0, 1.0 - score))
+
+
+def normalize_score(value: float) -> float:
+    if value < 0:
+        return max(0.0, min(1.0, 1.0 / (1.0 + math.exp(-value))))
+    if value <= 1.0:
+        return max(0.0, min(1.0, value))
+    return max(0.0, min(1.0, value / 100.0))
 
 
 def build_rejection_reasons(
@@ -867,6 +1089,7 @@ def build_rejection_reasons(
     novelty_pass: bool,
     fold_confidence_available: bool,
     fold_confidence_pass: bool,
+    objective_passes: dict[str, bool],
     hard_gate_pass: bool,
 ) -> list[str]:
     if hard_gate_pass:
@@ -890,6 +1113,9 @@ def build_rejection_reasons(
         reasons.append("novelty_window_failed")
     if fold_confidence_available and not fold_confidence_pass:
         reasons.append("fold_confidence_failed")
+    for axis, passes in sorted(objective_passes.items()):
+        if not passes:
+            reasons.append(f"{axis}_failed")
     return reasons or ["hard_gate_failed"]
 
 

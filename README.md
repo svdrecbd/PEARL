@@ -13,12 +13,16 @@ This repository explores PETase-family sequence design through remote generation
 - Operator notes: [`docs/operations.md`](docs/operations.md)
 - Current scientific status: [`docs/science.md`](docs/science.md)
 - Manifold-construction pivot: [`docs/manifold_construction.md`](docs/manifold_construction.md)
+- Phase 8 DPO pilot readout: [`docs/phase8_dpo_pilot_readout.md`](docs/phase8_dpo_pilot_readout.md)
+- Phase 8 no-logits OPD packet: [`docs/phase8_no_logits_opd.md`](docs/phase8_no_logits_opd.md)
 - Experiment configs: [`configs/experiments/README.md`](configs/experiments/README.md)
 - Full experimental history: [`notes/LABNOTES.md`](notes/LABNOTES.md)
 
 ## Current State
 
-May 2026 heat check: the project has enough working components to justify the next paid smoke, but not enough evidence to claim the protein-design thesis is solved. The strongest direction is a small PLM plus preference/RL loop: natural PETase/cutinase records as positives, Phase 7 fold-failed generated artifacts as hard negatives, then compact post-train generation and structural validation before any larger library expansion.
+May 30, 2026 Phase 8 update: the Tinker custom-loss DPO path has now run beyond smoke scale. A 3k-pair natural-positive DPO pilot completed and the training objective moved in the expected direction, but the only completed post-DPO evaluation slice so far was `p12`, temperature `0.8`, seed `7`. That slice produced local proxy movement but no functional or family-faithful bridge hits, and a five-candidate folded subset had low pLDDT (`25.61-36.27`) with `0 / 5` CA-triad passes. Treat that as an underpowered warning, not a falsification of DPO-only: DPO remains a live baseline/control that needs higher-resolution eval before its failure modes or yield can be estimated.
+
+May 2026 heat check: the project has enough working components to continue the preference-learning path, but not enough evidence to claim the protein-design thesis is solved. The strongest direction is to keep characterizing DPO while preparing sparse OPD/multi-teacher feedback as the comparison branch: natural PETase/cutinase records as positives, generated/fold-failed artifacts and new low-confidence generated candidates as hard negatives, then compact post-train generation and structural validation before any larger library expansion.
 
 April 29, 2026 DPO correction: Phase 7 generated/local-library sequences are no longer allowed on the chosen side of the paid-run DPO dataset. The current local Phase 8 build uses reviewed natural PETase/cutinase records as chosen positives and demotes the fold-failed Phase 7 generated panel to hard negatives.
 

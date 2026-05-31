@@ -17,8 +17,111 @@ Supported operator docs now live under:
 - [docs/operations.md](../docs/operations.md)
 - [docs/science.md](../docs/science.md)
 - [docs/manifold_construction.md](../docs/manifold_construction.md)
+- [docs/phase8_no_logits_opd.md](../docs/phase8_no_logits_opd.md)
 
 This file remains the long-form experimental and engineering fossil record.
+
+## Phase 8 No-Logits OPD Addendum (May 22, 2026)
+
+The ProteinOPD preprint supports the Phase 8 direction but exact ProteinOPD needs full-vocabulary
+student and teacher logits on student rollouts. Full logits access is pending, so the immediate lane
+is sparse top-K OPD:
+
+- keep static DPO as the first paid custom-loss smoke and baseline control
+- collect teacher-forced top-K prompt logprobs from a small set of preference teachers
+- combine those teacher traces with a weighted sparse product-of-experts target
+- train the student with Tinker cross-entropy over `(N, K)` target tokens and soft weights
+- compare base, SFT, DPO, sparse OPD, and DPO + sparse OPD on structural hallucination versus novelty
+
+New materials:
+
+- sparse OPD packet: [docs/phase8_no_logits_opd.md](../docs/phase8_no_logits_opd.md)
+- sparse target builder: [scripts/build_sparse_opd_targets.py](../scripts/build_sparse_opd_targets.py)
+- sparse Tinker smoke runner: [scripts/run_tinker_sparse_opd_smoke.py](../scripts/run_tinker_sparse_opd_smoke.py)
+- sparse PoE utilities: [src/pearl/opd_lite.py](../src/pearl/opd_lite.py)
+- static smoke rollout seed builder: [scripts/build_sparse_opd_rollout_seed.py](../scripts/build_sparse_opd_rollout_seed.py)
+- teacher trace collector: [scripts/build_tinker_teacher_traces.py](../scripts/build_tinker_teacher_traces.py)
+- combined paid-run preflight/cost report: [scripts/phase8_paid_run_preflight.py](../scripts/phase8_paid_run_preflight.py)
+
+This path is intentionally labeled sparse OPD, not exact ProteinOPD. If full logits become available,
+replace the sparse target builder with full-vocabulary PoE/JSD while preserving the teacher set,
+rollout protocol, and evaluation readout.
+
+Current preflight status after adding those materials:
+
+- DPO paid smoke data is ready.
+- `reports/opd_lite/rollouts.jsonl` has `256` static chosen-sequence seed rollouts for sparse OPD smoke preparation.
+- Sparse OPD is ready to trace once `TINKER_API_KEY` and real teacher checkpoint paths are supplied.
+- Exact ProteinOPD remains blocked on full logits.
+
+## May 30, 2026: Preliminary Phase 8 DPO Pilot Readout
+
+The Phase 8 DPO path has now been tested beyond the 8-pair smoke, but the scientific readout remains preliminary.
+
+**Runs completed:**
+
+- Tiny DPO smoke:
+  - report: [reports/tinker_dpo_smoke/phase8-bio-dpo-smoke/report.json](../reports/tinker_dpo_smoke/phase8-bio-dpo-smoke/report.json)
+  - model: `moonshotai/Kimi-K2.6`
+  - pairs: `8`
+- 3k DPO pilot:
+  - report: [reports/tinker_dpo_smoke/phase8-bio-dpo-pilot-3k-final/report.json](../reports/tinker_dpo_smoke/phase8-bio-dpo-pilot-3k-final/report.json)
+  - model: `moonshotai/Kimi-K2.6:peft:131072`
+  - pairs: `3,000`
+  - epochs: `1`
+  - batches: `750`
+  - checkpoint: `tinker://68b86c30-7c34-5c97-bb55-01e139610267:train:0/weights/phase8-bio-dpo-pilot-3k-final`
+- Single completed eval slice:
+  - summary: [reports/ablations/phase8-bio-dpo-eval-fast-p12-t0p8-s7/summary.json](../reports/ablations/phase8-bio-dpo-eval-fast-p12-t0p8-s7/summary.json)
+  - robustness summary: [reports/robustness/phase8-bio-dpo-eval-fast/robustness_summary.json](../reports/robustness/phase8-bio-dpo-eval-fast/robustness_summary.json)
+  - `p12`, temperature `0.8`, seed `7`
+  - candidate samples per prompt: `128`
+- Folded subset:
+  - metrics: [reports/ablations/phase8-bio-dpo-eval-fast-p12-t0p8-s7/folds/fold_metrics.json](../reports/ablations/phase8-bio-dpo-eval-fast-p12-t0p8-s7/folds/fold_metrics.json)
+
+**Training signal:**
+
+- DPO loss moved from first-10-batch mean `0.703` to last-10-batch mean `0.323`.
+- Reward-margin mean moved from first-10-batch mean `-0.0087` to last-10-batch mean `3.43`.
+- Interpretation: the Tinker custom-loss DPO runner and pair construction are operational.
+
+**Single-slice generation readout:**
+
+- Any serine motif: `12 / 12`
+- Family motif: `2 / 12`
+- Sequence-level catalytic geometry: `2 / 12`
+- ESM gate pass: `3 / 12`
+- Local soft trainability gate: `3 / 12`
+- Functional bridge: `0 / 12`
+- Family-faithful bridge: `0 / 12`
+
+**Folded subset readout:**
+
+- Folded candidates: `5`
+- Mean pLDDT range: `25.61-36.27`
+- CA-triad distance passes: `0 / 5`
+- Steps `0` and `9` passed sequence-level geometry but failed structural triad geometry.
+
+**Decision:**
+
+- This is not evidence that solo DPO is sufficient.
+- This is also not evidence that solo DPO has failed; the readout is too thin.
+- It is evidence that DPO can be trained and can move local preference/proxy behavior.
+- The structural failure mode remains present in the single DPO-only slice.
+- DPO should be retained as an active baseline/control and characterized at higher resolution when budget permits.
+- Sparse OPD should be prepared as the matched comparison branch, not as a replacement forced by this single slice.
+
+**Cost note:**
+
+- The 3k DPO pilot used the 128K endpoint, `moonshotai/Kimi-K2.6:peft:131072`.
+- Local estimate for the 3k pair shape:
+  - 32K `moonshotai/Kimi-K2.6`: about `$14.28`
+  - 128K `moonshotai/Kimi-K2.6:peft:131072`: about `$50.00`
+- Prefer the 32K endpoint unless context length actually requires 128K.
+
+Canonical short readout:
+
+- [docs/phase8_dpo_pilot_readout.md](../docs/phase8_dpo_pilot_readout.md)
 
 ## Latest Canonical Status (as of April 23, 2026)
 
@@ -3925,3 +4028,51 @@ Phase 8 is now locally ready for the smallest paid Tinker DPO smoke. The remaini
 - The OPD artifact builder is implemented, but the sampling/folding/distillation stages are not yet wrapped as a single paid-run orchestrator. `configs/experiments/physical_to_sequence_dpo_opd.yaml` correctly marks `sample_policy` and `fold_candidates` as pending backend hooks.
 - Do not launch the full 10k paid campaign or a full dual-policy loop until the tiny smoke produces sane `dpo_loss`, reward-margin metrics, optimizer metrics, and a saved checkpoint in `reports/tinker_dpo_smoke/phase8-bio-dpo-smoke/report.json`.
 - After the tiny smoke passes, the next decision point is compact post-DPO generation, physical pair/OPD artifact build, and structural validation before scaling.
+
+**Multi-objective correction:**
+- The scientific target is not "good vs bad" as a single scalar. The next milestone is:
+  - **Can DPO + OPD reduce structural hallucination while preserving novelty?**
+- Preference/OPD selection should treat these as separate teacher axes when candidate audits contain them:
+  - Teacher A: foldability / anti-hallucination
+  - Teacher B: PETase-family plausibility
+  - Teacher C: active-site geometry
+  - Teacher D: novelty / diversity
+  - Teacher E: catalytic proxy / docking / substrate-facing geometry
+  - Teacher F: expression / solubility / aggregation / manufacturability / biosafety filters
+- `src/pearl/preference_distillation.py` now carries optional objective axes into Pareto scoring:
+  - `anti_hallucination`
+  - `foldability`
+  - `family_plausibility`
+  - `active_site_geometry`
+  - `thermodynamic_stability`
+  - `solubility`
+  - `aggregation`
+  - `expression_likelihood`
+  - `novelty`
+  - `diversity`
+  - `functional_proxy`
+  - `manufacturability`
+  - `biosafety`
+- Unsupported axes remain absent rather than being invented. If a candidate audit has no solubility, expression, docking, or biosafety proxy, the selector cannot score that axis yet.
+
+**Clean experiment shape:**
+- Positives: reviewed natural PETase/cutinase-family records and high-confidence foldable references.
+- Hard negatives: current Phase 7 generated fold failures and newly generated on-policy failures.
+- Train and characterize a small DPO checkpoint first.
+- Sample `500-2,000` sequences from:
+  - base model
+  - SFT model
+  - DPO model
+  - DPO + OPD model
+- Fold a strict subset from each.
+- Compare:
+  - pLDDT / pTM
+  - active-site geometry
+  - repeat/domain duplication artifacts
+  - novelty distance
+  - family HMM or equivalent family score
+  - diversity
+  - solubility / aggregation proxies
+  - expression / manufacturability / biosafety proxies when available
+- Use newly generated failures as the next on-policy negative pool.
+- The key comparison, once the DPO-only baseline is characterized, is DPO + OPD vs DPO alone: fewer confident-looking structural mirages at similar or better novelty.

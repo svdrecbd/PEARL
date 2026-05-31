@@ -10,13 +10,34 @@ Current operational state:
 
 - The active dataset is `data/phase8_dpo/dpo_preferences_hybrid_10k.jsonl`.
 - The active preflight manifest is `data/phase8_dpo/dpo_preferences_hybrid_10k_preflight.json`.
-- The active pair file has passed `scripts/run_tinker_dpo_smoke.py --shape-only`.
-- The remaining paid blocker for the static preference path is a tiny Tinker custom-loss DPO smoke,
-  not config selection.
+- The active pair file passed `scripts/run_tinker_dpo_smoke.py --shape-only`.
+- The tiny paid DPO smoke completed:
+  - `reports/tinker_dpo_smoke/phase8-bio-dpo-smoke/report.json`
+- A `3,000`-pair DPO pilot completed:
+  - `reports/tinker_dpo_smoke/phase8-bio-dpo-pilot-3k-final/report.json`
+  - checkpoint: `tinker://68b86c30-7c34-5c97-bb55-01e139610267:train:0/weights/phase8-bio-dpo-pilot-3k-final`
+- The only completed post-DPO evaluation slice is still preliminary:
+  - `p12`, temperature `0.8`, seed `7`
+  - `0` functional bridge hits
+  - `0` family-faithful bridge hits
+  - folded subset: `0 / 5` CA-triad passes, mean pLDDT `25.61-36.27`
+  - interpretation: underpowered warning slice, not a DPO-only verdict
+- Canonical readout:
+  - `docs/phase8_dpo_pilot_readout.md`
 - `physical_to_sequence_dpo_opd.yaml` is the offline artifact-build template for turning
   evaluated candidate rows into physical preference pairs and OPD distillation winners.
+- `docs/phase8_no_logits_opd.md` is the no-logits execution packet. It defines the sparse
+  top-K OPD path that can run with current Tinker APIs while full-vocabulary logits access is pending.
+- The sparse OPD lane is scaffolded by `scripts/build_sparse_opd_targets.py` and
+  `scripts/run_tinker_sparse_opd_smoke.py`.
+- `scripts/build_sparse_opd_rollout_seed.py` creates a static smoke seed panel from the DPO chosen
+  sequences; this is only for trace/target/training readiness, not the final on-policy readout.
+- `scripts/build_tinker_teacher_traces.py` collects the teacher-forced top-K traces needed by sparse OPD.
+- `scripts/phase8_paid_run_preflight.py` writes the combined readiness and cost report.
 - The full dual-policy loop is not yet a one-command launch: post-DPO sampling, candidate folding,
   physical pair construction, and OPD/SFT winner distillation still need to be run as explicit stages.
+- Exact ProteinOPD remains blocked on full-vocabulary student and teacher logits; sparse OPD is the
+  available approximation, not a claim of exact JSD distillation.
 
 No-cost Phase 8 pair shape check:
 
@@ -37,12 +58,46 @@ Tiny Tinker DPO smoke once spend is intentional:
   --batch-pairs 2
 ```
 
-Full DPO + OPD loop shape after the smoke:
+No-cost sparse OPD target shape check after teacher top-K traces exist:
 
-1. Train/update the policy with static natural-positive DPO.
-2. Sample a compact candidate panel from that policy.
-3. Evaluate/fold candidates into a PEARL `candidate_audit.json`.
-4. Run `scripts/run_physical_to_sequence_loop.py` to build on-policy physical DPO pairs and OPD winners.
-5. Train on physical pairs and distill the OPD winners, then run compact structural validation before scaling.
+```bash
+.venv/bin/python scripts/build_sparse_opd_rollout_seed.py \
+  --max-rows 256
+
+.venv/bin/python scripts/build_sparse_opd_targets.py \
+  --name phase8-sparse-opd-targets \
+  --teacher-trace-path reports/opd_lite/phase8-teacher-traces/teacher_traces.jsonl \
+  --top-k 20
+
+.venv/bin/python scripts/run_tinker_sparse_opd_smoke.py \
+  --name phase8-sparse-opd-shape \
+  --targets-path reports/opd_lite/phase8-sparse-opd-targets/sparse_opd_targets.jsonl \
+  --shape-only
+```
+
+Combined readiness/cost preflight:
+
+```bash
+.venv/bin/python scripts/phase8_paid_run_preflight.py \
+  --name phase8-paid-readiness
+```
+
+Full DPO characterization + OPD comparison shape after the May 30 DPO pilot:
+
+1. Keep the 3k DPO checkpoint as the active DPO-only baseline/control.
+2. If budget permits, run additional DPO-only slices across prompts, temperatures, and seeds.
+3. Use May 30 and follow-up folded failures or low-pLDDT selected candidates as on-policy negatives.
+4. Build sparse OPD teacher traces and sparse targets.
+5. Train a tiny DPO + sparse OPD update.
+6. Sample compact candidate panels from the base, SFT, DPO, sparse OPD, and DPO+OPD policies.
+7. Evaluate/fold strict subsets into PEARL `candidate_audit.json` files.
+8. Compare pLDDT/pTM, active-site geometry, repeat/domain artifacts, novelty distance,
+   family score, diversity, solubility/aggregation proxies, expression likelihood,
+   manufacturability, biosafety, and functional proxy score.
+9. Run `scripts/run_physical_to_sequence_loop.py` to build on-policy physical DPO pairs and OPD winners.
+
+The next research milestone is: can DPO + OPD reduce structural hallucination while preserving novelty?
+The key comparison is not raw proxy-score improvement; it is whether DPO + OPD produces fewer
+confident-looking structural mirages than a sufficiently characterized DPO-only baseline.
 
 See `REPO_MAP.md` at the repository root for the active workspace map.
