@@ -191,6 +191,57 @@ def main() -> None:
     )
     summary_path = suite_dir / "robustness_summary.json"
     summary_path.write_text(json.dumps(robustness_summary, indent=2), encoding="utf-8")
+    
+    # W&B Logging for the Sweep Evaluation
+    try:
+        import wandb
+        wandb.init(
+            project="pearl-eval",
+            name=f"robustness-{suite_name}",
+            config={
+                "suite_name": suite_name,
+                "init_state_path": args.init_state_path,
+                "model": args.model,
+                "variant": args.variant,
+                "candidate_sample_count": args.candidate_sample_count,
+                "second_stage_top_k": args.second_stage_top_k,
+                "plddt_gate_threshold": args.plddt_gate_threshold,
+                "esm_weight": args.second_stage_esm_weight,
+                "motif_weight": args.second_stage_motif_weight,
+                "geometry_weight": args.second_stage_geometry_weight,
+                "template_weight": args.second_stage_template_weight,
+                "durability_config": durability_config,
+            }
+        )
+        
+        # Log global durability gate status
+        wandb.log({
+            "durability/gate_passed": int(robustness_summary["durability_gate"]["passed"]),
+            "durability/baseline_locked": int(robustness_summary["durability_gate"]["baseline_locked"]),
+        })
+        
+        # Log group-level metrics (e.g., prompt size & temperature combinations)
+        for group in robustness_summary.get("groups", []):
+            p_count = group["prompt_count"]
+            temp = group["temperature"]
+            prefix = f"group_p{p_count}_t{temp}"
+            
+            group_data = {
+                f"{prefix}/run_count": group["run_count"],
+                f"{prefix}/bridge_hits_rate_mean": group["bridge_hits_per_prompt"]["mean"],
+                f"{prefix}/bridge_hits_rate_min": group["bridge_hits_per_prompt"]["min"],
+                f"{prefix}/bridge_hits_rate_max": group["bridge_hits_per_prompt"]["max"],
+                f"{prefix}/stability_dominant_rate_mean": group["stability_dominant_rate"]["mean"],
+                f"{prefix}/geometry_dominant_rate_mean": group["geometry_dominant_rate"]["mean"],
+                f"{prefix}/prompts_with_hits": group["prompts_with_any_tier2_across_seeds"],
+            }
+            wandb.log(group_data)
+            
+        wandb.finish()
+    except Exception as e:
+        # Gracefully log warning but do not crash the evaluation script
+        print(f"Warning: W&B logging failed during evaluation summary: {e}", flush=True)
+
     print(json.dumps({"manifest_path": str(manifest_path), "summary_path": str(summary_path)}, indent=2))
 
 

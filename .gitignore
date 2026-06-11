@@ -12,6 +12,8 @@ __pycache__/
 .venv/
 .env
 .env.*
+wandb/
+
 
 # Local notes and scratch artifacts
 notes/FORLATERUSE.md

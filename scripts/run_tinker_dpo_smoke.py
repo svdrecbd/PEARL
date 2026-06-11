@@ -126,6 +126,7 @@ def main() -> None:
         eps=1e-8,
     )
     batch_reports: list[dict[str, Any]] = []
+    batches_per_epoch = (len(pair_rows) + args.batch_pairs - 1) // args.batch_pairs
 
     # If resuming, load existing batch reports from earlier checkpoint
     if start_batch_index > 0:
@@ -152,7 +153,7 @@ def main() -> None:
             dpo_loss_fn = build_tinker_dpo_loss_fn(reference_margins=batch_reference_margins, beta=args.beta)
             forward_backward_result = forward_backward_custom_logprobs(training_client, batch_datums, dpo_loss_fn)
             optim_step_result = training_client.optim_step(adam_params).result()
-            
+
             batch_report = {
                 "epoch": epoch,
                 "batch_index": batch_index,
@@ -165,6 +166,45 @@ def main() -> None:
 
             # Auto-save state every 50 batches (but not on the very last batch of training)
             is_last_batch = (epoch == args.epochs - 1) and (batch_start + args.batch_pairs >= len(pair_rows))
+
+            # W&B Logging
+            try:
+                import wandb
+
+                # Initialize wandb on the very first batch
+                if epoch == start_epoch and batch_index == current_start_batch:
+                    wandb.init(
+                        project="pearl-dpo",
+                        name=args.name,
+                        config={
+                            "model": base_model,
+                            "learning_rate": args.learning_rate,
+                            "beta": args.beta,
+                            "epochs": args.epochs,
+                            "batch_pairs": args.batch_pairs,
+                            "rank": args.rank,
+                            "init_state_path": args.init_state_path,
+                            "pairs_path": args.pairs_path,
+                        }
+                    )
+
+                # Combine forward/backward & optimization metrics
+                log_data = {
+                    "epoch": epoch,
+                    "batch_index": batch_index,
+                    "global_step": epoch * batches_per_epoch + batch_index,
+                }
+                if "forward_backward_metrics" in batch_report:
+                    for k, v in batch_report["forward_backward_metrics"].items():
+                        log_data[f"train/{k}"] = v
+                if "optim_step_metrics" in batch_report:
+                    for k, v in batch_report["optim_step_metrics"].items():
+                        log_data[f"train/optim_{k}"] = v
+                wandb.log(log_data)
+            except Exception:
+                # Silently catch import or network errors to not interrupt training
+                pass
+
             if (batch_index + 1) % 50 == 0 and not is_last_batch:
                 print(f"--- AUTO-CHECKPOINTING (Batch {batch_index}) ---", flush=True)
                 checkpoint_name = f"{sanitize_name(args.name)}-chkpt-e{epoch}-b{batch_index}"
@@ -197,6 +237,13 @@ def main() -> None:
                 reference_margins_path.unlink()
         except Exception:
             pass
+
+    try:
+        import wandb
+        if wandb.run is not None:
+            wandb.finish()
+    except Exception:
+        pass
 
     save_result = training_client.save_state(args.checkpoint_name or sanitize_name(args.name)).result()
     report = {
