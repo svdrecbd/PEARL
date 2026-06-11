@@ -1,6 +1,7 @@
 # Phase 8 DPO Pilot Readout
 
 Date: May 30, 2026 local time.
+Updated: June 11, 2026 with W&B/local-metric review and DPO runner logging fix.
 
 This note records what the first paid Phase 8 DPO pass did and did not show. It is intentionally conservative: the post-DPO evaluation was only one slice, `p12`, temperature `0.8`, seed `7`, so it should be treated as a directional diagnostic rather than a stable estimate of DPO-only performance. The slice is too thin to prove that DPO-only works, and also too thin to prove that DPO-only fails.
 
@@ -39,14 +40,25 @@ Post-DPO eval slice:
 
 ## Training Signal
 
-The DPO training path itself worked.
+The DPO training path itself worked, and the June W&B/local-metric review makes the training-distribution signal stronger than the first short summary implied.
 
 - First 10 batch mean DPO loss: `0.703`
 - Last 10 batch mean DPO loss: `0.323`
 - First 10 batch mean reward margin: `-0.0087`
 - Last 10 batch mean reward margin: `3.43`
+- First 100 batch mean DPO loss: `0.6775`
+- Last 100 batch mean DPO loss: `0.3655`
+- First 100 batch mean reward margin: `0.0419`
+- Last 100 batch mean reward margin: `2.7476`
+- Positive-min-margin batches: `6%` in the first 100, `87%` in the last 100
+- Last decile mean DPO loss: `0.352`
+- Last decile mean reward margin: `2.886`
 
 Interpretation: the custom-loss Tinker DPO runner, reference-margin calculation, and pair construction are operational. The model learned to increase the chosen-vs-rejected margin on the training distribution.
+
+Caveat: `scripts/run_tinker_dpo_smoke.py` processes the pair file in file order. The late-run margin ramp can mix policy improvement with possible differences between earlier and later pair batches. That does not invalidate the training signal, but it argues for shuffled and/or held-out DPO diagnostics before treating the curve as an unbiased yield estimate.
+
+Infrastructure note: the W&B hook is now additive. The runner again appends every `batch_report` to the final local `report.json`, prints per-batch JSON to stdout, and has a fake-Tinker CLI regression test that fails if train mode loses local batch history.
 
 ## Generation Slice
 
@@ -84,7 +96,7 @@ What is supported:
 
 - The DPO infrastructure works.
 - The 10k natural-positive/hard-negative pair file is usable for paid training.
-- The model can be pushed toward the desired preference direction on the training objective.
+- The model can be pushed strongly toward the desired preference direction on the training objective.
 - The post-DPO generation slice produced nonzero local proxy signals.
 
 What is not supported by this slice:
@@ -96,6 +108,7 @@ What is not supported by this slice:
 
 What remains open:
 
+- Whether the training-distribution margin improvement transfers to held-out/shuffled preference batches.
 - Whether DPO-only improves at different temperatures or seeds.
 - Whether higher prompt coverage exposes family-faithful bridge hits that the p12 slice missed.
 - Whether failures are dominated by generation, local selection, fold-model confidence, active-site placement, or family drift.
@@ -121,7 +134,8 @@ Use the DPO checkpoint as an active control and diagnostic generator:
 
 1. Keep the May 30 DPO checkpoint as the DPO-only baseline.
 2. If budget permits, run additional DPO-only slices across prompts, temperatures, and seeds before calling its yield.
-3. Promote folded failures and low-pLDDT selected candidates into the on-policy negative pool.
-4. Build teacher traces for sparse OPD.
-5. Run an 8-row sparse OPD paid smoke when the DPO baseline has enough context for a fair comparison.
-6. Compare DPO-only versus DPO + sparse OPD on matched small structural readouts before scaling either path.
+3. Add shuffled and/or held-out DPO diagnostics so the training margin curve is not the only preference-learning evidence.
+4. Promote folded failures and low-pLDDT selected candidates into the on-policy negative pool.
+5. Build teacher traces for sparse OPD.
+6. Run an 8-row sparse OPD paid smoke when the DPO baseline has enough context for a fair comparison.
+7. Compare DPO-only versus DPO + sparse OPD on matched small structural readouts before scaling either path.

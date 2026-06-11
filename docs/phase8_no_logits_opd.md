@@ -16,11 +16,13 @@ Current Tinker APIs are still enough for a useful sparse approximation:
 This is not exact full-vocab JSD ProteinOPD. It is a sparse OPD lane that tests the same practical claim:
 can on-policy teacher consensus reduce confident structural hallucination while preserving novelty?
 
-## May 30 DPO Pilot Context
+## June 2026 DPO Pilot Context
 
 The no-logits OPD lane is still relevant after the first paid DPO pilot.
 
-The May 30, 2026 DPO run showed that the custom-loss DPO infrastructure works: a `3,000`-pair pilot completed and the training loss/reward-margin moved in the expected direction. But the only completed post-DPO evaluation slice was `p12`, temperature `0.8`, seed `7`, and the folded subset remained structurally weak:
+The May 30, 2026 DPO run showed that the custom-loss DPO infrastructure works: a `3,000`-pair pilot completed and the training loss/reward-margin moved in the expected direction. The June W&B/local-metric review strengthens that read: first-100-batch mean DPO loss was `0.6775` versus last-100 `0.3655`, and first-100 mean reward margin was `0.0419` versus last-100 `2.7476`.
+
+But the only completed post-DPO evaluation slice was `p12`, temperature `0.8`, seed `7`, and the folded subset remained structurally weak:
 
 - `0 / 12` functional bridge hits
 - `0 / 12` family-faithful bridge hits
@@ -29,7 +31,7 @@ The May 30, 2026 DPO run showed that the custom-loss DPO infrastructure works: a
 
 Canonical readout: [phase8_dpo_pilot_readout.md](phase8_dpo_pilot_readout.md).
 
-Interpretation: solo DPO should be kept as an active baseline/control. The current DPO-only slice is too thin to estimate yield or localize failure, but the folded subset is enough to define the structural-hallucination mode that sparse OPD should be tested against.
+Interpretation: solo DPO should be kept as an active, promising baseline/control. The current DPO-only structural slice is too thin to estimate yield or localize failure, but the folded subset is enough to define the structural-hallucination mode that sparse OPD should be tested against. Before treating OPD as the better path, compare it against a sufficiently characterized DPO-only baseline.
 
 ## Current Runnable Materials
 
@@ -201,7 +203,7 @@ Readout:
 - solubility / aggregation proxies
 - expression / manufacturability / biosafety proxies
 
-The key endpoint is whether DPO + sparse OPD reduces structural mirages versus a properly matched DPO-only baseline while preserving novelty. The first DPO-only slice did not pass structural validation, but it was budget-limited; proxy-score improvement without folded-structure improvement should not be treated as success, and one thin fold subset should not be treated as a full DPO verdict.
+The key endpoint is whether DPO + sparse OPD reduces structural mirages versus a properly matched DPO-only baseline while preserving novelty. The first DPO-only slice did not pass structural validation, but it was budget-limited; proxy-score improvement without folded-structure improvement should not be treated as success, and one thin fold subset should not be treated as a full DPO verdict. The W&B training curves make DPO more worth characterizing, not less.
 
 ## What Stays Blocked
 

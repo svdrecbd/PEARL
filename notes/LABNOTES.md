@@ -17,9 +17,54 @@ Supported operator docs now live under:
 - [docs/operations.md](../docs/operations.md)
 - [docs/science.md](../docs/science.md)
 - [docs/manifold_construction.md](../docs/manifold_construction.md)
+- [docs/phase8_dpo_pilot_readout.md](../docs/phase8_dpo_pilot_readout.md)
 - [docs/phase8_no_logits_opd.md](../docs/phase8_no_logits_opd.md)
 
 This file remains the long-form experimental and engineering fossil record.
+
+## June 11, 2026: W&B DPO Review and Runner Telemetry Fix
+
+The W&B dashboard for `phase8-bio-dpo-pilot-3k-final`, together with the local batch metrics in
+[reports/tinker_dpo_smoke/phase8-bio-dpo-pilot-3k-final/report.json](../reports/tinker_dpo_smoke/phase8-bio-dpo-pilot-3k-final/report.json),
+strengthens the DPO training-distribution read.
+
+**DPO training-distribution metrics:**
+
+- first 100 batch mean DPO loss: `0.6775`
+- last 100 batch mean DPO loss: `0.3655`
+- first 100 batch mean reward margin: `0.0419`
+- last 100 batch mean reward margin: `2.7476`
+- positive-min-margin batch fraction:
+  - first 100: `0.06`
+  - last 100: `0.87`
+- last decile mean DPO loss: `0.352`
+- last decile mean reward margin: `2.886`
+
+**Interpretation:**
+
+- The DPO pilot did not merely complete; it learned the natural-positive versus generated-negative
+  training distribution strongly.
+- This strengthens DPO as the active baseline/control.
+- It does not prove biological transfer, held-out preference transfer, foldability, or family-faithful novelty.
+- The only completed generation/fold slice is still `p12`, temperature `0.8`, seed `7`, with `0` bridge hits
+  and `0 / 5` folded CA-triad passes.
+- The trainer processed the pair file in file order, so the late-run margin ramp should be interpreted with
+  a shuffle/held-out caveat.
+
+**Infra fix:**
+
+- [scripts/run_tinker_dpo_smoke.py](../scripts/run_tinker_dpo_smoke.py) now preserves local `batch_reports`
+  while logging to W&B.
+- Per-batch JSON stdout is restored.
+- W&B `global_step` now handles non-even batch counts.
+- [tests/test_tinker_dpo.py](../tests/test_tinker_dpo.py) adds a fake-Tinker/fake-W&B CLI regression that
+  fails if train mode writes an empty `batches` array.
+
+**Decision:**
+
+- DPO remains live and promising, not solved and not falsified.
+- Next DPO work should prefer shuffled/held-out diagnostics and compact generation/fold slices.
+- Sparse OPD remains the matched comparison branch, not a forced replacement for DPO.
 
 ## Phase 8 No-Logits OPD Addendum (May 22, 2026)
 

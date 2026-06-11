@@ -5,7 +5,7 @@ PEARL is a research codebase for PETase-family sequence design. The repo current
 1. The reusable engine:
    - generation, scoring, selection, reporting, and generic workflow runners
 2. The active PETase campaign:
-   - current mining, postprocess, training, robustness, and reranker work
+   - current Phase 8 preference-learning, DPO characterization, sparse OPD, and structural readout work
 3. The historical experiment surface:
    - one-off wrappers and queue chains preserved for continuity
 
@@ -23,6 +23,8 @@ Current repo state:
   - [src/pearl/reports.py](../src/pearl/reports.py)
   - [src/pearl/smoke_gate.py](../src/pearl/smoke_gate.py)
   - [src/pearl/strict_curricula.py](../src/pearl/strict_curricula.py)
+  - [src/pearl/tinker_dpo.py](../src/pearl/tinker_dpo.py)
+  - [src/pearl/opd_lite.py](../src/pearl/opd_lite.py)
   - [src/pearl/run_records.py](../src/pearl/run_records.py)
 - supported runners now call those shared modules instead of reimplementing pathing, detached-job, watcher, and checkpoint logic per wrapper
 
@@ -48,26 +50,20 @@ These docs describe the small set of workflows the repo should actively support:
 - `robustness`
 - `reranker`
 - `manifold-construction` (validator-first scaffold bank, repair-frontier lanes, and offline curriculum builders)
+- `preference-dpo-opd` (Phase 8 DPO baseline, sparse OPD target build, and matched structural readouts)
 
 ## Current Scientific Stance
 
-As of April 23, 2026:
+As of June 11, 2026:
 
-- `strict-core-v7-repair` is the best historical branch, but its robustness was narrow.
-- `strict-core-v8-coverage` failed to broaden that branch; it regressed at `p12/p24` and lost family-faithful robustness.
-- The `v8` stage-A p12/p24 diagnostic also failed, so `stage-b-lite` was not the sole problem.
-- The `v9` p12/p24 repair rescue produced `79` high-ESM loose survivors but `0` strict-valid candidates and `0` retrain positives.
-- The serious strategy remains scaffold-first manifold construction, not another small SFT tweak or blind paid mining tranche.
-- Phase 1 has passed locally with `12,619` unique banked sequences, `4,893` family-manifold scaffolds, `3,769` strict-manifold scaffolds, `79` recovered `v9` negative rows, and `274` strict candidate positives.
-- Phase 2 produced and ESM-scored `10,000` same-length strict-manifold candidates; all scored `>=95` on the L40S.
-- Phase 2 selection passed readiness with `230` selected strict candidates across `79` parents, `8` lengths, `133` bridge-quality rows, and `100` two-mutants.
-- Manifold curriculum v1 trained cleanly from the Phase 2 pool, but failed transfer at `p24`: `p12` passed with tier-2 hits `[1, 2, 0]`, while `p24` failed with `[0, 1, 0]`.
-- Manifold v1.1 patched prompt/length holes offline, but its p24-only gate failed with `0` tier-2 hits and no hidden strict-conjunction reservoir.
-- Manifold v1.2 recovered a narrow real basin: `3` functional hits, `2` family-faithful hits, and `3 / 24` prompt coverage.
-- Manifold v1.3 tried to widen that basin but regressed to `[0, 0, 1]` tier-2 hits, `1 / 24` prompt coverage, and `0` family-faithful hits.
-- Manifold v2 completed its p24/c128 diagnostic but failed durability with tier-2 hits `[0, 1, 0]`, prompt coverage `1 / 24`, and `0` family-faithful hits.
-- The active recommendation is to stop paid `v1.x` replay branches and use the prepared v2.1 bridge-weighted curriculum at `reports/curriculum/manifold_v21_20260424/manifold_v21_bridge_curriculum.jsonl` for the next p24-only diagnostic.
-- v2.1 keeps v2 strict breadth but adds measured v12/v2 bridge replay, support prompt anchors, and historical family-faithful anchors.
+- The SFT/mining/manifold campaign is historical context. It produced useful signal and failures, but did not deliver durable prompt/seed robustness or folded structural confidence.
+- Phase 7 structural validation exposed the central failure mode: local sequence proxies can pass while global structure remains weak.
+- Phase 8 is the active path: natural PETase/cutinase records are chosen positives, fold-failed generated rows are hard negatives, and DPO is the first preference-learning baseline.
+- The 3k DPO pilot completed and learned the training distribution strongly. W&B/local batch metrics moved from first-100 mean DPO loss `0.6775` and reward margin `0.0419` to last-100 loss `0.3655` and reward margin `2.7476`.
+- The biological readout is unresolved. The only completed DPO generation slice is `p12`, temperature `0.8`, seed `7`, with `0` bridge hits and `0 / 5` folded CA-triad passes.
+- DPO is therefore a live baseline/control, not a solved design result and not a failed path.
+- Sparse OPD/multi-teacher feedback is the prepared comparison branch while full-vocabulary logits remain unavailable.
+- The next scientific work is DPO characterization plus matched DPO versus DPO+OPD structural readouts.
 
 ## Historical Surface
 

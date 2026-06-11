@@ -5,7 +5,7 @@
 **Status Date:** March 24, 2026  
 **Repository:** `tinker`
 
-## Status Note (April 12, 2026)
+## Status Note (June 11, 2026)
 
 This white paper is now historical background, not the authoritative current-state document.
 
@@ -14,6 +14,8 @@ For onboarding and current operator state, read these first:
 - [docs/science.md](docs/science.md)
 - [docs/workflows.md](docs/workflows.md)
 - [docs/operations.md](docs/operations.md)
+- [docs/phase8_dpo_pilot_readout.md](docs/phase8_dpo_pilot_readout.md)
+- [docs/phase8_no_logits_opd.md](docs/phase8_no_logits_opd.md)
 
 Important updates since this paper's March 24 snapshot:
 
@@ -30,7 +32,10 @@ Important updates since this paper's March 24 snapshot:
   - full `p12/p24/p48` robustness still failed durability because prompt coverage stayed too narrow
 - the local Gemma half-wave trial failed completely as run and should not be resumed unchanged
 - historical finalized-corpus locality scans came back negative: there is no passive local basin waiting in saved finalized representatives
-- the current next branch is coverage-focused retrain work on top of the repair signal, not another blind broad mining tranche
+- the SFT/mining/manifold campaign later produced useful negative evidence but did not deliver durable structural confidence
+- the active path is now Phase 8 preference learning: natural PETase/cutinase positives, fold-failed generated hard negatives, DPO as the baseline, and sparse OPD as the prepared comparison branch
+- the 3k DPO pilot completed and learned the training distribution strongly, but the only completed post-DPO generation/fold slice remains underpowered and structurally weak
+- DPO is therefore a live unresolved baseline/control, not a solved design result and not a falsified path
 
 ## Abstract
 

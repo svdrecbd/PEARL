@@ -20,15 +20,17 @@ This repository explores PETase-family sequence design through remote generation
 
 ## Current State
 
-May 30, 2026 Phase 8 update: the Tinker custom-loss DPO path has now run beyond smoke scale. A 3k-pair natural-positive DPO pilot completed and the training objective moved in the expected direction, but the only completed post-DPO evaluation slice so far was `p12`, temperature `0.8`, seed `7`. That slice produced local proxy movement but no functional or family-faithful bridge hits, and a five-candidate folded subset had low pLDDT (`25.61-36.27`) with `0 / 5` CA-triad passes. Treat that as an underpowered warning, not a falsification of DPO-only: DPO remains a live baseline/control that needs higher-resolution eval before its failure modes or yield can be estimated.
+June 11, 2026 Phase 8 update: the Tinker custom-loss DPO path has now run beyond smoke scale. A 3k-pair natural-positive DPO pilot completed, W&B/local batch metrics show a strong training-distribution move, and the DPO runner now preserves local batch reports alongside W&B logging. First-100-batch mean DPO loss was `0.6775` versus last-100 `0.3655`; first-100 mean reward margin was `0.0419` versus last-100 `2.7476`; positive-min-margin batches rose from `6%` to `87%`. That strengthens DPO as a learned preference baseline.
 
-May 2026 heat check: the project has enough working components to continue the preference-learning path, but not enough evidence to claim the protein-design thesis is solved. The strongest direction is to keep characterizing DPO while preparing sparse OPD/multi-teacher feedback as the comparison branch: natural PETase/cutinase records as positives, generated/fold-failed artifacts and new low-confidence generated candidates as hard negatives, then compact post-train generation and structural validation before any larger library expansion.
+The biological readout is still unresolved. The only completed post-DPO evaluation slice remains `p12`, temperature `0.8`, seed `7`: local proxy movement, `0` functional or family-faithful bridge hits, and a five-candidate folded subset with low pLDDT (`25.61-36.27`) and `0 / 5` CA-triad passes. Treat that as an underpowered warning, not a falsification of DPO-only. DPO remains a live baseline/control that needs higher-resolution, preferably shuffled or held-out, evaluation before its failure modes or yield can be estimated.
+
+June 2026 heat check: the project has enough working components to continue the preference-learning path, but not enough evidence to claim the protein-design thesis is solved. The strongest direction is to keep characterizing DPO while preparing sparse OPD/multi-teacher feedback as the comparison branch: natural PETase/cutinase records as positives, generated/fold-failed artifacts and new low-confidence generated candidates as hard negatives, then compact post-train generation and structural validation before any larger library expansion.
 
 April 29, 2026 DPO correction: Phase 7 generated/local-library sequences are no longer allowed on the chosen side of the paid-run DPO dataset. The current local Phase 8 build uses reviewed natural PETase/cutinase records as chosen positives and demotes the fold-failed Phase 7 generated panel to hard negatives.
 
 April 28, 2026 cleanup note: the active workspace is now focused on Phase 8 DPO readiness. The current 10k DPO dataset lives locally in `data/phase8_dpo/`, its structural evidence lives in `reports/analysis/phase7_local_library_v1/`, and old run outputs/scripts/configs were moved to the local ignored archive at `archive/2026-04-28-labyrinth-cleanup/`. See `REPO_MAP.md` and `notes/LABNOTES.md` for the current map and latest scientific status.
 
-As of April 23, 2026:
+Historical April 23, 2026 snapshot, retained for continuity:
 
 - merged `stage-b-lite` mined pool:
   - `1,597,184` raw candidates
@@ -56,7 +58,7 @@ As of April 23, 2026:
   - `v1.1`: p24-only gate failed cleanly with `0` tier-2 hits and `0` raw single-motif plus geometry plus ESM candidates
   - `v1.2`: length-retargeted repair distillation recovered real but narrow signal: `3` functional hits, `2` family-faithful hits, and `3 / 24` prompt coverage
   - `v1.3`: support-prompt widening regressed to `[0, 0, 1]` tier-2 hits, `1 / 24` prompt coverage, and `0` family-faithful hits
-- current rule:
+- April 23 rule, superseded by the June Phase 8 preference-learning path:
   - do not launch another paid manifold `v1.x` replay, stage-B, p48, or broad mining tranche from this branch line
   - the manifold `v2` objective panel is now built at `reports/analysis/manifold_v2_objective_panel_20260424/`
   - use its `2` `v1.2` family-faithful hits as positive anchors and `45` `v1.3` stable-only / geometry-only finalists as hard negatives
@@ -66,9 +68,9 @@ As of April 23, 2026:
   - final reselection produced `34` strict/core/ESM candidates across `18` parent source keys and `14` exact lengths
   - the finalized v2 curriculum has `42` rows: `34` selected candidates plus `8` purebred anchors
   - the v2 p24/c128 diagnostic completed but failed durability with tier-2 hits `[0, 1, 0]`, prompt coverage `1 / 24`, and `0` family-faithful hits
-  - active next branch is v2.1 bridge-weighted replay at `reports/curriculum/manifold_v21_20260424/manifold_v21_bridge_curriculum.jsonl`
+  - then-active next branch was v2.1 bridge-weighted replay at `reports/curriculum/manifold_v21_20260424/manifold_v21_bridge_curriculum.jsonl`
   - v2.1 has `71` rows: `28` v2 strict-breadth anchors, `15` measured bridge replay rows, `12` support prompt anchors, `12` historical family-faithful anchors, and `4` purebred anchors
-  - current paid scope is a tiny v2.1 stage-A train plus p24-only diagnostic gate; no stage-B, p48, or broad mining from this artifact
+  - then-current paid scope was a tiny v2.1 stage-A train plus p24-only diagnostic gate; no stage-B, p48, or broad mining from this artifact
   - keep paid mining as a small diagnostic only if the offline v2 redesign stalls
 
 See [`docs/science.md`](docs/science.md) for the current research readout and primary artifact links.
@@ -86,6 +88,7 @@ The supported reusable workflows are:
 7. `robustness`
 8. `reranker`
 9. `manifold-construction` (Phase 1 and Phase 2 selection implemented)
+10. `preference-dpo-opd` (Phase 8 DPO baseline, sparse OPD materials, and matched structural readouts)
 
 The details and entrypoints for those workflows live in [`docs/workflows.md`](docs/workflows.md).
 
@@ -121,6 +124,7 @@ Production CUDA environments used on Nebius are separate from the local/dev base
 - `src/pearl/esm_proxy.py`: local ESM proxy scorer
 - `src/pearl/`: reusable library surface for paths, detached jobs, reports, smoke gates, curricula, and run-record assembly
 - `scripts/`: supported workflow entrypoints plus archived compatibility symlinks, including `scripts/manifold_construction_experiment.py`
+- Phase 8 preference runners: `scripts/run_tinker_dpo_smoke.py`, `scripts/run_tinker_sparse_opd_smoke.py`, `scripts/build_tinker_teacher_traces.py`, `scripts/build_sparse_opd_targets.py`, `scripts/phase8_paid_run_preflight.py`
 - `reports/`: local run artifacts
 - `data/`: prompts, records, and family datasets
 

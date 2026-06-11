@@ -11,7 +11,7 @@ Current scientific default:
 - use mining only when the team explicitly wants a paid diagnostic or targeted tranche
 - do not treat a blind broad `1M` run as the default next move
 - if mining is used next, start with a `50k-75k` p12/p24 exact-hole sweep before scaling to a `250k-300k` targeted tranche
-- the prepared coverage-aware million remains a fallback reference design, but the current recommendation is offline manifold v2 construction
+- the prepared coverage-aware million remains a fallback reference design, but the current recommendation is Phase 8 DPO characterization plus sparse OPD comparison
 
 Primary entrypoints:
 - [scripts/mining_experiment.py](../scripts/mining_experiment.py)
@@ -161,9 +161,12 @@ Current operating rule:
 
 Purpose:
 - run SFT warmstarts from a dataset and base checkpoint
+- run Phase 8 DPO and sparse OPD smoke/update jobs through their dedicated runners
 
 Primary entrypoints:
 - [scripts/run_sft_warmstart.py](../scripts/run_sft_warmstart.py)
+- [scripts/run_tinker_dpo_smoke.py](../scripts/run_tinker_dpo_smoke.py)
+- [scripts/run_tinker_sparse_opd_smoke.py](../scripts/run_tinker_sparse_opd_smoke.py)
 - [scripts/launch_detached_job.py](../scripts/launch_detached_job.py)
 - [scripts/strict_experiment.py](../scripts/strict_experiment.py)
 - [scripts/launch_strict_experiment.sh](../scripts/launch_strict_experiment.sh)
@@ -180,6 +183,7 @@ Operator rule:
 - `v9` strict config is a record of the attempted path, not a branch to train from the failed repair output
 - only build/train a new strict branch after the source strict pool passes readiness
 - manifold `v1.x` configs are now records of tested branch shapes; do not launch another paid replay without a new offline constructor result
+- Phase 8 DPO is the active training lane; W&B metrics are useful but local `report.json` batch persistence is the audit source
 
 ## 7. Robustness
 
@@ -278,11 +282,46 @@ Manifold v2.3 to v2.7 results:
 - v2.6 built a clean manifold around v2.5-Hit2 but generated 0 clean hits, proving SFT cannot generatively expand the clean bridge without explicit anti-artifact constraints.
 - v2.7 confirmed the same limitation persists in the stronger K2.6 base model.
 
-Next workflow (Campaign Concluded):
+Historical transition:
 - The generative SFT discovery campaign is formally concluded.
-- The project pivots to Phase 6: Local Library Design (offline) or Contrastive/Preference/RL training with explicit anti-artifact penalties (DPO).
+- That conclusion led into the current Phase 8 preference path: DPO as the active baseline and sparse OPD/multi-teacher feedback as the prepared comparison branch.
 
 Reference:
 - [manifold_construction.md](manifold_construction.md)
 - [final_sft_campaign_report.md](final_sft_campaign_report.md)
 
+## 10. Preference DPO / OPD
+
+Purpose:
+- train and characterize a natural-positive versus fold-failed-negative DPO baseline
+- prepare sparse OPD/multi-teacher targets while full-vocabulary logits are unavailable
+- compare DPO against DPO+OPD on matched structural readouts
+
+Current scientific role:
+- this is the active Phase 8 path
+- the 3k DPO pilot completed and learned the training distribution strongly
+- the only completed post-DPO generation/fold slice remains underpowered and structurally weak
+- DPO is live and unresolved, not solved and not falsified
+
+Primary entrypoints:
+- [scripts/run_tinker_dpo_smoke.py](../scripts/run_tinker_dpo_smoke.py)
+- [scripts/build_tinker_teacher_traces.py](../scripts/build_tinker_teacher_traces.py)
+- [scripts/build_sparse_opd_targets.py](../scripts/build_sparse_opd_targets.py)
+- [scripts/run_tinker_sparse_opd_smoke.py](../scripts/run_tinker_sparse_opd_smoke.py)
+- [scripts/phase8_paid_run_preflight.py](../scripts/phase8_paid_run_preflight.py)
+- [scripts/run_physical_to_sequence_loop.py](../scripts/run_physical_to_sequence_loop.py)
+
+Current DPO checkpoint:
+- `tinker://68b86c30-7c34-5c97-bb55-01e139610267:train:0/weights/phase8-bio-dpo-pilot-3k-final`
+
+Operational rules:
+- run shape/preflight checks before paid training
+- verify local `report.json` retains non-empty per-batch `batches`
+- treat W&B margin curves as training-distribution evidence
+- use shuffled/held-out preference diagnostics when budget permits
+- require compact generation plus folding before scaling either DPO or DPO+OPD
+
+Reference:
+- [phase8_dpo_pilot_readout.md](phase8_dpo_pilot_readout.md)
+- [phase8_no_logits_opd.md](phase8_no_logits_opd.md)
+- [../configs/experiments/README.md](../configs/experiments/README.md)

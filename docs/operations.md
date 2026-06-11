@@ -65,7 +65,45 @@ Use the supported workflow entrypoints from [docs/workflows.md](workflows.md).
 
 Do not treat versioned campaign wrappers as the default operational surface unless you are explicitly replaying historical work.
 
-As of April 23, 2026, do not launch another strict-core train branch from the failed `v9` repair output or another paid manifold `v1.x` replay. The current active path is offline scaffold-first manifold redesign, documented in [manifold_construction.md](manifold_construction.md).
+As of June 11, 2026, do not launch another strict-core train branch from the failed `v9` repair output, another paid manifold `v1.x` replay, or blind broad mining as the default next move. The current active path is Phase 8 preference learning:
+
+- keep the 3k DPO checkpoint as the active DPO-only baseline
+- characterize DPO with shuffled/held-out preference diagnostics and compact generation/fold slices when budget permits
+- prepare sparse OPD/multi-teacher feedback as the matched comparison branch
+- require folded structural readouts before claiming protein-design progress
+
+Primary current references:
+- [science.md](science.md)
+- [phase8_dpo_pilot_readout.md](phase8_dpo_pilot_readout.md)
+- [phase8_no_logits_opd.md](phase8_no_logits_opd.md)
+- [../configs/experiments/README.md](../configs/experiments/README.md)
+
+## Phase 8 Preference Runs
+
+DPO training uses [../scripts/run_tinker_dpo_smoke.py](../scripts/run_tinker_dpo_smoke.py). W&B logging is optional and additive; the local `report.json` remains the authoritative audit artifact and should include per-batch `batches`.
+
+Before any paid DPO run:
+
+```bash
+.venv/bin/python scripts/run_tinker_dpo_smoke.py \
+  --name phase8-bio-dpo-shape \
+  --pairs-path data/phase8_dpo/dpo_preferences_hybrid_10k.jsonl \
+  --shape-only
+```
+
+After any paid DPO run, verify:
+
+- `report.json` has a non-empty `batches` array
+- `train/dpo_pair_count` and `train/dpo_beta` stayed constant in W&B if W&B was enabled
+- DPO margins are interpreted as training-distribution evidence, not folded-structure evidence
+- post-train generation and folding are evaluated before scaling
+
+Sparse OPD materials are staged through:
+
+- [../scripts/build_tinker_teacher_traces.py](../scripts/build_tinker_teacher_traces.py)
+- [../scripts/build_sparse_opd_targets.py](../scripts/build_sparse_opd_targets.py)
+- [../scripts/run_tinker_sparse_opd_smoke.py](../scripts/run_tinker_sparse_opd_smoke.py)
+- [../scripts/phase8_paid_run_preflight.py](../scripts/phase8_paid_run_preflight.py)
 
 ## Config-Driven Strict Experiments
 

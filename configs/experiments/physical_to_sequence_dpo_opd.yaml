@@ -7,7 +7,7 @@
 name: phase8-physical-to-sequence-loop-v1
 
 current_dpo_baseline:
-  status: unresolved_preliminary_single_slice_only
+  status: strong_training_signal_unresolved_structural_yield
   readout_doc: docs/phase8_dpo_pilot_readout.md
   checkpoint: tinker://68b86c30-7c34-5c97-bb55-01e139610267:train:0/weights/phase8-bio-dpo-pilot-3k-final
   trained_pairs: 3000
@@ -16,8 +16,23 @@ current_dpo_baseline:
   family_faithful_bridge_hits: 0
   folded_subset_ca_triad_passes: 0
   folded_subset_count: 5
-  interpretation: dpo_is_working_baseline_thin_slice_not_verdict
+  interpretation: dpo_learned_training_distribution_strongly_but_structural_yield_unresolved
+  wandb_local_metric_review:
+    reviewed_on: 2026-06-07
+    first_100_mean_dpo_loss: 0.6775
+    last_100_mean_dpo_loss: 0.3655
+    first_100_mean_reward_margin: 0.0419
+    last_100_mean_reward_margin: 2.7476
+    first_100_positive_min_margin_batch_fraction: 0.06
+    last_100_positive_min_margin_batch_fraction: 0.87
+    caveat: pair_file_order_was_not_shuffled
+  telemetry_status:
+    wandb_logging: additive
+    local_batch_reports: restored
+    regression_test: tests/test_tinker_dpo.py::TinkerDpoTests::test_train_cli_persists_batch_reports_with_fake_tinker
   recommended_dpo_followup:
+    shuffle_pairs: true
+    heldout_preference_diagnostic: true
     prompt_counts: [12, 24]
     temperatures: [0.6, 0.8]
     seeds: [7, 19, 31]
