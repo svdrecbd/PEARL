@@ -7,7 +7,7 @@ This repository explores PETase-family sequence design through remote generation
 ## Start Here
 
 - Active workspace map after the April 28 cleanup: [`REPO_MAP.md`](REPO_MAP.md)
-- Historical sponsor-facing summary: [`WHITEPAPER.md`](WHITEPAPER.md)
+- Technical white paper: [`WHITEPAPER.pdf`](WHITEPAPER.pdf)
 - Repo structure and supported surface: [`docs/overview.md`](docs/overview.md)
 - Supported workflows: [`docs/workflows.md`](docs/workflows.md)
 - Operator notes: [`docs/operations.md`](docs/operations.md)
@@ -19,6 +19,10 @@ This repository explores PETase-family sequence design through remote generation
 - Full experimental history: [`notes/LABNOTES.md`](notes/LABNOTES.md)
 
 ## Current State
+
+June 13, 2026 scoring change (BREAKING): the local ESM scorer no longer emits a 0-100 "pseudo-pLDDT" (it was misnamed and saturated). It now returns the raw ESM-2 mean per-residue pseudo-log-likelihood (PLL), and selection/gates use the calibrated natural-reference percentile (`scripts/calibrate_esm_pll.py` -> `configs/esm_pll_calibration.<model>.json`). The gate flag is now `--esm-pll-gate-percentile` (default `0.05`); the report field `raw_esm_score` is now `esm_pll` (+ `esm_pll_natural_percentile`). No back-compat shim: old reports/audits will not resume. `pLDDT` now refers only to real structural confidence (ColabFold/ESMFold). See [`docs/science.md`](docs/science.md#scoring-esm-pll-de-saturation-june-13-2026-breaking) and [`notes/LABNOTES.md`](notes/LABNOTES.md).
+
+June 13, 2026 platform note: the Kimi generator (current Phase 8 path targets `moonshotai/Kimi-K2.6`, bumped from K2.5 after K2.6's 2026-04-20 release) is a Tinker compatibility/cost constraint (the project ran on free Tinker credits, and protein-native models are not Tinker-hostable), **not a deliberate scientific choice**. A general text LLM has no protein/structure prior, which is consistent with the observed mirage wall. As soon as a protein-native generator (ESM3/ProGen2/ZymCTRL) is hostable on our stack or the constraint lifts, the generator model question should be reopened as a first-class decision. ESM3-open can also fold locally and is the intended automated structure gate before the current manual ColabFold step. The Kimi K2 line is a strong model on its own merits; the gap is the missing protein prior, not model quality. (Several older scripts still default to `Kimi-K2.5`; standardizing those defaults is pending.) See [`docs/science.md`](docs/science.md#model-and-platform-constraints-june-2026).
 
 June 11, 2026 Phase 8 update: the Tinker custom-loss DPO path has now run beyond smoke scale. A 3k-pair natural-positive DPO pilot completed, W&B/local batch metrics show a strong training-distribution move, and the DPO runner now preserves local batch reports alongside W&B logging. First-100-batch mean DPO loss was `0.6775` versus last-100 `0.3655`; first-100 mean reward margin was `0.0419` versus last-100 `2.7476`; positive-min-margin batches rose from `6%` to `87%`. That strengthens DPO as a learned preference baseline.
 
@@ -89,6 +93,7 @@ The supported reusable workflows are:
 8. `reranker`
 9. `manifold-construction` (Phase 1 and Phase 2 selection implemented)
 10. `preference-dpo-opd` (Phase 8 DPO baseline, sparse OPD materials, and matched structural readouts)
+11. `structure-gate` (automated ESMFold/ESMAtlas fold + real 3D catalytic-triad geometry gate; pre-ColabFold)
 
 The details and entrypoints for those workflows live in [`docs/workflows.md`](docs/workflows.md).
 
@@ -125,6 +130,7 @@ Production CUDA environments used on Nebius are separate from the local/dev base
 - `src/pearl/`: reusable library surface for paths, detached jobs, reports, smoke gates, curricula, and run-record assembly
 - `scripts/`: supported workflow entrypoints plus archived compatibility symlinks, including `scripts/manifold_construction_experiment.py`
 - Phase 8 preference runners: `scripts/run_tinker_dpo_smoke.py`, `scripts/run_tinker_sparse_opd_smoke.py`, `scripts/build_tinker_teacher_traces.py`, `scripts/build_sparse_opd_targets.py`, `scripts/phase8_paid_run_preflight.py`
+- Structural gate: `src/pearl/structure_gate.py` + `scripts/run_structure_gate.py` (fold + real Ser-His-Asp 3D H-bond geometry; backends `esmfold`/`esmatlas`; graded `structural_score` when calibrated). Calibration: `scripts/calibrate_esm_pll.py` (sequence PLL), `scripts/calibrate_structure_gate.py` (fold/triad vs natural)
 - `reports/`: local run artifacts
 - `data/`: prompts, records, and family datasets
 
@@ -141,7 +147,7 @@ The repo boundary is now explicit:
 ```bash
 python scripts/run_ablation.py \
   --name my-eval-run \
-  --model moonshotai/Kimi-K2.5 \
+  --model moonshotai/Kimi-K2.6 \
   --variant baseline \
   --prompts-path /abs/path/prompts.jsonl \
   --reference-records-path /abs/path/petase_records.jsonl \
@@ -165,7 +171,7 @@ python scripts/run_ablation.py \
 python scripts/run_robustness_suite.py \
   --name my-robustness \
   --init-state-path tinker://.../weights/... \
-  --model moonshotai/Kimi-K2.5 \
+  --model moonshotai/Kimi-K2.6 \
   --variant baseline \
   --suite-sizes 12,24,48 \
   --temperatures 0.8 \
@@ -232,13 +238,29 @@ Operational notes:
   - `reports/robustness/pearl-topoff1m-a-ultra-robustness-2phase-h100-p12p24p48-t08-s41s53s67/robustness_summary.json`
   - `reports/robustness/pearl-topoff1m-a-balanced-robustness-2phase-h100-p12p24p48-t08-s41s53s67/robustness_summary.json`
 
-### 3. Retrain readiness check
+### 2c. Structural gate on a run's shortlist
+
+Fold the selected survivors and check fold quality plus the real 3D Ser-His-Asp triad
+geometry (the automated step before any manual ColabFold):
 
 ```bash
-python scripts/check_retrain_readiness.py \
-  reports/ablations/.../candidate_audit.json \
-  --selected-only
+python scripts/run_structure_gate.py \
+  --backend esmfold \
+  --input reports/ablations/<run>/candidate_audit.json \
+  --selected-only \
+  --output reports/structure_gate/<run>.json
 ```
+
+Use `--backend esmatlas` for low-volume API folding with no local weights, or
+`--sequence <SEQ>` for a one-off. Gate defaults: mean pLDDT >= 70, triad H-bonds <= 3.5 A.
+
+### 3. Retrain readiness check (archived)
+
+The standalone `check_retrain_readiness.py` was retired in the April 28 cleanup and now lives
+only under `archive/2026-04-28-labyrinth-cleanup/scripts/` (no compatibility symlink). It is
+not part of the supported surface. Retrain-readiness signal is emitted directly in raft
+postprocess artifacts (e.g. `retrain_readiness_selected_only.json`); for current pre-run
+checks use `scripts/phase8_paid_run_preflight.py`.
 
 ### 4. Detached mining wave
 

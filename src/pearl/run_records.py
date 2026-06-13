@@ -5,13 +5,13 @@ from typing import Any
 
 def build_reward_components(
     *,
-    raw_esm_score: float,
+    esm_pll: float,
     reward_info: dict[str, Any],
     family_reward_info: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "reward_mode": reward_info["reward_mode"],
-        "esm_reward": raw_esm_score,
+        "esm_reward": esm_pll,
         "esm_gate_pass": reward_info["esm_gate_pass"],
         "functional_bridge_passes": reward_info["functional_bridge_passes"],
         "family_faithful_bridge_passes": reward_info["family_faithful_bridge_passes"],
@@ -56,7 +56,7 @@ def build_step_record(
     extracted_sequence: str,
     reward: float,
     selection_metadata: dict[str, Any],
-    raw_esm_score: float,
+    esm_pll: float,
     reward_info: dict[str, Any],
     family_reward_info: dict[str, Any],
     quality: dict[str, Any],
@@ -76,7 +76,7 @@ def build_step_record(
         "reward": reward,
         "selection_metadata": selection_metadata,
         "reward_components": build_reward_components(
-            raw_esm_score=raw_esm_score,
+            esm_pll=esm_pll,
             reward_info=reward_info,
             family_reward_info=family_reward_info,
         ),

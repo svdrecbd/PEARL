@@ -272,7 +272,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--name", required=True)
     parser.add_argument("--pairs-path", required=True)
     parser.add_argument("--output-dir", default=str(ROOT / "reports" / "tinker_dpo_smoke"))
-    parser.add_argument("--model", default="moonshotai/Kimi-K2.5")
+    parser.add_argument("--model", default="moonshotai/Kimi-K2.6")
     parser.add_argument("--init-state-path")
     parser.add_argument("--reference-state-path")
     parser.add_argument("--checkpoint-name")

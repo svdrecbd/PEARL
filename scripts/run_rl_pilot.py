@@ -79,7 +79,7 @@ def main() -> None:
             "SAMPLING_TEMPERATURE": str(args.sampling_temperature),
             "SAMPLING_TOP_P": str(args.sampling_top_p),
             "SAMPLING_TOP_K": str(args.sampling_top_k),
-            "TINKER_PLDDT_GATE_THRESHOLD": str(args.plddt_gate_threshold),
+            "TINKER_ESM_PLL_GATE_PERCENTILE": str(args.esm_pll_gate_percentile),
         }
     )
 
@@ -119,7 +119,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prompts-path", required=True)
     parser.add_argument("--reference-records-path", required=True)
     parser.add_argument("--output-dir", default=str(ROOT / "reports" / "rl_pilot"))
-    parser.add_argument("--model", default="moonshotai/Kimi-K2.5")
+    parser.add_argument("--model", default="moonshotai/Kimi-K2.6")
     parser.add_argument("--prompt-count", type=int, default=20)
     parser.add_argument("--candidate-sample-count", type=int, default=2048)
     parser.add_argument("--second-stage-top-k", type=int, default=16)
@@ -129,7 +129,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ppo-clip-high-threshold", type=float, default=1.1)
     parser.add_argument("--bridge-tier2-reward", type=float, default=1.0)
     parser.add_argument("--bridge-tier1-bonus", type=float, default=5.0)
-    parser.add_argument("--plddt-gate-threshold", type=float, default=85.0)
+    parser.add_argument("--esm-pll-gate-percentile", type=float, default=0.05)
     parser.add_argument("--sampling-temperature", type=float, default=0.8)
     parser.add_argument("--sampling-top-p", type=float, default=0.95)
     parser.add_argument("--sampling-top-k", type=int, default=50)

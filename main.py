@@ -32,8 +32,9 @@ from pearl.run_records import build_candidate_audit_record, build_step_record
 
 from pearl.esm_proxy import (
     extract_amino_acid_sequence,
-    get_esm2_plddt_score,
+    get_esm2_pll,
     inspect_raw_sequence_text,
+    pll_to_natural_percentile,
     prewarm_esm2_model,
 )
 from pearl.family import (
@@ -82,7 +83,9 @@ SECOND_STAGE_ESM_WEIGHT = float(os.environ.get("TINKER_SECOND_STAGE_ESM_WEIGHT",
 SECOND_STAGE_MOTIF_WEIGHT = float(os.environ.get("TINKER_SECOND_STAGE_MOTIF_WEIGHT", "0.2"))
 SECOND_STAGE_GEOMETRY_WEIGHT = float(os.environ.get("TINKER_SECOND_STAGE_GEOMETRY_WEIGHT", "0.6"))
 SECOND_STAGE_TEMPLATE_WEIGHT = float(os.environ.get("TINKER_SECOND_STAGE_TEMPLATE_WEIGHT", "0.15"))
-PLDDT_GATE_THRESHOLD = float(os.environ.get("TINKER_PLDDT_GATE_THRESHOLD", "85.0"))
+# Gate on the natural-reference PLL percentile in [0, 1]: accept candidates at least as
+# plausible as the Nth percentile of natural PETase/cutinase sequences (default: 5th).
+ESM_PLL_GATE_PERCENTILE = float(os.environ.get("TINKER_ESM_PLL_GATE_PERCENTILE", "0.05"))
 SAMPLING_TEMPERATURE = float(os.environ.get("SAMPLING_TEMPERATURE", "0.4"))
 SAMPLING_TOP_P = float(os.environ.get("SAMPLING_TOP_P", "0.95"))
 SAMPLING_TOP_K = int(os.environ.get("SAMPLING_TOP_K", "50"))
@@ -134,7 +137,7 @@ REPORT_CONTEXT = ReportContext(
     prompt_variant=PROMPT_VARIANT,
     candidate_sample_count=CANDIDATE_SAMPLE_COUNT,
     second_stage_top_k=SECOND_STAGE_TOP_K,
-    plddt_gate_threshold=PLDDT_GATE_THRESHOLD,
+    esm_pll_gate_percentile=ESM_PLL_GATE_PERCENTILE,
     second_stage_esm_weight=SECOND_STAGE_ESM_WEIGHT,
     second_stage_motif_weight=SECOND_STAGE_MOTIF_WEIGHT,
     second_stage_geometry_weight=SECOND_STAGE_GEOMETRY_WEIGHT,
@@ -183,7 +186,6 @@ MERGE_SCORE_ASPARTATE_HIT_BONUS = 12.0
 MERGE_SCORE_SER_HIS_STRENGTH_THRESHOLD = 0.45
 MERGE_SCORE_SER_ASP_WEAK_THRESHOLD = 0.15
 MERGE_SCORE_SER_HIS_MISALIGNMENT_PENALTY = 35.0
-SECOND_STAGE_ESM_SCORE_NORMALIZER = 100.0
 MOTIF_STRENGTH_NON_FAMILY_BASE = 0.45
 MOTIF_STRENGTH_REPEAT_DECAY_WEIGHT = 0.75
 GEOMETRY_SCORE_WINDOW_HIT_WEIGHT = 0.05
@@ -346,7 +348,7 @@ def main() -> None:
                 "reference_records_path": str(reference_records_path) if reference_records_path is not None else None,
                 "candidate_sample_count": CANDIDATE_SAMPLE_COUNT,
                 "second_stage_top_k": SECOND_STAGE_TOP_K,
-                "plddt_gate_threshold": PLDDT_GATE_THRESHOLD,
+                "esm_pll_gate_percentile": ESM_PLL_GATE_PERCENTILE,
                 "skip_stage2_esm": SKIP_STAGE2_ESM,
                 "rl_learning_rate": RL_LEARNING_RATE,
                 "rl_loss_fn": RL_LOSS_FN,
@@ -415,7 +417,7 @@ def main() -> None:
             sampled_sequence,
             quality,
             family_evaluation,
-            raw_esm_score,
+            esm_pll,
             selection_metadata,
             candidate_audit,
             attempts,
@@ -440,7 +442,7 @@ def main() -> None:
         }
         reward_info = compute_training_reward(
             step=step,
-            raw_esm_score=raw_esm_score,
+            esm_pll=esm_pll,
             quality=quality,
             family_evaluation=family_evaluation,
         )
@@ -467,7 +469,8 @@ def main() -> None:
                     "catalytic_geometry_passes": (
                         family_evaluation["catalytic_geometry"]["passes"] if family_evaluation is not None else None
                     ),
-                    "raw_esm_score": raw_esm_score,
+                    "esm_pll": esm_pll,
+                    "esm_pll_natural_percentile": pll_to_natural_percentile(esm_pll),
                     "esm_gate_pass": reward_info["esm_gate_pass"],
                     "family_reward": family_reward_info["family_reward"],
                     "rl_family_reward": reward_info["rl_family_reward"],
@@ -501,7 +504,7 @@ def main() -> None:
                     extracted_sequence=extracted_sequence,
                     reward=reward,
                     selection_metadata=selection_metadata,
-                    raw_esm_score=raw_esm_score,
+                    esm_pll=esm_pll,
                     reward_info=reward_info,
                     family_reward_info=family_reward_info,
                     quality=quality,
@@ -537,7 +540,7 @@ def main() -> None:
                     extracted_sequence=extracted_sequence,
                     reward=reward,
                     selection_metadata=selection_metadata,
-                    raw_esm_score=raw_esm_score,
+                    esm_pll=esm_pll,
                     reward_info=reward_info,
                     family_reward_info=family_reward_info,
                     quality=quality,
@@ -588,7 +591,7 @@ def main() -> None:
                 extracted_sequence=extracted_sequence,
                 reward=reward,
                 selection_metadata=selection_metadata,
-                raw_esm_score=raw_esm_score,
+                esm_pll=esm_pll,
                 reward_info=reward_info,
                 family_reward_info=family_reward_info,
                 quality=quality,
@@ -1201,7 +1204,7 @@ def sample_valid_sequence(
                 "quality": quality,
                 "family_evaluation": family_evaluation,
                 "stage1_score": float(quality["combined_score"]),
-                "raw_esm_score": 0.0,
+                "esm_pll": 0.0,
                 "stage2_score": None,
                 "stage1_rank": None,
                 "stage2_rank": None,
@@ -1246,17 +1249,17 @@ def sample_valid_sequence(
         extra={"stage2_candidate_count": len(stage2_candidates), "skip_stage2_esm": SKIP_STAGE2_ESM},
     )
     for candidate in stage2_candidates:
-        raw_esm_score = 0.0
+        esm_pll = 0.0
         if (
             not SKIP_STAGE2_ESM
             and candidate["extracted_sequence"]
             and candidate["quality"]["hard_gate_pass"]
             and candidate["quality"]["soft_floor_pass"]
         ):
-            raw_esm_score = get_esm2_plddt_score(candidate["extracted_sequence"])
-        candidate["raw_esm_score"] = raw_esm_score
+            esm_pll = get_esm2_pll(candidate["extracted_sequence"])
+        candidate["esm_pll"] = esm_pll
         candidate["stage2_score"] = compute_second_stage_score(
-            raw_esm_score=raw_esm_score,
+            esm_pll=esm_pll,
             motif_strength=float(candidate["quality"]["motif_strength"]),
             geometry_score=float(candidate["quality"]["geometry_score"]),
             template_penalty=float(candidate["quality"]["template_penalty"]),
@@ -1281,7 +1284,8 @@ def sample_valid_sequence(
             (
                 candidate
                 for candidate in sorted_stage2
-                if candidate["quality"]["is_trainable"] and candidate["raw_esm_score"] >= PLDDT_GATE_THRESHOLD
+                if candidate["quality"]["is_trainable"]
+                and (pll_to_natural_percentile(candidate["esm_pll"]) or 0.0) >= ESM_PLL_GATE_PERCENTILE
             ),
             None,
         )
@@ -1308,7 +1312,7 @@ def sample_valid_sequence(
         selected["sampled_sequence"],
         selected["quality"],
         selected["family_evaluation"],
-        float(selected["raw_esm_score"]),
+        float(selected["esm_pll"]),
         selection_metadata,
         candidate_audit,
         CANDIDATE_SAMPLE_COUNT,
@@ -1318,12 +1322,12 @@ def sample_valid_sequence(
 def build_candidate_audit_entry(candidate: dict[str, Any], is_selected: bool) -> dict[str, Any]:
     quality = candidate["quality"]
     family_evaluation = candidate["family_evaluation"]
-    raw_esm_score = float(candidate["raw_esm_score"])
+    esm_pll = float(candidate["esm_pll"])
     catalytic_geometry = family_evaluation["catalytic_geometry"] if family_evaluation is not None else None
     bridge_flags = compute_bridge_flags(
         quality=quality,
         family_evaluation=family_evaluation,
-        raw_esm_score=raw_esm_score,
+        esm_pll=esm_pll,
     )
     return {
         "selected": is_selected,
@@ -1357,7 +1361,8 @@ def build_candidate_audit_entry(candidate: dict[str, Any], is_selected: bool) ->
         "ser_asp_strength": float(quality["ser_asp_strength"]),
         "ser_his_strength": float(quality["ser_his_strength"]),
         "geometry_score": float(quality["geometry_score"]),
-        "raw_esm_score": raw_esm_score,
+        "esm_pll": esm_pll,
+        "esm_pll_natural_percentile": pll_to_natural_percentile(esm_pll),
         "sequence_quality": quality,
         "family_evaluation": family_evaluation,
         **bridge_flags,
@@ -1659,12 +1664,13 @@ def merge_candidate_quality(
 
 def compute_second_stage_score(
     *,
-    raw_esm_score: float,
+    esm_pll: float,
     motif_strength: float,
     geometry_score: float,
     template_penalty: float,
 ) -> float:
-    normalized_esm_score = max(0.0, min(MAX_NORMALIZED_SCORE, raw_esm_score / SECOND_STAGE_ESM_SCORE_NORMALIZER))
+    esm_percentile = pll_to_natural_percentile(esm_pll) or 0.0
+    normalized_esm_score = max(0.0, min(MAX_NORMALIZED_SCORE, esm_percentile))
     return round(
         (SECOND_STAGE_ESM_WEIGHT * normalized_esm_score)
         + (SECOND_STAGE_MOTIF_WEIGHT * motif_strength)
@@ -1676,14 +1682,14 @@ def compute_second_stage_score(
 def compute_training_reward(
     *,
     step: int,
-    raw_esm_score: float,
+    esm_pll: float,
     quality: dict[str, float | int | bool],
     family_evaluation: dict[str, Any] | None,
 ) -> dict[str, Any]:
     bridge_flags = compute_bridge_flags(
         quality=quality,
         family_evaluation=family_evaluation,
-        raw_esm_score=raw_esm_score,
+        esm_pll=esm_pll,
     )
     dense_reward_info = compute_dense_family_reward(quality=quality, family_evaluation=family_evaluation)
     dense_family_reward = dense_reward_info["dense_family_reward"]
@@ -1764,7 +1770,7 @@ def compute_bridge_flags(
     *,
     quality: dict[str, float | int | bool],
     family_evaluation: dict[str, Any] | None,
-    raw_esm_score: float,
+    esm_pll: float,
 ) -> dict[str, bool]:
     has_family_serine_motif = bool(
         family_evaluation is not None and family_evaluation["has_family_serine_motif"]
@@ -1772,7 +1778,7 @@ def compute_bridge_flags(
     geometry_passes = bool(
         family_evaluation is not None and family_evaluation["catalytic_geometry"]["passes"]
     )
-    esm_gate_pass = raw_esm_score >= PLDDT_GATE_THRESHOLD
+    esm_gate_pass = (pll_to_natural_percentile(esm_pll) or 0.0) >= ESM_PLL_GATE_PERCENTILE
     functional_bridge_passes = bool(quality["motif_count"] == 1 and geometry_passes and esm_gate_pass)
     family_faithful_bridge_passes = bool(functional_bridge_passes and has_family_serine_motif)
     return {

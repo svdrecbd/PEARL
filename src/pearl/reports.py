@@ -15,7 +15,7 @@ class ReportContext:
     prompt_variant: str
     candidate_sample_count: int
     second_stage_top_k: int
-    plddt_gate_threshold: float
+    esm_pll_gate_percentile: float
     second_stage_esm_weight: float
     second_stage_motif_weight: float
     second_stage_geometry_weight: float
@@ -54,7 +54,7 @@ def build_report_payload(
         "prompt_variant": context.prompt_variant,
         "candidate_sample_count": context.candidate_sample_count,
         "second_stage_top_k": context.second_stage_top_k,
-        "plddt_gate_threshold": context.plddt_gate_threshold,
+        "esm_pll_gate_percentile": context.esm_pll_gate_percentile,
         "second_stage_esm_weight": context.second_stage_esm_weight,
         "second_stage_motif_weight": context.second_stage_motif_weight,
         "second_stage_geometry_weight": context.second_stage_geometry_weight,
@@ -80,7 +80,7 @@ def build_candidate_audit_payload(
         "prompt_variant": context.prompt_variant,
         "candidate_sample_count": context.candidate_sample_count,
         "second_stage_top_k": context.second_stage_top_k,
-        "plddt_gate_threshold": context.plddt_gate_threshold,
+        "esm_pll_gate_percentile": context.esm_pll_gate_percentile,
         "second_stage_esm_weight": context.second_stage_esm_weight,
         "second_stage_motif_weight": context.second_stage_motif_weight,
         "second_stage_geometry_weight": context.second_stage_geometry_weight,
@@ -214,13 +214,13 @@ def validate_resume_report_payload(
             f"expected {context.second_stage_top_k}, observed {observed_top_k}"
         )
 
-    observed_plddt = report_payload.get("plddt_gate_threshold")
-    if observed_plddt is not None and not math.isclose(
-        float(observed_plddt), context.plddt_gate_threshold, abs_tol=1e-9
+    observed_percentile = report_payload.get("esm_pll_gate_percentile")
+    if observed_percentile is not None and not math.isclose(
+        float(observed_percentile), context.esm_pll_gate_percentile, abs_tol=1e-9
     ):
         raise RuntimeError(
-            f"Resume report plddt_gate_threshold mismatch for {report_path}: "
-            f"expected {context.plddt_gate_threshold}, observed {observed_plddt}"
+            f"Resume report esm_pll_gate_percentile mismatch for {report_path}: "
+            f"expected {context.esm_pll_gate_percentile}, observed {observed_percentile}"
         )
 
     validate_optional_weight(

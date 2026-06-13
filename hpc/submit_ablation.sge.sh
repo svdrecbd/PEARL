@@ -26,7 +26,7 @@ INIT_STATE_PATH="${INIT_STATE_PATH:?INIT_STATE_PATH must be set}"
 PROMPT_COUNT="${PROMPT_COUNT:-12}"
 CANDIDATE_SAMPLE_COUNT="${CANDIDATE_SAMPLE_COUNT:-128}"
 SECOND_STAGE_TOP_K="${SECOND_STAGE_TOP_K:-16}"
-PLDDT_GATE_THRESHOLD="${PLDDT_GATE_THRESHOLD:-85.0}"
+ESM_PLL_GATE_PERCENTILE="${ESM_PLL_GATE_PERCENTILE:-0.05}"
 SEED="${SEED:-41}"
 SAMPLING_TEMPERATURE="${SAMPLING_TEMPERATURE:-0.8}"
 ESM2_DEVICE="${ESM2_DEVICE:-cuda}"
@@ -74,7 +74,7 @@ apptainer exec --nv \
     --prompt-count "$PROMPT_COUNT" \
     --candidate-sample-count "$CANDIDATE_SAMPLE_COUNT" \
     --second-stage-top-k "$SECOND_STAGE_TOP_K" \
-    --plddt-gate-threshold "$PLDDT_GATE_THRESHOLD" \
+    --esm-pll-gate-percentile "$ESM_PLL_GATE_PERCENTILE" \
     --init-state-path "$INIT_STATE_PATH" \
     --eval-only \
     --resume \

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import bisect
+import json
 import math
 import os
 import re
 from functools import lru_cache
+from pathlib import Path
 
 import torch
 from transformers import AutoModelForMaskedLM, AutoTokenizer, logging as transformers_logging
@@ -31,10 +34,19 @@ ESM2_DTYPE = os.environ.get("ESM2_DTYPE", "").strip().lower()
 ESM2_ENABLE_TF32 = os.environ.get("ESM2_ENABLE_TF32", "0").strip() == "1"
 ESM2_USE_TORCH_COMPILE = os.environ.get("ESM2_USE_TORCH_COMPILE", "0").strip() == "1"
 ESM2_COMPILE_MODE = os.environ.get("ESM2_COMPILE_MODE", "reduce-overhead").strip() or "reduce-overhead"
-PSEUDO_PLDDT_CENTER_OFFSET = 2.5
-PSEUDO_PLDDT_LOGIT_SCALE = 4.0
-PSEUDO_PLDDT_LOGIT_CLAMP = 60.0
-PSEUDO_PLDDT_MAX_SCORE = 100.0
+# The score is the raw mean per-residue ESM-2 pseudo-log-likelihood (PLL): the
+# average over positions of log P(true residue | rest of sequence) under
+# single-residue masking. It is a sequence-plausibility signal, NOT a structural
+# confidence — do not call it pLDDT. PLL is unbounded below and <= 0; natural
+# proteins typically sit around -1 to -2.5 for ESM2-small. Use the calibration
+# helpers to map a PLL onto the natural reference distribution (percentile/z-score)
+# instead of an ad-hoc sigmoid, which saturated and destroyed ranking power.
+UNSCORED_PLL = -100.0
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ESM_PLL_CALIBRATION_DIR = Path(
+    os.environ.get("ESM_PLL_CALIBRATION_DIR", str(PROJECT_ROOT / "configs"))
+)
+ESM_PLL_CALIBRATION_PATH = os.environ.get("ESM_PLL_CALIBRATION_PATH", "").strip()
 
 
 def _inspection_result(
@@ -83,15 +95,16 @@ def inspect_raw_sequence_text(text: str) -> dict[str, object]:
     return _inspection_result(sequence=candidate, error=None)
 
 
-def get_esm2_plddt_score(sequence: str) -> float:
+def get_esm2_pll(sequence: str) -> float:
+    """Raw mean per-residue ESM-2 pseudo-log-likelihood (<= 0). Returns UNSCORED_PLL for too-short input."""
     candidate = extract_amino_acid_sequence(sequence)
     if len(candidate) < MIN_SEQUENCE_LENGTH:
-        return 0.0
-    return _score_normalized_sequence(candidate)
+        return UNSCORED_PLL
+    return _pll_sequence(candidate)
 
 
-def get_esm2_plddt_scores(sequences: list[str]) -> list[float]:
-    scores = [0.0] * len(sequences)
+def get_esm2_plls(sequences: list[str]) -> list[float]:
+    scores = [UNSCORED_PLL] * len(sequences)
     candidate_to_indexes: dict[str, list[int]] = {}
     for index, sequence in enumerate(sequences):
         candidate = extract_amino_acid_sequence(sequence)
@@ -105,7 +118,7 @@ def get_esm2_plddt_scores(sequences: list[str]) -> list[float]:
     unique_candidates = sorted(candidate_to_indexes, key=len, reverse=True)
     candidate_scores: dict[str, float] = {}
     for candidate_bucket in _bucket_candidates_by_length(unique_candidates):
-        bucket_scores = _score_normalized_sequences(candidate_bucket)
+        bucket_scores = _pll_sequences(candidate_bucket)
         candidate_scores.update(zip(candidate_bucket, bucket_scores))
 
     for candidate, indexes in candidate_to_indexes.items():
@@ -143,11 +156,11 @@ def prewarm_esm2_model() -> dict[str, object]:
 
 
 @lru_cache(maxsize=ESM2_SCORE_CACHE_SIZE)
-def _score_normalized_sequence(candidate: str) -> float:
-    return _score_normalized_sequences([candidate])[0]
+def _pll_sequence(candidate: str) -> float:
+    return _pll_sequences([candidate])[0]
 
 
-def _score_normalized_sequences(candidates: list[str]) -> list[float]:
+def _pll_sequences(candidates: list[str]) -> list[float]:
     if not candidates:
         return []
 
@@ -219,7 +232,7 @@ def _score_normalized_sequences(candidates: list[str]) -> list[float]:
 
     mean_log_probs = score_sums / residue_counts.clamp_min(1)
     return [
-        round(_pseudo_plddt_from_log_prob(mean_log_prob), 2) if residue_count > 0 else 0.0
+        round(mean_log_prob, 4) if residue_count > 0 else UNSCORED_PLL
         for mean_log_prob, residue_count in zip(
             mean_log_probs.detach().cpu().tolist(),
             residue_counts.detach().cpu().tolist(),
@@ -323,11 +336,48 @@ def _get_autocast_kwargs(*, device: torch.device) -> dict[str, object]:
     return {"device_type": "cuda", "enabled": False}
 
 
-def _pseudo_plddt_from_log_prob(mean_log_prob: float) -> float:
-    # Convert ESM-2 pseudo-log-likelihood to a bounded 0-100 proxy score.
-    centered_logit = PSEUDO_PLDDT_LOGIT_SCALE * (mean_log_prob + PSEUDO_PLDDT_CENTER_OFFSET)
-    centered_logit = max(-PSEUDO_PLDDT_LOGIT_CLAMP, min(PSEUDO_PLDDT_LOGIT_CLAMP, centered_logit))
-    return PSEUDO_PLDDT_MAX_SCORE / (1.0 + math.exp(-centered_logit))
+def _calibration_path() -> Path:
+    if ESM_PLL_CALIBRATION_PATH:
+        return Path(ESM_PLL_CALIBRATION_PATH)
+    safe_model = ESM2_MODEL_NAME.replace("/", "__")
+    return ESM_PLL_CALIBRATION_DIR / f"esm_pll_calibration.{safe_model}.json"
+
+
+@lru_cache(maxsize=1)
+def load_pll_calibration() -> dict[str, object] | None:
+    """Load the natural-reference PLL calibration for the active model, or None if absent."""
+    path = _calibration_path()
+    if not path.is_file():
+        return None
+    with path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    sorted_plls = sorted(float(value) for value in payload.get("sorted_plls", []))
+    if not sorted_plls:
+        return None
+    return {
+        "model_name": payload.get("model_name"),
+        "count": int(payload.get("count", len(sorted_plls))),
+        "mean": float(payload.get("mean", sum(sorted_plls) / len(sorted_plls))),
+        "std": float(payload.get("std", 0.0)),
+        "sorted_plls": sorted_plls,
+    }
+
+
+def pll_to_natural_percentile(pll: float) -> float | None:
+    """Fraction of natural reference proteins with PLL <= this value, in [0, 1]. None if uncalibrated."""
+    calibration = load_pll_calibration()
+    if calibration is None:
+        return None
+    sorted_plls = calibration["sorted_plls"]
+    return bisect.bisect_right(sorted_plls, pll) / len(sorted_plls)
+
+
+def pll_to_natural_zscore(pll: float) -> float | None:
+    """Standard deviations from the natural-reference PLL mean. None if uncalibrated or zero variance."""
+    calibration = load_pll_calibration()
+    if calibration is None or calibration["std"] <= 0.0:
+        return None
+    return (pll - calibration["mean"]) / calibration["std"]
 
 
 def _resolve_backend() -> str:

@@ -22,6 +22,173 @@ Supported operator docs now live under:
 
 This file remains the long-form experimental and engineering fossil record.
 
+## June 13, 2026: Automated Structural Gate (ESMFold/ESMAtlas) + Real 3D Triad Geometry
+
+Built `src/pearl/structure_gate.py`: the truth-grounded gate that folds a candidate and
+checks fold quality plus the **real 3D catalytic-triad geometry** — the side-chain H-bond
+network — replacing the 1D sequence-spacing heuristic for structural decisions. Runs as an
+automated step between the cheap screens and ColabFold (so manual ColabFold is reserved for
+survivors, or retired for screening).
+
+**What it does:**
+
+- Pluggable `FoldingBackend`: `esmatlas` (ESMAtlas ESMFold API, no local weights — matches
+  the existing `fold_phase7_subset.py` pattern) and `esmfold` (local transformers
+  `EsmForProteinFolding`, `facebook/esmfold_v1`). An ESM3 backend drops in behind the same
+  protocol once the `esm` package + (non-commercial) open weights are installed.
+- Parses pLDDT from PDB B-factors; gate default `STRUCTURE_PLDDT_GATE = 70.0`.
+- Selects the Ser-His-Asp triad by genuine 3D proximity (nucleophile Ser from GxSxG, then
+  the His/Asp partners that minimize the catalytic H-bonds) and scores the two H-bonds:
+  Ser(OG)...His(imidazole N) and His(N)...Asp(OD), ceiling `TRIAD_HBOND_MAX = 3.5 A`.
+  This is the upgrade over the legacy `parse_colabfold_outputs.py`, which selected the triad
+  from the flawed 1D heuristic and measured only coarse CA distances (4-20 A — almost
+  everything passed). CA distance is kept here only as a fallback when side chains are absent.
+- Runner: `scripts/run_structure_gate.py` (single `--sequence` or a `--input`
+  report.json/candidate_audit/jsonl) emits per-candidate pLDDT + triad distances + pass/fail.
+
+**Validation (real fold, ESMAtlas API):** the natural cutinase reference folded at mean
+pLDDT `94.23`, and the gate found the true triad **Ser170-Asp216-His248** purely by 3D
+proximity, with **Ser-His `2.94 A`** and **His-Asp `2.41 A`** — textbook catalytic H-bond
+distances. Positive control passes. Geometry math is also covered by deterministic
+synthetic-coordinate unit tests (`tests/test_structure_gate.py`, 8 tests) so correctness
+does not depend on a model download. Full unittest suite green (16 modules).
+
+**Note on backend default:** `STRUCTURE_GATE_BACKEND=esmfold` (local) by default for
+reproducible bulk gating; use `esmatlas` for low-volume gating with no weights. ESMFold's
+folding trunk is run on CPU by default (MPS is unreliable for it).
+
+**Wired into finalization (same day):** `run_structure_gate.py` now reads a run's
+`report.json` (records[] are the selected per-step outputs) or `candidate_audit.json` with
+`--selected-only` (folds just the `selected`/`is_trainable` survivors — the shortlist that
+would otherwise reach ColabFold). Folding is deliberately NOT injected into main.py's
+per-step loop: it is an explicit finalization stage so model-less/CI runs are unaffected.
+Shortlist-extraction is unit-tested.
+
+**Graded structural score (same day):** `scripts/calibrate_structure_gate.py` folds a sample
+of natural references and writes `configs/structure_gate_calibration.<folder>.json` (sorted
+pLDDT + triad-distance distributions). When present, the gate adds a `grade` block:
+`plddt_natural_percentile`, `ser_his`/`his_asp` tightness percentiles, and a blended
+`structural_score` in [0,1] (how a candidate fold compares to real enzymes) — alongside the
+boolean pass/fail. Grading math is unit-tested with synthetic distributions; the boolean gate
+(pLDDT>=70, triad<=3.5 A) is unchanged. The 1D `assess_catalytic_geometry` heuristic remains
+only as a cheap pre-filter; the structural gate is the authority where a fold exists.
+
+**Seed calibration committed** (`configs/structure_gate_calibration.esmfold.json`): 12 natural
+refs folded via ESMAtlas, 11 succeeded (1 gateway timeout), 9 with a detected side-chain triad.
+Natural triads cluster at Ser-His median `3.07 A`, His-Asp median `2.78 A` (real catalytic
+range); pLDDT mean `86.8`. Two natural records folded without a clean triad (loose-distance
+outliers) — harmless since the grade is rank-based. Sanity check: the natural cutinase control
+grades `structural_score 0.84` (pLDDT pctile 0.64, Ser-His tightness 0.89, His-Asp 1.0). This
+is a SEED (n~9-11) for plumbing + a placeholder distribution — expand with a real panel on
+local `esmfold` (`--backend esmfold --max-records 200`) before trusting the percentile as
+calibrated.
+
+**Expanded calibration committed (done):** 80 natural refs folded via ESMAtlas, **79 succeeded**
+(1 lost to repeated 504s), **50 with a clean side-chain triad**. Distribution: pLDDT mean `82.9`,
+p05 `67.2`, median `82.7`; Ser-His median `3.11 A`, His-Asp median `2.76 A`. Natural cutinase
+control now grades **`structural_score 0.91`** (pLDDT pctile 0.82, Ser-His tightness 0.90,
+His-Asp 1.0) — correct high-confidence behavior for a real enzyme. This is a usable real
+distribution (n=50 triads, n=79 pLDDT), no longer a stub. Still ESMAtlas-API-derived; local
+`esmfold` validation remains pending per the note below.
+
+**PENDING / be conscious of this: the local `esmfold` backend has NOT been exercised yet.**
+Everything so far (validation fold + calibration) used the ESMAtlas *API*, which runs ESMFold
+server-side. The local `EsmFoldLocalBackend` (transformers `facebook/esmfold_v1`, ESM2-3B
+backbone, ~2.8 GB, run on CPU here because the folding trunk is MPS-unreliable) is the intended
+*production* backend but is unproven on this stack. Before relying on it offline/at scale, do a
+one-shot local validation: fold the natural-cutinase control locally and confirm pLDDT + triad
+match the API result (94.23 / Ser-His 2.94 A / His-Asp 2.41 A). Deferred for now because local
+CPU folding is minutes/sequence; the API gives the identical model far faster for calibration.
+
+## June 13, 2026: ESM Proxy De-saturation + pLDDT Misnomer Removal (BREAKING)
+
+Scientific-integrity refactor of the local ESM scorer. The old "pseudo-pLDDT" was both
+misnamed and statistically dead, so it was removed rather than patched. **This is a clean
+break with no back-compat shim** — old `report.json` / `candidate_audit.json` artifacts no
+longer resume or finalize, by design (signal the program refresh; rigor over compatibility).
+
+**What was wrong:**
+
+- `esm_proxy.py` squashed the ESM-2 mean per-residue pseudo-log-likelihood through an
+  ad-hoc sigmoid (`_pseudo_plddt_from_log_prob`, hand-set constants) into a 0-100 score
+  labelled "pseudo-pLDDT". pLDDT is a *structural* confidence metric; a masked-LM
+  pseudo-log-likelihood is *sequence plausibility*. The name invited exactly the
+  structural conflation our ColabFold results disprove.
+- The sigmoid was saturated: natural and family-typical sequences all scored 99+, so the
+  metric had ~zero ranking power at the top (cf. Phase 2 "min 99.73, all >=95"). Selection
+  was effectively reading noise.
+
+**What changed:**
+
+- The proxy now returns the **raw mean per-residue pseudo-log-likelihood (PLL)**,
+  `get_esm2_pll(s)` / `get_esm2_plls(...)` (was `get_esm2_plddt_score(s)` / `_scores`),
+  with `UNSCORED_PLL = -100.0` for too-short input (0.0 is no longer a safe sentinel — it
+  is the *best* possible PLL).
+- New calibration: `scripts/calibrate_esm_pll.py` scores the natural reference set and
+  writes `configs/esm_pll_calibration.<model>.json` (mean, std, sorted PLL distribution).
+  Committed for `esm2_t6_8M` (n=800 natural: mean PLL `-2.44`, p05 `-2.75`, median
+  `-2.45`, p95 `-2.17`). `pll_to_natural_percentile()` / `pll_to_natural_zscore()` map a
+  candidate PLL onto that distribution.
+- **Selection, stage-2 ranking, the trainability gate, and the bridge/RL gate now use the
+  calibrated natural percentile in [0,1]**, not a 0-100 score. The gate default is the 5th
+  percentile of natural (`ESM_PLL_GATE_PERCENTILE = 0.05`).
+- De-saturation verified: percentile now spans the full range (PLL -2.75 -> 0.05, -2.44 ->
+  0.52, -2.17 -> 0.95) instead of pinning at 99.
+
+**Renames (no shims):**
+
+- score fns: `get_esm2_plddt_score(s)` -> `get_esm2_pll(s)`; `_scores` variant likewise.
+- gate: `--plddt-gate-threshold` -> `--esm-pll-gate-percentile` (default 85.0 -> 0.05);
+  env `TINKER_PLDDT_GATE_THRESHOLD` -> `TINKER_ESM_PLL_GATE_PERCENTILE`; hpc shell
+  `PLDDT_GATE_THRESHOLD` -> `ESM_PLL_GATE_PERCENTILE`.
+- report/audit field `raw_esm_score` -> `esm_pll`, plus new `esm_pll_natural_percentile`.
+- `ReportContext.plddt_gate_threshold` -> `esm_pll_gate_percentile` (+ resume-consistency
+  check key); removed `SECOND_STAGE_ESM_SCORE_NORMALIZER` and the sigmoid constants.
+- Touched: `src/pearl/{esm_proxy,reports,run_records,preference_distillation}.py`, `main.py`,
+  `scripts/{run_ablation,run_rl_pilot,run_robustness_suite,run_robustness_two_phase,
+  finalize_ablation_from_candidate_audit,phase7_mcmc_library_builder}.py`, the three
+  `hpc/*.sge.sh`, and the two affected tests. `combine_reward_scores` was found to be dead
+  code; left as-is. Full unittest suite green (48 tests).
+
+The name **pLDDT is now reserved exclusively for real structural confidence** (ColabFold,
+and the existing `esm_fold_plddt` ESMFold path in `steering/telemetry.py`).
+
+**Still open (next):** the ESM PLL is sequence plausibility, not fold. The structural gate
+(ESMFold/ESM3) that replaces the 1D "geometry" heuristic and grounds the reward is the next
+build; PLL de-saturation just stops the cheap proxy from lying about its own ranking power.
+
+## June 13, 2026: Generator Model Standardized to Kimi-K2.6 + Platform Constraint On Record
+
+Two related housekeeping/clarity changes from a scientific-audit pass.
+
+**1. Generator base model is a platform constraint, not a scientific choice.** Put on record in
+[docs/science.md](../docs/science.md#model-and-platform-constraints-june-2026) and the README that the Kimi
+generator is dictated by Tinker (free credits; protein-native models like ESM3/ProGen2/ZymCTRL are not
+Tinker-hostable), not by a judgement that a text LLM is the right protein generator. A text LLM has no
+protein/structure prior, which is consistent with the observed mirage wall. Decision recorded: reopen the
+generator model question as a first-class decision the moment a protein-native model becomes hostable on the
+stack or the off-Tinker/budget constraint lifts.
+
+**2. Standardized the generator version to `moonshotai/Kimi-K2.6`.** The repo had drifted: the newest Phase 8
+entrypoints (`phase8_paid_run_preflight.py`, `run_tinker_sparse_opd_smoke.py`, `build_tinker_teacher_traces.py`)
+already targeted K2.6 (bumped after K2.6's 2026-04-20 release; first used as the v2.7 control), but several
+still-active scripts silently defaulted to the older K2.5. Anyone running them without an explicit `--model`
+got the wrong base. Flipped the `--model` default to K2.6 in:
+
+- `scripts/run_tinker_dpo_smoke.py`
+- `scripts/run_robustness_two_phase.py`
+- `scripts/run_rl_pilot.py`
+- `scripts/run_robustness_suite.py`
+
+`src/pearl/phase8_readiness.py` intentionally retains both K2.5 and K2.6 pricing entries for historical cost
+lookups. README example commands were also updated to K2.6.
+
+**3. ESM3-open earmarked as the automated local structure gate.** Recorded the intent to use ESM3-open (or
+ESMFold) as an automated local fold/structure gate between the cheap proxies and ColabFold, replacing the
+current manual per-candidate ColabFold step (today fewer than ~40 reach that stage and are hand-folded) and
+supplying real 3D catalytic-triad geometry in place of the 1D sequence-spacing heuristic. License caveat:
+ESM3-open is non-commercial (Cambrian); ESMFold is the permissive lighter alternative.
+
 ## June 11, 2026: W&B DPO Review and Runner Telemetry Fix
 
 The W&B dashboard for `phase8-bio-dpo-pilot-3k-final`, together with the local batch metrics in

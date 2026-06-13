@@ -17,7 +17,7 @@ from pearl.family import (
     evaluate_candidate,
     levenshtein
 )
-from pearl.esm_proxy import get_esm2_plddt_scores
+from pearl.esm_proxy import get_esm2_plls
 
 TRUE_UNICORN = "MYKSLVFIALLLSFTVLSAQASPLQSVQKLDGVVKAVVVDGVEGHIFAPQSFVMNLLEHDSVVKQGDVVKVEMPQTGLTFSDVANVYDSLKLGVHRVQVVGDHSLFANVSNFSYVGVQDSKAILSVQGASVSSVGSITVVAQSFRGVKANQLPVFVDRLDSASPFLSHYFPDPSVLDQELVKGVSVGMTMHAELSPQERSAMFAAIRDEVGDSKVDQVFVVKNEQFESVPEKLDVTVPVASQDHVWSMTFAPQSFVMNLLEHDSVVKQGDVVKVEMPQTGLTFSDVANVYDSLKLGVHRVQVV"
 AMINO_ACIDS = "ACDEFGHIKLMNPQRSTVWY"
@@ -106,7 +106,7 @@ def main():
             
         # Score ESM
         os.environ["ESM2_DEVICE"] = args.device
-        esm_scores = get_esm2_plddt_scores(clean_variants)
+        esm_scores = get_esm2_plls(clean_variants)
         
         scored_candidates = []
         for seq, esm in zip(clean_variants, esm_scores):

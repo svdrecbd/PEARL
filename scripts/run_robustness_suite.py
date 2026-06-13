@@ -122,7 +122,7 @@ def main() -> None:
                         prompt_count=prompt_count,
                         candidate_sample_count=args.candidate_sample_count,
                         second_stage_top_k=args.second_stage_top_k,
-                        plddt_gate_threshold=args.plddt_gate_threshold,
+                        esm_pll_gate_percentile=args.esm_pll_gate_percentile,
                         second_stage_esm_weight=args.second_stage_esm_weight,
                         second_stage_motif_weight=args.second_stage_motif_weight,
                         second_stage_geometry_weight=args.second_stage_geometry_weight,
@@ -163,7 +163,7 @@ def main() -> None:
         "baseline_summary_path": str(baseline_summary_path) if baseline_summary_path else None,
         "candidate_sample_count": args.candidate_sample_count,
         "second_stage_top_k": args.second_stage_top_k,
-        "plddt_gate_threshold": args.plddt_gate_threshold,
+        "esm_pll_gate_percentile": args.esm_pll_gate_percentile,
         "second_stage_esm_weight": args.second_stage_esm_weight,
         "second_stage_motif_weight": args.second_stage_motif_weight,
         "second_stage_geometry_weight": args.second_stage_geometry_weight,
@@ -205,7 +205,7 @@ def main() -> None:
                 "variant": args.variant,
                 "candidate_sample_count": args.candidate_sample_count,
                 "second_stage_top_k": args.second_stage_top_k,
-                "plddt_gate_threshold": args.plddt_gate_threshold,
+                "esm_pll_gate_percentile": args.esm_pll_gate_percentile,
                 "esm_weight": args.second_stage_esm_weight,
                 "motif_weight": args.second_stage_motif_weight,
                 "geometry_weight": args.second_stage_geometry_weight,
@@ -249,7 +249,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run and summarize a frozen robustness benchmark suite")
     parser.add_argument("--name", required=True)
     parser.add_argument("--init-state-path", required=True)
-    parser.add_argument("--model", default="moonshotai/Kimi-K2.5")
+    parser.add_argument("--model", default="moonshotai/Kimi-K2.6")
     parser.add_argument(
         "--variant",
         choices=("baseline", "motif_prior_v1", "motif_prior_soft_v2"),
@@ -270,7 +270,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seeds", default="7,19,31")
     parser.add_argument("--candidate-sample-count", type=int, default=128)
     parser.add_argument("--second-stage-top-k", type=int, default=16)
-    parser.add_argument("--plddt-gate-threshold", type=float, default=85.0)
+    parser.add_argument("--esm-pll-gate-percentile", type=float, default=0.05)
     parser.add_argument(
         "--second-stage-esm-weight",
         type=float,
@@ -620,7 +620,7 @@ def execute_run_ablation(
     prompt_count: int,
     candidate_sample_count: int,
     second_stage_top_k: int,
-    plddt_gate_threshold: float,
+    esm_pll_gate_percentile: float,
     second_stage_esm_weight: float,
     second_stage_motif_weight: float,
     second_stage_geometry_weight: float,
@@ -652,8 +652,8 @@ def execute_run_ablation(
         str(candidate_sample_count),
         "--second-stage-top-k",
         str(second_stage_top_k),
-        "--plddt-gate-threshold",
-        str(plddt_gate_threshold),
+        "--esm-pll-gate-percentile",
+        str(esm_pll_gate_percentile),
         "--second-stage-esm-weight",
         str(second_stage_esm_weight),
         "--second-stage-motif-weight",

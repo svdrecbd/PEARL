@@ -37,7 +37,7 @@ The supported workflows are documented in:
 - [science.md](science.md)
 - [manifold_construction.md](manifold_construction.md)
 
-For onboarding, treat these docs as authoritative before reading the white paper or the long-form labnotes. The white paper is useful background, but it is not the current-state operator document.
+For onboarding, treat these docs as authoritative before reading the long-form labnotes. The white paper is the comprehensive technical overview of the project; it is not the current-state operator document.
 
 These docs describe the small set of workflows the repo should actively support:
 

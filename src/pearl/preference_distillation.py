@@ -77,6 +77,7 @@ OBJECTIVE_SCORE_KEYS: dict[str, tuple[str, ...]] = {
     "thermodynamic_stability": (
         "thermodynamic_stability_score",
         "stability_score",
+        "esm_pll",
         "esm_score",
         "raw_esm_score",
         "esm_plddt",
@@ -367,7 +368,7 @@ def flatten_metric_record(
     row.setdefault("length", first_present(record, ("length",), default=quality.get("length")))
     row.setdefault("motif_count", first_present(record, ("motif_count",), default=quality.get("motif_count")))
     row.setdefault("fold_confidence", first_present(record, ("mean_plddt", "fold_confidence"), default=None))
-    row.setdefault("raw_esm_score", first_present(record, ("raw_esm_score",), default=reward_components.get("esm_reward")))
+    row.setdefault("esm_pll", first_present(record, ("esm_pll", "raw_esm_score"), default=reward_components.get("esm_reward")))
     row.setdefault(
         "physical_score",
         first_present(

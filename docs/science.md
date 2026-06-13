@@ -72,6 +72,52 @@ This direction is stronger than another SFT replay because it directly targets t
 
 The practical conclusion: proceed, but treat solo DPO as unresolved and promising. The next paid work should either characterize DPO-only at higher resolution or run a matched sparse-OPD comparison, depending on budget.
 
+## Scoring: ESM PLL De-saturation (June 13, 2026, BREAKING)
+
+The local ESM scorer was reworked for scientific integrity. The old 0-100 "pseudo-pLDDT"
+was both misnamed (a masked-LM pseudo-log-likelihood is sequence plausibility, not
+structural confidence) and saturated (natural/family-typical sequences all scored 99+, so
+it could not rank). It was removed, not patched.
+
+- The proxy now returns the **raw mean per-residue pseudo-log-likelihood (PLL)**.
+- A natural-reference calibration (`scripts/calibrate_esm_pll.py` ->
+  `configs/esm_pll_calibration.<model>.json`; `esm2_t6_8M`, n=800: mean PLL `-2.44`, p05
+  `-2.75`, median `-2.45`, p95 `-2.17`) maps a candidate PLL onto the natural distribution.
+- **Selection, stage-2 ranking, and the trainability/bridge/RL gates now use the calibrated
+  natural percentile in [0, 1]**, default gate = 5th percentile of natural
+  (`--esm-pll-gate-percentile 0.05`). The percentile spans the full range (no saturation).
+- The name pLDDT is now reserved for real structural confidence only (ColabFold; the
+  existing ESMFold `esm_fold_plddt` path).
+- **Breaking:** the gate flag/env/report field were renamed with no back-compat shim, so
+  old `report.json` / `candidate_audit.json` no longer resume or finalize. Intentional
+  clean break. See [LABNOTES](../notes/LABNOTES.md) for the full change list.
+
+This de-saturation only fixes the proxy's ranking power; PLL is still sequence plausibility,
+not fold. The structural gate (ESMFold/ESM3) that replaces the 1D catalytic-geometry
+heuristic and grounds the reward remains the next build.
+
+## Model And Platform Constraints (June 2026)
+
+### Generator base model is a platform/cost constraint, not a scientific choice
+
+The generation/training path runs on Tinker, and the sequence generator is Kimi — the current Phase 8 path targets `moonshotai/Kimi-K2.6` (bumped from K2.5 after K2.6's 2026-04-20 release; K2.6 first appears as the v2.7 control above), a general-purpose text LLM prompted to emit amino-acid sequences. **This is a compatibility and cost constraint, not a deliberate scientific decision.** (Note: several older scripts still default to `Kimi-K2.5`; see the standardization flag in the labnotes/TODO.)
+
+- The project started on free Tinker credits. Within that budget, using anything other than a Tinker-hostable model was simply not on the table. Protein-native generative models (ESM3, ProGen2, ZymCTRL) are not hostable/fine-tunable on Tinker, so they were never a real option for the *generator* — the choice of Kimi follows from "what Tinker can host on free credits," not from a judgement that a text LLM is the right protein generator.
+- The known scientific cost: a text LLM has no protein/structure prior. It must learn the family manifold from scratch via SFT/preference learning on a small dataset, which is consistent with the observed "mirage wall" (local motif imitation without durable global fold). A protein-native model would start on the manifold instead of having to discover it.
+- For what it is worth, the Kimi K2 line is a strong instruct model and has been good enough to build and exercise the entire mining/SFT/DPO/eval loop. The constraint is about the *protein prior*, not raw model quality.
+
+**Decision on record:** as soon as a protein-native generative model becomes available on our training stack — or the platform/budget constraint lifts (we can fine-tune off-Tinker, or run an API/local protein LM as the generator) — we should **reopen the generator model question as a first-class decision** rather than keeping Kimi by default. Candidates to evaluate at that point: ESM3 (joint sequence + structure + function prior), ProGen2, ZymCTRL (EC-conditioned enzyme generation). Note ESM3-open carries a non-commercial (Cambrian) license and its strongest tiers are API-only.
+
+### ESM3-open as an automated local structure gate before ColabFold
+
+Today every candidate that survives the cheap screens (currently fewer than ~40 reaching the final stage) is **folded manually in ColabFold** — a real bottleneck and the reason structural validation is run on tiny slices. The intended role for ESM3-open (1.4B, runs locally on the M4 Pro) is an **automated local structure gate** that sits between the cheap sequence proxies and the expensive/manual ColabFold step: fold/score every survivor automatically, and only spend manual ColabFold on the ESM3 survivors (or drop manual folding entirely for screening). This removes the per-candidate manual effort that currently caps how many candidates ever get a structural check.
+
+Concretely, ESM3-open predicts/generates structure directly, giving a **fast, in-loop structure signal** — including 3D coordinates for measuring the *real* catalytic-triad geometry instead of the current 1D sequence-spacing heuristic. ColabFold is then reserved for final high-accuracy validation rather than every screen. ESMFold is the lighter, permissively-licensed alternative for the same gating role. Either closes the proxy-versus-truth gap that the sequence-only ESM2 proxy and the sequence-distance "geometry" check currently leave open.
+
+Caveats: ESM3-open is non-commercial (Cambrian license); ESMFold's folding trunk is memory-heavier and can be MPS-finicky on Apple silicon.
+
+**Status (June 13, 2026): built.** `src/pearl/structure_gate.py` + `scripts/run_structure_gate.py` implement this gate with pluggable backends (`esmfold` local, `esmatlas` API; ESM3 drops in behind the same protocol once installed). It folds a candidate, gates on mean pLDDT (default 70), and scores the **real 3D catalytic-triad H-bonds** (Ser OG···His N, His N···Asp OD, ceiling 3.5 A) selected by spatial proximity — replacing the 1D sequence-spacing heuristic and the legacy CA-only check. Validated on the natural cutinase reference (real ESMAtlas fold): mean pLDDT 94.23, triad Ser170-Asp216-His248, Ser-His 2.94 A, His-Asp 2.41 A, gate pass. Remaining: wire it into shortlist finalization; the 1D heuristic stays only as a cheap pre-filter.
+
 ## Historical State (April 23, 2026)
 
 The project is at a strategy reset.

@@ -145,7 +145,7 @@ def finalize_ablation_dir(
     summary_payload["prompt_count"] = int(metadata["prompt_count"])
     summary_payload["candidate_sample_count"] = candidate_sample_count
     summary_payload["second_stage_top_k"] = top_k
-    summary_payload["plddt_gate_threshold"] = float(candidate_audit_payload.get("plddt_gate_threshold") or 85.0)
+    summary_payload["esm_pll_gate_percentile"] = float(candidate_audit_payload.get("esm_pll_gate_percentile") or 0.05)
     summary_payload["second_stage_esm_weight"] = float(candidate_audit_payload.get("second_stage_esm_weight") or 0.0)
     summary_payload["second_stage_motif_weight"] = float(candidate_audit_payload.get("second_stage_motif_weight") or 0.0)
     summary_payload["second_stage_geometry_weight"] = float(
@@ -209,7 +209,7 @@ def score_sequences(*, stage2_sequences: list[str], local_proxy: Any) -> dict[st
     unique_sequences = list(dict.fromkeys(sequence for sequence in stage2_sequences if sequence))
     if not unique_sequences:
         return {}
-    scores = local_proxy.get_esm2_plddt_scores(unique_sequences)
+    scores = local_proxy.get_esm2_plls(unique_sequences)
     return {sequence: float(score) for sequence, score in zip(unique_sequences, scores)}
 
 
@@ -238,7 +238,7 @@ def recompute_record(
         candidate["in_stage2_pool"] = False
         candidate["stage2_rank"] = None
         candidate["stage2_score"] = 0.0
-        candidate["raw_esm_score"] = 0.0
+        candidate["esm_pll"] = 0.0
         updated_candidates.append(candidate)
 
     for candidate in updated_candidates:
@@ -246,12 +246,12 @@ def recompute_record(
         if stage2_candidate is None:
             continue
         sequence = str(stage2_candidate.get("extracted_sequence") or "")
-        raw_esm_score = float(score_map.get(sequence, 0.0))
+        esm_pll = float(score_map.get(sequence, 0.0))
         candidate["in_stage2_pool"] = True
-        candidate["raw_esm_score"] = raw_esm_score
+        candidate["esm_pll"] = esm_pll
         candidate["stage2_score"] = float(
             tinker_main.compute_second_stage_score(
-                raw_esm_score=raw_esm_score,
+                esm_pll=esm_pll,
                 motif_strength=float(candidate["sequence_quality"]["motif_strength"]),
                 geometry_score=float(candidate["sequence_quality"]["geometry_score"]),
                 template_penalty=float(candidate["sequence_quality"]["template_penalty"]),
@@ -275,7 +275,8 @@ def recompute_record(
                 candidate
                 for candidate in rescored_stage2
                 if candidate["sequence_quality"]["is_trainable"]
-                and float(candidate["raw_esm_score"]) >= float(tinker_main.PLDDT_GATE_THRESHOLD)
+                and (tinker_main.pll_to_natural_percentile(float(candidate["esm_pll"])) or 0.0)
+                >= tinker_main.ESM_PLL_GATE_PERCENTILE
             ),
             None,
         )
@@ -334,7 +335,7 @@ def build_step_record(
 ) -> dict[str, Any]:
     quality = selected["sequence_quality"]
     family_evaluation = selected["family_evaluation"]
-    raw_esm_score = float(selected["raw_esm_score"])
+    esm_pll = float(selected["esm_pll"])
     family_reward_info = (
         petase_family.compute_family_reward(family_evaluation)
         if family_evaluation is not None
@@ -342,7 +343,7 @@ def build_step_record(
     )
     reward_info = tinker_main.compute_training_reward(
         step=step,
-        raw_esm_score=raw_esm_score,
+        esm_pll=esm_pll,
         quality=quality,
         family_evaluation=family_evaluation,
     )
@@ -361,7 +362,7 @@ def build_step_record(
         "selection_metadata": selection_metadata,
         "reward_components": {
             "reward_mode": reward_info["reward_mode"],
-            "esm_reward": raw_esm_score,
+            "esm_reward": esm_pll,
             "esm_gate_pass": reward_info["esm_gate_pass"],
             "functional_bridge_passes": reward_info["functional_bridge_passes"],
             "family_faithful_bridge_passes": reward_info["family_faithful_bridge_passes"],
@@ -392,11 +393,11 @@ def build_rescored_candidate_audit_entry(*, candidate: dict[str, Any], is_select
     quality = candidate["sequence_quality"]
     family_evaluation = candidate["family_evaluation"]
     catalytic_geometry = family_evaluation["catalytic_geometry"] if family_evaluation is not None else None
-    raw_esm_score = float(candidate["raw_esm_score"])
+    esm_pll = float(candidate["esm_pll"])
     bridge_flags = tinker_main.compute_bridge_flags(
         quality=quality,
         family_evaluation=family_evaluation,
-        raw_esm_score=raw_esm_score,
+        esm_pll=esm_pll,
     )
     return {
         "selected": is_selected,
@@ -430,7 +431,7 @@ def build_rescored_candidate_audit_entry(*, candidate: dict[str, Any], is_select
         "ser_asp_strength": float(quality["ser_asp_strength"]),
         "ser_his_strength": float(quality["ser_his_strength"]),
         "geometry_score": float(quality["geometry_score"]),
-        "raw_esm_score": raw_esm_score,
+        "esm_pll": esm_pll,
         "sequence_quality": quality,
         "family_evaluation": family_evaluation,
         **bridge_flags,
@@ -508,7 +509,7 @@ def build_report_payload(
     payload["prompt_variant"] = str(metadata["variant"])
     payload["candidate_sample_count"] = int(candidate_audit_payload.get("candidate_sample_count") or metadata["candidate_sample_count"])
     payload["second_stage_top_k"] = int(candidate_audit_payload.get("second_stage_top_k") or 0)
-    payload["plddt_gate_threshold"] = float(candidate_audit_payload.get("plddt_gate_threshold") or 0.0)
+    payload["esm_pll_gate_percentile"] = float(candidate_audit_payload.get("esm_pll_gate_percentile") or 0.0)
     payload["second_stage_esm_weight"] = float(candidate_audit_payload.get("second_stage_esm_weight") or 0.0)
     payload["second_stage_motif_weight"] = float(candidate_audit_payload.get("second_stage_motif_weight") or 0.0)
     payload["second_stage_geometry_weight"] = float(candidate_audit_payload.get("second_stage_geometry_weight") or 0.0)
@@ -536,7 +537,7 @@ def configure_runtime_env(
         candidate_audit_payload.get("second_stage_template_weight") or 0.0
     )
     os.environ["TINKER_SECOND_STAGE_TOP_K"] = str(candidate_audit_payload.get("second_stage_top_k") or 0)
-    os.environ["TINKER_PLDDT_GATE_THRESHOLD"] = str(candidate_audit_payload.get("plddt_gate_threshold") or 85.0)
+    os.environ["TINKER_ESM_PLL_GATE_PERCENTILE"] = str(candidate_audit_payload.get("esm_pll_gate_percentile") or 0.05)
     os.environ["PROMPT_VARIANT"] = str(metadata.get("variant") or "baseline")
     os.environ["TINKER_INIT_STATE_PATH"] = str(metadata.get("init_state_path") or "")
 

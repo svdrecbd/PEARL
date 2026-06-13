@@ -22,7 +22,7 @@ SHARDS_DIR="${SHARDS_DIR:?SHARDS_DIR must point to sequence shard JSONL files}"
 SHARD_GLOB="${SHARD_GLOB:-hpc_ready_A_shard_*.jsonl}"
 REFERENCE_RECORDS_PATH="${REFERENCE_RECORDS_PATH:-$ROOT/data/petase_family_expanded/petase_records.jsonl}"
 WAVE_NAME="${WAVE_NAME:-topoff-1m-prefilter-eval}"
-PLDDT_GATE_THRESHOLD="${PLDDT_GATE_THRESHOLD:-85.0}"
+ESM_PLL_GATE_PERCENTILE="${ESM_PLL_GATE_PERCENTILE:-0.05}"
 ESM2_DEVICE="${ESM2_DEVICE:-}"
 LINE_LIMIT="${LINE_LIMIT:-}"
 
@@ -112,7 +112,7 @@ CMD=(
   --output-dir "$JOB_OUTPUT_DIR"
   --reference-records-path "$REFERENCE_RECORDS_PATH"
   --name "$RUN_NAME"
-  --plddt-gate-threshold "$PLDDT_GATE_THRESHOLD"
+  --esm-pll-gate-percentile "$ESM_PLL_GATE_PERCENTILE"
 )
 if [[ -n "$LINE_LIMIT" ]]; then
   CMD+=(--limit "$LINE_LIMIT")

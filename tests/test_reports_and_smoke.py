@@ -29,7 +29,7 @@ def make_context() -> ReportContext:
         prompt_variant="motif_prior_soft_v2",
         candidate_sample_count=256,
         second_stage_top_k=8,
-        plddt_gate_threshold=85.0,
+        esm_pll_gate_percentile=0.05,
         second_stage_esm_weight=0.2,
         second_stage_motif_weight=0.2,
         second_stage_geometry_weight=0.6,

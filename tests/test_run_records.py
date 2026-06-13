@@ -43,7 +43,7 @@ def make_family_reward_info() -> dict[str, object]:
 class RunRecordsTests(unittest.TestCase):
     def test_build_reward_components_keeps_expected_fields(self) -> None:
         components = build_reward_components(
-            raw_esm_score=91.2,
+            esm_pll=91.2,
             reward_info=make_reward_info(),
             family_reward_info=make_family_reward_info(),
         )
@@ -70,7 +70,7 @@ class RunRecordsTests(unittest.TestCase):
             extracted_sequence="AAAA",
             reward=42.0,
             selection_metadata={"stage1_rank": 1},
-            raw_esm_score=90.0,
+            esm_pll=90.0,
             reward_info=make_reward_info(),
             family_reward_info=make_family_reward_info(),
             quality={"is_trainable": True},

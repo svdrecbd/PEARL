@@ -91,7 +91,7 @@ def main() -> None:
             "CHECKPOINT_NAME": sanitize_name(args.name),
             "REPORT_PATH": str(report_path),
             "TINKER_SECOND_STAGE_TOP_K": str(args.second_stage_top_k),
-            "TINKER_PLDDT_GATE_THRESHOLD": str(args.plddt_gate_threshold),
+            "TINKER_ESM_PLL_GATE_PERCENTILE": str(args.esm_pll_gate_percentile),
             "TINKER_SECOND_STAGE_ESM_WEIGHT": str(args.second_stage_esm_weight),
             "TINKER_SECOND_STAGE_MOTIF_WEIGHT": str(args.second_stage_motif_weight),
             "TINKER_SECOND_STAGE_GEOMETRY_WEIGHT": str(args.second_stage_geometry_weight),
@@ -134,7 +134,7 @@ def main() -> None:
     summary["prompt_count"] = args.prompt_count
     summary["candidate_sample_count"] = args.candidate_sample_count
     summary["second_stage_top_k"] = args.second_stage_top_k
-    summary["plddt_gate_threshold"] = args.plddt_gate_threshold
+    summary["esm_pll_gate_percentile"] = args.esm_pll_gate_percentile
     summary["second_stage_esm_weight"] = args.second_stage_esm_weight
     summary["second_stage_motif_weight"] = args.second_stage_motif_weight
     summary["second_stage_geometry_weight"] = args.second_stage_geometry_weight
@@ -169,7 +169,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prompt-count", type=int, default=50)
     parser.add_argument("--candidate-sample-count", type=int, default=12)
     parser.add_argument("--second-stage-top-k", type=int, default=4)
-    parser.add_argument("--plddt-gate-threshold", type=float, default=85.0)
+    parser.add_argument("--esm-pll-gate-percentile", type=float, default=0.05)
     parser.add_argument(
         "--second-stage-esm-weight",
         type=float,
