@@ -1,5 +1,27 @@
 # Phase 8 DPO Pilot Readout
 
+> **Historical note:** This file records the original thin Phase 8 pilot and should not be used as
+> the current project status. The matched multi-model campaign, randomized controls, H100 structural
+> evaluation, and current limitations are tracked in the August entries of `notes/LABNOTES.md`.
+> The pilot remains useful for provenance and for understanding why the larger campaign was run.
+
+## August 2026 Methods Campaign
+
+The original 3k pilot remains historical evidence, not the methods dataset. Its source file reused three
+303-aa natural positives roughly 800 times each because the real Phase 7 fold failures were concentrated at
+that length. The methods build now separates training from the real-failure challenge:
+
+- `10,000` length-preserving synthetic artifact pairs across `2,628` natural positives
+- at most `8` pairs per natural positive
+- `8,997` training and `1,003` natural-record-grouped holdout pairs
+- zero chosen-sequence overlap between train and holdout
+- `2,434` real Phase 7 fold failures in a separate challenge set
+- 303-aa natural references excluded from training, leaving zero chosen-sequence overlap with the challenge
+
+The primary methods question is now whether controlled anti-artifact preference learning transfers to actual
+proxy-collapse failures and improves matched structural generation. The old mixed dataset is retained for
+provenance but should not be used for the paper's principal estimate.
+
 Date: May 30, 2026 local time.
 Updated: June 11, 2026 with W&B/local-metric review and DPO runner logging fix.
 

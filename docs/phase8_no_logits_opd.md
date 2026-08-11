@@ -1,5 +1,10 @@
 # Phase 8 No-Logits OPD Packet
 
+> **Prepared branch, not current status:** This packet remains a valid implementation reference for
+> sparse OPD. It predates the twelve-model randomized-control screen and must not be read as the
+> current evidence summary or next automatic paid step. See the August entries in
+> [../notes/LABNOTES.md](../notes/LABNOTES.md).
+
 This packet keeps Phase 8 moving while full-vocabulary logits access is pending.
 
 ## Decision

@@ -2,7 +2,10 @@
 
 ## Status Note (June 11, 2026)
 
-This report is historical. Its conclusion led into the current Phase 8 preference-learning path: DPO as the active baseline/control and sparse OPD/multi-teacher feedback as the prepared comparison branch. Current state lives in [science.md](science.md), [phase8_dpo_pilot_readout.md](phase8_dpo_pilot_readout.md), and [phase8_no_logits_opd.md](phase8_no_logits_opd.md).
+This report is historical. Its conclusion led into the Phase 8 preference-learning path: DPO as a
+baseline/control and sparse OPD/multi-teacher feedback as a prepared comparison branch. Current
+state lives in the August entries of [../notes/LABNOTES.md](../notes/LABNOTES.md); the older Phase 8
+documents preserve the intermediate reasoning.
 
 ## Executive Summary
 The PEARL SFT discovery campaign successfully identified a true clean bridge candidate (True Unicorn v1) and diagnosed why SFT alone cannot reliably expand its manifold. Future work should proceed through local library design or contrastive/RL training, not further positive-only SFT branches.

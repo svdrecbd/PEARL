@@ -1,5 +1,11 @@
 # Operations
 
+> **Operator notice, August 10, 2026:** Read the August entries in
+> [../notes/LABNOTES.md](../notes/LABNOTES.md) before launching or stopping paid work. Duplicate
+> Tinker processes share experiment names/output paths, one active dataset fails integrity checks,
+> and the Qwen3.6-27B control has a renderer-validation failure. The June operator rule below is
+> historical guidance, not the current launch queue.
+
 ## Environment
 
 Local/dev environment:

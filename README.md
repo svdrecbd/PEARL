@@ -6,12 +6,13 @@ This repository explores PETase-family sequence design through remote generation
 
 ## Start Here
 
-- Active workspace map after the April 28 cleanup: [`REPO_MAP.md`](REPO_MAP.md)
+- Active workspace map: [`REPO_MAP.md`](REPO_MAP.md)
 - Technical white paper: [`WHITEPAPER.pdf`](WHITEPAPER.pdf)
 - Repo structure and supported surface: [`docs/overview.md`](docs/overview.md)
 - Supported workflows: [`docs/workflows.md`](docs/workflows.md)
 - Operator notes: [`docs/operations.md`](docs/operations.md)
-- Current scientific status: [`docs/science.md`](docs/science.md)
+- Current scientific record: [`notes/LABNOTES.md`](notes/LABNOTES.md)
+- Historical June scientific status: [`docs/science.md`](docs/science.md)
 - Manifold-construction pivot: [`docs/manifold_construction.md`](docs/manifold_construction.md)
 - Phase 8 DPO pilot readout: [`docs/phase8_dpo_pilot_readout.md`](docs/phase8_dpo_pilot_readout.md)
 - Phase 8 no-logits OPD packet: [`docs/phase8_no_logits_opd.md`](docs/phase8_no_logits_opd.md)
@@ -20,13 +21,41 @@ This repository explores PETase-family sequence design through remote generation
 
 ## Current State
 
+August 10, 2026: the project has completed a twelve-model screen with matched reference,
+true-preference, and randomized-preference candidate arms evaluated through a common H100
+structural ladder. Full structural passage is nearly absent: direct panel counts are `1 / 758` for
+reference, `4 / 777` for true preference, and `4 / 767` for randomized preference. Inkling owns the
+nonzero intervention/control passages and is tied at `4 / 72` in both arms. Natural positives pass
+at `30 / 32` and hard negatives at `0 / 32`, so the gate is stringent but not degenerate. A reported
+`14 / 32` "LigandMPNN" baseline is invalid: its local generator performs random substitutions and
+does not invoke LigandMPNN. Do not cite it pending a real, versioned baseline run.
+
+The current MirageBench v0.1 statistics, figures, and release manifest are provisional. The audit
+found a mixed fourteen-entry cohort, a missing Qwen3.6-35B randomized path alias, candidate-level
+resampling mislabeled as hierarchical inference, and figure code capable of synthesizing missing
+data. Do not cite the current pooled estimate or manifest until the repair contract recorded in the
+August entries of `notes/LABNOTES.md` is complete.
+
+Paid follow-up training was active at the audit checkpoint, with accidental duplicate processes
+sharing experiment names and output paths. Inspect provider state and reconcile one canonical run
+per contract before launching or stopping paid work. The Qwen3.6-27B controlled launch failed
+renderer validation before training. The active Qwen3.5-4B small/on-policy dataset also fails the
+preference-data integrity contract (length matching, chosen reuse, and provenance) and cannot support
+the intended update-exposure/data-diversity comparison.
+
+The dated sections below are retained as historical context; they are not the current status.
+
 June 13, 2026 scoring change (BREAKING): the local ESM scorer no longer emits a 0-100 "pseudo-pLDDT" (it was misnamed and saturated). It now returns the raw ESM-2 mean per-residue pseudo-log-likelihood (PLL), and selection/gates use the calibrated natural-reference percentile (`scripts/calibrate_esm_pll.py` -> `configs/esm_pll_calibration.<model>.json`). The gate flag is now `--esm-pll-gate-percentile` (default `0.05`); the report field `raw_esm_score` is now `esm_pll` (+ `esm_pll_natural_percentile`). No back-compat shim: old reports/audits will not resume. `pLDDT` now refers only to real structural confidence (ColabFold/ESMFold). See [`docs/science.md`](docs/science.md#scoring-esm-pll-de-saturation-june-13-2026-breaking) and [`notes/LABNOTES.md`](notes/LABNOTES.md).
 
 June 13, 2026 platform note: the Kimi generator (current Phase 8 path targets `moonshotai/Kimi-K2.6`, bumped from K2.5 after K2.6's 2026-04-20 release) is a Tinker compatibility/cost constraint (the project ran on free Tinker credits, and protein-native models are not Tinker-hostable), **not a deliberate scientific choice**. A general text LLM has no protein/structure prior, which is consistent with the observed mirage wall. As soon as a protein-native generator (ESM3/ProGen2/ZymCTRL) is hostable on our stack or the constraint lifts, the generator model question should be reopened as a first-class decision. ESM3-open can also fold locally and is the intended automated structure gate before the current manual ColabFold step. The Kimi K2 line is a strong model on its own merits; the gap is the missing protein prior, not model quality. (Several older scripts still default to `Kimi-K2.5`; standardizing those defaults is pending.) See [`docs/science.md`](docs/science.md#model-and-platform-constraints-june-2026).
 
 June 11, 2026 Phase 8 update: the Tinker custom-loss DPO path has now run beyond smoke scale. A 3k-pair natural-positive DPO pilot completed, W&B/local batch metrics show a strong training-distribution move, and the DPO runner now preserves local batch reports alongside W&B logging. First-100-batch mean DPO loss was `0.6775` versus last-100 `0.3655`; first-100 mean reward margin was `0.0419` versus last-100 `2.7476`; positive-min-margin batches rose from `6%` to `87%`. That strengthens DPO as a learned preference baseline.
 
-The biological readout is still unresolved. The only completed post-DPO evaluation slice remains `p12`, temperature `0.8`, seed `7`: local proxy movement, `0` functional or family-faithful bridge hits, and a five-candidate folded subset with low pLDDT (`25.61-36.27`) and `0 / 5` CA-triad passes. Treat that as an underpowered warning, not a falsification of DPO-only. DPO remains a live baseline/control that needs higher-resolution, preferably shuffled or held-out, evaluation before its failure modes or yield can be estimated.
+At that June checkpoint, the biological readout was unresolved. The only completed post-DPO
+evaluation slice was `p12`, temperature `0.8`, seed `7`: local proxy movement, `0` functional or
+family-faithful bridge hits, and a five-candidate folded subset with low pLDDT (`25.61-36.27`) and
+`0 / 5` CA-triad passes. That was an underpowered warning, not a falsification of DPO-only; the
+larger August campaign was run to replace that uncertainty.
 
 June 2026 heat check: the project has enough working components to continue the preference-learning path, but not enough evidence to claim the protein-design thesis is solved. The strongest direction is to keep characterizing DPO while preparing sparse OPD/multi-teacher feedback as the comparison branch: natural PETase/cutinase records as positives, generated/fold-failed artifacts and new low-confidence generated candidates as hard negatives, then compact post-train generation and structural validation before any larger library expansion.
 
@@ -110,9 +139,9 @@ pip install -r requirements.txt
 Pinned local/dev requirements are in [`requirements.txt`](requirements.txt). The local baseline
 uses Python 3.13 because the current Tinker SDK requires Python >=3.11:
 
-- `tinker==0.21.0`
+- `tinker==0.25.0`
 - `torch==2.12.0`
-- `transformers==5.8.1`
+- `transformers==5.5.4`
 - `tiktoken==0.13.0`
 - `numpy==2.4.6`
 - `safetensors==0.7.0`

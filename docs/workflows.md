@@ -1,5 +1,9 @@
 # Workflows
 
+> **Current workflow entrypoint:** The detailed workflows below remain useful, but the active
+> campaign sequence and paid-run hazards are now recorded in the August entries of
+> [../notes/LABNOTES.md](../notes/LABNOTES.md).
+
 This repo currently supports a small set of reusable workflows. If a task does not fit one of these, it is probably campaign history rather than supported surface.
 
 ## 1. Mine

@@ -1,5 +1,9 @@
 # Overview
 
+> **Current status moved:** The June Phase 8 stance below is historical context. As of August 10,
+> the twelve-model, three-arm structural screen is complete and analysis repair is the immediate
+> priority. Start with the August entries in [../notes/LABNOTES.md](../notes/LABNOTES.md).
+
 PEARL is a research codebase for PETase-family sequence design. The repo currently contains three layers that need to stay conceptually separate:
 
 1. The reusable engine:
@@ -37,7 +41,9 @@ The supported workflows are documented in:
 - [science.md](science.md)
 - [manifold_construction.md](manifold_construction.md)
 
-For onboarding, treat these docs as authoritative before reading the long-form labnotes. The white paper is the comprehensive technical overview of the project; it is not the current-state operator document.
+For historical workflow detail, use these docs before reading the long-form labnotes. The August
+labnotes contain the current public scientific state. The white paper is the comprehensive technical
+overview; it is not the current-state operator document.
 
 These docs describe the small set of workflows the repo should actively support:
 

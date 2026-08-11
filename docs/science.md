@@ -1,5 +1,10 @@
 # Science Status
 
+> **Historical status:** This document preserves the June 2026 scientific state. The thin-slice
+> uncertainty described below has since been replaced by matched Kimi/Nemotron campaigns and a
+> twelve-model three-arm H100 screen. Current evidence and known analysis defects are in
+> the August entries in [../notes/LABNOTES.md](../notes/LABNOTES.md).
+
 ## Strategy Heat Check (June 2026)
 
 The project is no longer short on individual components. The repo has working sampling/eval harnesses, strict sequence validators, ESM proxy scoring, mined historical failures, Phase 7 structural evidence, and a hardened Phase 8 DPO dataset. The gap is that these pieces are still bricks, not a finished house: we need a coherent training-and-validation loop that teaches the model what physical protein realism means instead of repeatedly asking SFT to imitate narrow positive pockets.
