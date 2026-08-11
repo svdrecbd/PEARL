@@ -154,7 +154,9 @@ Do not delegate further. Do not broaden scope. Escalate instead of improvising.
 PEARL is testing a narrow scaling-paradox claim: under a fixed rank-32 adapter and optimizer-update
 budget, preference adaptation may show capacity-dependent inertia across Qwen3.5-4B, Qwen3.5-9B,
 and Qwen3.6-27B. True-preference training is compared with a 50% shuffled-label exposure control at
-seeds 17, 29, and 43. The confirmatory core contains 18 independent training cells.
+seeds 17, 29, and 43. The confirmatory core contains 18 independent training cells. A separately
+versioned prospective replication adds seeds 362034, 257621, and 520620 only after the original core
+is terminal-valid; replication cells must never be substituted into or silently pooled with v1.
 
 Canonical sources, in priority order:
 
@@ -167,6 +169,12 @@ Canonical sources, in priority order:
    endpoint contract.
 6. GitHub Actions artifacts and provider metadata — live/terminal operational evidence.
 
+Replication work additionally requires, in priority order:
+
+1. `docs/scaling_paradox_v1_replication_protocol.md` — cohort separation, seeds, analysis, and gates.
+2. `configs/experiments/scaling_paradox_v1_replication.json` — exact replicated matrix.
+3. `.github/workflows/scaling-paradox-v1-replication.yml` — its only paid coordinator.
+
 Do not use the untracked `HANDOFF.md`, `PROJECT_LUMINOSITY.md`, `infra/`, old Concord scripts, old
 California Synthetic scripts, or old H100 scripts as PEARL authority. They are quarantine material.
 Do not stage, move, delete, or import them.
@@ -174,6 +182,7 @@ Do not stage, move, delete, or import them.
 Frozen identities for scaling-paradox v1:
 
 - launch-plan SHA: `f63f3bd2f9f0654c819f3f5a806145847c9b899ae16859d870c7a3b320d43226`
+- replication launch-plan SHA: `ac90ed77143986eeaec127983df8306c7ced37cd7aed38b87fdc2cb6e7c66b5d`
 - dataset manifest SHA: `1f410d4346b354b789408729c2c7cfc1f0bdef3b9580716171d86593bd9e9a22`
 - portable data archive SHA: `ffad79ec8e104bf06979882e186290ea4d94b87531e48b111e954b6c09e8e962`
 - structural prompt-panel SHA: `551ccd6e65db9eac2ee6e019ebe4f3744fc46912461ed4b974a09edef144bab9`
@@ -275,6 +284,46 @@ documented `resume_run_id`; never create a replacement experimental unit.
 Do not launch `data_exposure` or `adapter_rescue` in parallel with the core merely because budget is
 available. Those stages answer conditional questions. Adapter rescue is permitted only if the frozen
 core analysis reproduces capacity-dependent inertia.
+
+## Prospective replication execution policy
+
+The replication is a separate 18-cell campaign, not an extension of an active v1 wave. Its exact
+seeds are 362034, 257621, and 520620; its estimated Tinker ceiling is $416.83. It remains blocked
+until all 18 original v1 cells are terminal-valid and audited. Do not inspect an interim v1 effect to
+change its seeds, matrix, analysis, or decision to execute.
+
+Regenerate its plan without spending:
+
+```bash
+.venv/bin/python scripts/launch_scaling_paradox_v1.py \
+  --config configs/experiments/scaling_paradox_v1_replication.json \
+  --stage core \
+  --plan-dir reports/scaling_paradox_v1_replication
+```
+
+The plan must contain exactly 18 unique keys and reproduce SHA
+`ac90ed77143986eeaec127983df8306c7ced37cd7aed38b87fdc2cb6e7c66b5d`. After the original-core gate,
+the dedicated replication workflow must first pass in `validate` mode for execution order 1. A
+primary may then authorize its paid sentinel. An Executor may dispatch only that exact authorized
+key; it cannot infer permission for the remaining wave.
+
+Paid mode additionally requires a reviewed
+`configs/experiments/scaling_paradox_v1_replication_gate.json`. Its absence is intentional while v1
+is active. Never fabricate, prefill, or weaken this receipt to make the workflow start.
+
+Replication waves are order 1 alone, orders 2–6, orders 7–12, and orders 13–18. Every earlier wave
+must be terminal-valid before the next. The six-cell concurrency cap counts active cells in both v1
+and replication, and the two campaigns may not overlap. Use:
+
+```bash
+gh workflow run scaling-paradox-v1-replication.yml --ref main \
+  -f mode=execute \
+  -f run_key=EXACT_REPLICATION_RUN_KEY \
+  -f launch_plan_sha=ac90ed77143986eeaec127983df8306c7ced37cd7aed38b87fdc2cb6e7c66b5d
+```
+
+Record the Actions run ID immediately. Resumes retain the same replication run key and artifact
+lineage. A replication cell cannot replace, repair, or count as a missing v1 cell.
 
 ## Structural execution policy
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 from argparse import Namespace
@@ -199,10 +200,69 @@ def test_remote_validation_exercises_provider_access_without_spending() -> None:
     assert "contract_shas, run_keys = module.provider_contracts()" in workflow
 
 
+def test_prospective_replication_is_separate_deterministic_and_frozen() -> None:
+    launcher = load_script("launch_scaling_paradox_v1.py")
+    manifest = json.loads(
+        (ROOT / "data" / "phase8_dpo" / "scaling_paradox_v1" / "dataset_manifest.json").read_text()
+    )
+    original = json.loads(
+        (ROOT / "configs" / "experiments" / "scaling_paradox_v1.json").read_text()
+    )
+    replication = json.loads(
+        (ROOT / "configs" / "experiments" / "scaling_paradox_v1_replication.json").read_text()
+    )
+
+    namespace = replication["training_seed_derivation"]["namespace"]
+    derived = [
+        int.from_bytes(
+            hashlib.sha256(f"{namespace}/training-seed/{index}".encode()).digest()[:4], "big"
+        )
+        % 1_000_000
+        for index in (1, 2, 3)
+    ]
+    assert derived == [362034, 257621, 520620]
+    assert replication["training_seeds"] == derived
+    assert set(derived).isdisjoint(original["training_seeds"])
+    assert original["training_seeds"] == [17, 29, 43]
+
+    original_plan = launcher.build_plan(original, manifest, "core")
+    replication_plan = launcher.build_plan(replication, manifest, "core")
+    assert original_plan["launch_plan_contract_sha"] == (
+        "f63f3bd2f9f0654c819f3f5a806145847c9b899ae16859d870c7a3b320d43226"
+    )
+    assert replication_plan["launch_plan_contract_sha"] == (
+        "ac90ed77143986eeaec127983df8306c7ced37cd7aed38b87fdc2cb6e7c66b5d"
+    )
+    assert replication_plan["run_count"] == 18
+    assert replication_plan["estimated_stage_cost_usd"] == 416.83
+    assert len({run["run_key"] for run in replication_plan["runs"]}) == 18
+    assert len({run["run_contract_sha"] for run in replication_plan["runs"]}) == 18
+    assert {run["run_key"] for run in original_plan["runs"]}.isdisjoint(
+        run["run_key"] for run in replication_plan["runs"]
+    )
+    assert {run["run_contract_sha"] for run in original_plan["runs"]}.isdisjoint(
+        run["run_contract_sha"] for run in replication_plan["runs"]
+    )
+
+
+def test_replication_workflow_is_dedicated_and_no_spend_validatable() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "scaling-paradox-v1-replication.yml").read_text()
+    assert "configs/experiments/scaling_paradox_v1_replication.json" in workflow
+    assert "reports/scaling_paradox_v1_replication" in workflow
+    assert "scaling-paradox-v1-replication-${{ inputs.run_key }}" in workflow
+    assert "Verify Tinker provider access without spending" in workflow
+    assert "configs/experiments/scaling_paradox_v1_replication_gate.json" in workflow
+    assert "reviewed v1 core gate receipt is absent" in workflow
+    assert "if: inputs.mode == 'validate'" in workflow
+    assert '"paid_execution": False' in workflow
+    assert "--confirm-contract-sha \"${{ inputs.launch_plan_sha }}\"" in workflow
+
+
 def test_subagent_runbook_is_bound_to_frozen_contract_and_contamination_rules() -> None:
     root_rules = (ROOT / "AGENTS.md").read_text()
     runbook = (ROOT / "docs" / "SUBAGENT_RUNBOOK.md").read_text()
     assert "docs/SUBAGENT_RUNBOOK.md" in root_rules
+    assert "docs/scaling_paradox_v1_replication_protocol.md" in root_rules
     assert "The primary agent owns engineering and research judgment" in root_rules
     assert "A subagent is an executor, not a decision-maker" in root_rules
     assert "A subagent must never delegate or spawn another agent" in root_rules
@@ -215,6 +275,7 @@ def test_subagent_runbook_is_bound_to_frozen_contract_and_contamination_rules() 
     assert "`gh run watch` is harmless; cancelling the GitHub workflow is not" in runbook
     assert '"Useful" is scope expansion, not low-stakes autonomy' in runbook
     assert "f63f3bd2f9f0654c819f3f5a806145847c9b899ae16859d870c7a3b320d43226" in runbook
+    assert "ac90ed77143986eeaec127983df8306c7ced37cd7aed38b87fdc2cb6e7c66b5d" in runbook
     assert "1f410d4346b354b789408729c2c7cfc1f0bdef3b9580716171d86593bd9e9a22" in runbook
     assert "at most six active core cells" in runbook
     assert "| A | 2–6 |" in runbook and "| B | 7–12 |" in runbook and "| C | 13–18 |" in runbook

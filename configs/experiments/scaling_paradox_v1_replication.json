@@ -1,0 +1,49 @@
+{
+  "campaign_id": "pearl-scaling-paradox-v1-replication",
+  "claim": "Prospective exact replication of the frozen scaling-paradox v1 fixed-rank core using three independently derived training seeds.",
+  "dataset_manifest": "data/phase8_dpo/scaling_paradox_v1/dataset_manifest.json",
+  "available_tinker_credit_usd": 416.83,
+  "budget_scope": "Dedicated maximum planning envelope for the 18-cell replication core; not a statement of live account balance.",
+  "training_seed_derivation": {
+    "namespace": "pearl-scaling-paradox-v1-replication",
+    "rule": "uint32_be(sha256(namespace + '/training-seed/' + index)[0:4]) modulo 1000000 for indices 1, 2, 3",
+    "indices": [1, 2, 3],
+    "seeds": [362034, 257621, 520620]
+  },
+  "training_seeds": [362034, 257621, 520620],
+  "common": {
+    "beta": 0.05,
+    "learning_rate": 5e-7,
+    "batch_pairs": 4,
+    "rank": 32,
+    "save_every_steps": 500,
+    "max_steps": 2250,
+    "renderer": "qwen3_5_disable_thinking"
+  },
+  "models": [
+    {"tag": "qwen3p5-4b", "model": "Qwen/Qwen3.5-4B"},
+    {"tag": "qwen3p5-9b", "model": "Qwen/Qwen3.5-9B"},
+    {"tag": "qwen3p6-27b", "model": "Qwen/Qwen3.6-27B"}
+  ],
+  "stages": {
+    "core": {
+      "description": "Prospective exact replication of the v1 true-versus-shuffled fixed-rank core.",
+      "execution_order_seed": 70422207,
+      "seeds": [362034, 257621, 520620],
+      "arms": ["true", "shuffled"],
+      "models": ["qwen3p5-4b", "qwen3p5-9b", "qwen3p6-27b"],
+      "dataset_by_arm": {
+        "true": "d10_train_true",
+        "shuffled": "d10_train_shuffled"
+      },
+      "max_steps": 2250
+    }
+  },
+  "preregistered_endpoints": {
+    "primary_optimization": "held-out per-residue DPO margin change from the matched reference policy",
+    "primary_biological": "held-out full structural-gate yield on the frozen v1 prompt and sample-seed panel",
+    "analysis_unit": "independent training seed, with prompts and candidates nested beneath seed and model",
+    "cohort_policy": "Report the original and replication cohorts separately before the prespecified six-seed combined analysis."
+  },
+  "stage_gate": "The replication may begin only after all 18 original v1 core cells are terminal-valid and the replication workflow passes a no-spend remote validation."
+}
