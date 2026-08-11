@@ -4,7 +4,8 @@ These rules apply to every agent working in this repository. A **primary agent**
 responsible to the user for the current project task. A **subagent** is any delegated, lower-cost, or
 context-limited agent working under a primary or supervisor.
 
-1. Read `docs/SUBAGENT_RUNBOOK.md` and `docs/scaling_paradox_v1_protocol.md` before acting.
+1. Read `docs/SUBAGENT_RUNBOOK.md` and `docs/scaling_paradox_v1_protocol.md` before acting. If the
+   prospective replication is in scope, also read `docs/scaling_paradox_v1_replication_protocol.md`.
 2. The primary agent owns engineering and research judgment within the user's authority. It may
    design, investigate, interpret, and make versioned decisions. It may not silently rewrite a frozen
    contract after data collection begins.
