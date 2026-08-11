@@ -208,6 +208,12 @@ def test_subagent_runbook_is_bound_to_frozen_contract_and_contamination_rules() 
     assert "A subagent must never delegate or spawn another agent" in root_rules
     assert "A subagent has no engineering or research decision authority" in runbook
     assert "If there is any doubt, the issue is not minor" in runbook
+    assert "## Low-stakes autonomy FAQ" in runbook
+    assert "read-only, or a locally reversible mechanical change" in runbook
+    assert "up to three bounded attempts" in runbook
+    assert "Stopping a local" in runbook
+    assert "`gh run watch` is harmless; cancelling the GitHub workflow is not" in runbook
+    assert '"Useful" is scope expansion, not low-stakes autonomy' in runbook
     assert "f63f3bd2f9f0654c819f3f5a806145847c9b899ae16859d870c7a3b320d43226" in runbook
     assert "1f410d4346b354b789408729c2c7cfc1f0bdef3b9580716171d86593bd9e9a22" in runbook
     assert "at most six active core cells" in runbook
