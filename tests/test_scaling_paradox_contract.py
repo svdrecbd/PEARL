@@ -192,6 +192,13 @@ def test_structural_image_embeds_immutable_generation_report() -> None:
     assert '"$context_root/Dockerfile.esmfold"' in builder
 
 
+def test_remote_validation_exercises_provider_access_without_spending() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "scaling-paradox-v1.yml").read_text()
+    assert "Verify Tinker provider access without spending" in workflow
+    assert '"paid_execution": False' in workflow
+    assert "contract_shas, run_keys = module.provider_contracts()" in workflow
+
+
 def test_core_launch_contracts_are_unique_across_arm_model_and_seed() -> None:
     launcher = load_script("launch_scaling_paradox_v1.py")
     config = {
