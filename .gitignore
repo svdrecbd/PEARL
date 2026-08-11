@@ -14,10 +14,33 @@ __pycache__/
 .env.*
 wandb/
 
+# Concord desktop/runtime build and local state
+concord/node_modules/
+concord/desktop/node_modules/
+concord/desktop/dist/
+concord/desktop/src-tauri/gen/
+concord/desktop/src-tauri/icons/android/
+concord/desktop/src-tauri/icons/ios/
+concord/desktop/src-tauri/icons/StoreLogo.png
+concord/desktop/src-tauri/icons/Square*Logo.png
+concord/desktop/src-tauri/icons/64x64.png
+concord/target/
+concord/.concord/
+concord/.concord-twin/
+
 
 # Local notes and scratch artifacts
 notes/FORLATERUSE.md
 .tinker_sampler_checkpoint_map.json
+WHITEPAPER_IMS.md
+.tmp_*/
+tmp/
+output/
+ims_out/
+.wrangler/
+*.inspect.ndjson
+california-synthetic-vc-deck/
+concord-public-deck/
 
 # Generated experiment outputs
 reports/*
