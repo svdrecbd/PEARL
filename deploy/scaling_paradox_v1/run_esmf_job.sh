@@ -20,6 +20,8 @@ campaign = json.load(open(sys.argv[1]))["contract"]["campaign_id"]
 configs = {
     "pearl-scaling-paradox-v1": "configs/experiments/scaling_paradox_structural_v1.json",
     "pearl-scaling-paradox-v1-replication": "configs/experiments/scaling_paradox_structural_v1_replication.json",
+    "pearl-frontier-adaptation-v2-original": "configs/experiments/frontier_adaptation_structural_v2_original.json",
+    "pearl-frontier-adaptation-v2-replication": "configs/experiments/frontier_adaptation_structural_v2_replication.json",
 }
 if campaign not in configs:
     raise SystemExit(f"unknown structural campaign: {campaign}")

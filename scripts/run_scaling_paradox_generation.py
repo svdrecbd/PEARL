@@ -124,7 +124,9 @@ def build_contract(args: argparse.Namespace, config: dict[str, Any], panel_path:
         raise ValueError("base evaluation requires checkpoint step 0 and no checkpoint path")
     if args.arm != "base" and (args.checkpoint_step == 0 or not args.checkpoint_path):
         raise ValueError("trained evaluation requires a nonzero checkpoint step and --checkpoint-path")
-    renderer = str(training_config["common"]["renderer"])
+    renderer = str(
+        model_rows[args.model].get("renderer") or training_config["common"]["renderer"]
+    )
     source_identity = source_training_identity(args)
     identity = {
         "campaign_id": config["campaign_id"],

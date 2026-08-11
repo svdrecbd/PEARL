@@ -13,6 +13,11 @@ For the active scaling-paradox campaign, `docs/SCALING_PARADOX_EXECUTOR_PACKET.m
 happy-path checklist. Its supervisor/receipt process supersedes the older direct-dispatch examples
 below. Direct paid worker dispatch is now mechanically rejected.
 
+For the contemporary frontier extension, `docs/frontier_adaptation_v2_protocol.md` and
+`docs/FRONTIER_ADAPTATION_V2_EXECUTOR_PACKET.md` are the governing sources. Frontier v2 is a separate
+prospective 96-cell confirmatory matrix across Inkling, Nemotron, and GPT-OSS. It does not replace,
+relabel, or pool the Qwen v1 observations. Use only the frontier supervisors for v2 paid work.
+
 The clean-path research design and campaign engineering are complete. Remaining clean-path work is
 operational: invoke one frozen supervisor transition at a time, monitor remotely owned jobs, audit
 their immutable artifacts, execute the frozen analyses, and hand the validated outputs to the
