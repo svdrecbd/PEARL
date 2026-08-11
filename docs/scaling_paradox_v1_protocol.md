@@ -118,6 +118,51 @@ with an ordered trend as secondary evidence because the 27B point changes Qwen r
 At checkpoints 0, 500, 1,000, 1,500, 2,000, and terminal 2,250, evaluate the same held-out preference
 and generation contracts. Structural panels must be selected by a frozen rule before folding.
 
+## Frozen structural endpoint
+
+The biological endpoint is defined by
+`configs/experiments/scaling_paradox_structural_v1.json`. Its prompt panel is compiled from the
+untouched real-failure challenge by `scripts/build_scaling_paradox_structural_panel.py` and stored as
+`configs/experiments/scaling_paradox_structural_panel_v1.jsonl`.
+
+- The panel contains 24 unique prompts: eight each below 240 aa, from 240--300 aa, and above 300 aa.
+- Every prompt is sampled at fixed seeds 701, 1701, 2701, and 3701, yielding 96 attempted candidates
+  per checkpoint cell at temperature 0.8 and top-p 0.95.
+- Every attempt remains in the denominator. Invalid text, invalid amino-acid alphabets, and duplicate
+  generations are structural-yield failures; no reward-ranked or hand-selected shortlist is allowed.
+- The primary structural contrast uses base and terminal step 2,250. Steps 500, 1,000, 1,500, and
+  2,000 are a preregistered secondary trajectory.
+- Folding uses `facebook/esmfold_v1` revision
+  `75a3841ee059df2bf4d56688166c8fb459ddd97a`, Transformers 5.5.4, and Torch 2.12.0.
+- A full pass requires mean pLDDT at least 70 and a side-chain Ser--His--Asp relay with both declared
+  heavy-atom distances at most 3.5 Angstrom. A CA-only fallback is recorded but cannot pass the
+  confirmatory endpoint.
+- Every PDB, sequence, generation contract, fold contract, calibration file, evaluator, and model
+  revision is content-hashed. Terminal analysis fails unless all three base cells and all 18
+  true/shuffled seed cells are complete.
+
+The evaluator is fully automated, so there is no subjective panel selection to blind. Training seed
+remains the experimental unit; the 96 candidate attempts in a cell are nested observations.
+
+## Disconnect-safe execution
+
+Paid Tinker cells run through `.github/workflows/scaling-paradox-v1.yml`, not a process whose lifetime
+depends on the operator laptop. The workflow accepts exactly one immutable run key and launch-plan SHA,
+downloads the frozen dataset release by its archive hash, and uses an encrypted repository secret.
+
+GitHub-hosted jobs have a six-hour hard ceiling. The workflow therefore stops its supervised trainer
+at 330 minutes, leaves time to upload the local run directory, and preserves Tinker state checkpoints
+at step 1 and every 500 updates. A continuation must name the prior Actions run ID, restore its
+artifact, and invoke the launcher's immutable `--resume` path. Concurrent workflows with the same run
+key are refused by a GitHub concurrency group and by the local/provider contract checks.
+
+Measured 25-step smoke wall times were 165 seconds at 4B, 165 seconds at 9B, and 312 seconds at 27B.
+After accounting for the 9,000-pair reference pass, 2,250 optimizer steps, and 1,000-pair terminal
+holdout, the conservative planning ranges are 2.5--3.5 hours for 4B, 2.5--3.5 hours for 9B, and
+4.5--5.5 hours for 27B. The 27B path is intentionally resumable because it is close to the hosted-job
+ceiling. Sequential randomized execution of the 18-cell core is expected to take roughly 60--70 hours
+of elapsed provider time.
+
 ## Fail-closed execution gates
 
 Do not launch or continue a stage when any of the following occurs:

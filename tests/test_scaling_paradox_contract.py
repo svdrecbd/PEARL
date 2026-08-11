@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from argparse import Namespace
 from pathlib import Path
 
@@ -94,6 +95,65 @@ def test_runner_metadata_carries_seed_and_contract_identity() -> None:
         "training_seed": "17",
         "contract_sha": "abc123",
     }
+
+
+def test_checkpoint_lineage_is_durable_ordered_and_idempotent() -> None:
+    runner = load_script("run_tinker_dpo_smoke.py")
+    lineage = runner.record_checkpoint(
+        [], step=500, state_path="tinker://step500", checkpoint_name="step500", terminal=False
+    )
+    lineage = runner.record_checkpoint(
+        lineage, step=1, state_path="tinker://step1", checkpoint_name="step1", terminal=False
+    )
+    lineage = runner.record_checkpoint(
+        lineage, step=500, state_path="tinker://step500-new", checkpoint_name="step500", terminal=False
+    )
+    lineage = runner.record_checkpoint(
+        lineage, step=2250, state_path="tinker://terminal", checkpoint_name="terminal", terminal=True
+    )
+
+    assert [row["step"] for row in lineage] == [1, 500, 2250]
+    assert lineage[1]["state_path"] == "tinker://step500-new"
+    assert lineage[-1]["terminal"] is True
+
+
+def test_frozen_structural_panel_is_balanced_and_unique() -> None:
+    panel_path = ROOT / "configs" / "experiments" / "scaling_paradox_structural_panel_v1.jsonl"
+    rows = [json.loads(line) for line in panel_path.read_text().splitlines() if line.strip()]
+    assert len(rows) == 24
+    assert len({row["prompt_id"] for row in rows}) == 24
+    assert len({row["prompt"] for row in rows}) == 24
+    assert len({row["withheld_positive_group_sha256"] for row in rows}) == 24
+    assert {name: sum(row["length_bin"] == name for row in rows) for name in ("short", "medium", "long")} == {
+        "short": 8,
+        "medium": 8,
+        "long": 8,
+    }
+
+
+def test_structural_generation_contract_has_96_deterministic_candidate_slots() -> None:
+    generator = load_script("run_scaling_paradox_generation.py")
+    config_path = ROOT / "configs" / "experiments" / "scaling_paradox_structural_v1.json"
+    config = json.loads(config_path.read_text())
+    panel_path = ROOT / config["prompt_panel"]
+    args = Namespace(
+        config=str(config_path),
+        model="Qwen/Qwen3.5-4B",
+        arm="base",
+        training_seed=0,
+        checkpoint_step=0,
+        checkpoint_path=None,
+    )
+    contract = generator.build_contract(args, config, panel_path)
+    panel = [json.loads(line) for line in panel_path.read_text().splitlines() if line.strip()]
+    candidate_ids = {
+        generator.candidate_id(contract["generation_contract_sha"], row["prompt_id"], seed)
+        for row in panel
+        for seed in config["sampling"]["sample_seeds"]
+    }
+    assert len(candidate_ids) == 96
+    assert contract["renderer_contract_fingerprint"]
+    assert contract["run_key"].startswith("struct-qwen3p5-4b-base-seed0-step0-")
 
 
 def test_core_launch_contracts_are_unique_across_arm_model_and_seed() -> None:

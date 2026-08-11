@@ -32,6 +32,7 @@
     },
     "core": {
       "description": "Confirmatory fixed-rank capacity test with direction-specific shuffled controls.",
+      "execution_order_seed": 20260811,
       "seeds": [17, 29, 43],
       "arms": ["true", "shuffled"],
       "models": ["qwen3p5-4b", "qwen3p5-9b", "qwen3p6-27b"],

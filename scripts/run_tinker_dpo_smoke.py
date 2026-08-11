@@ -96,6 +96,8 @@ def main() -> None:
     service_client = tinker.ServiceClient()
     base_model = resolve_base_model(service_client, args.model)
     checkpoint_meta_path = output_dir / "checkpoint_meta.json"
+    checkpoint_lineage_path = output_dir / "checkpoint_lineage.json"
+    checkpoint_lineage = load_checkpoint_lineage(checkpoint_lineage_path)
     start_epoch = 0
     start_batch_index = 0
     current_state_path = args.init_state_path
@@ -370,6 +372,17 @@ def main() -> None:
                             "completed_steps": total_steps,
                         },
                     )
+                    checkpoint_lineage = record_checkpoint(
+                        checkpoint_lineage,
+                        step=total_steps,
+                        state_path=chkpt_result.path,
+                        checkpoint_name=checkpoint_name,
+                        terminal=False,
+                    )
+                    atomic_write_json(
+                        checkpoint_lineage_path,
+                        {"contract_sha": args.contract_sha, "checkpoints": checkpoint_lineage},
+                    )
                     atomic_write_json(output_dir / "batch_reports_checkpoint.json", batch_reports)
                     print(f"Checkpoint saved at step {total_steps}: {chkpt_result.path}", flush=True)
                 except Exception as exc:
@@ -391,6 +404,17 @@ def main() -> None:
     if not args.eval_only:
         save_result = training_client.save_state(args.checkpoint_name or sanitize_name(args.name)).result()
         checkpoint_path = save_result.path
+        checkpoint_lineage = record_checkpoint(
+            checkpoint_lineage,
+            step=len(batch_reports),
+            state_path=checkpoint_path,
+            checkpoint_name=args.checkpoint_name or sanitize_name(args.name),
+            terminal=True,
+        )
+        atomic_write_json(
+            checkpoint_lineage_path,
+            {"contract_sha": args.contract_sha, "checkpoints": checkpoint_lineage},
+        )
     holdout_diagnostics = None
     if holdout_datums:
         holdout_policy_margins = forward_preference_margins(
@@ -442,6 +466,7 @@ def main() -> None:
         "challenge": challenge_summary,
         "challenge_preference_diagnostics": challenge_diagnostics,
         "checkpoint_path": checkpoint_path,
+        "checkpoint_lineage": checkpoint_lineage,
         "batches": batch_reports,
     }
     atomic_write_json(report_path, report)
@@ -505,6 +530,40 @@ def training_user_metadata(args: argparse.Namespace, *, task: str) -> dict[str, 
     if args.contract_sha:
         metadata["contract_sha"] = str(args.contract_sha)
     return metadata
+
+
+def load_checkpoint_lineage(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    rows = payload.get("checkpoints", []) if isinstance(payload, dict) else []
+    return [dict(row) for row in rows if isinstance(row, dict) and row.get("state_path")]
+
+
+def record_checkpoint(
+    lineage: list[dict[str, Any]],
+    *,
+    step: int,
+    state_path: str,
+    checkpoint_name: str,
+    terminal: bool,
+) -> list[dict[str, Any]]:
+    row = {
+        "step": int(step),
+        "state_path": str(state_path),
+        "checkpoint_name": str(checkpoint_name),
+        "terminal": bool(terminal),
+    }
+    retained = [
+        dict(existing)
+        for existing in lineage
+        if int(existing.get("step", -1)) != int(step) and existing.get("state_path") != state_path
+    ]
+    retained.append(row)
+    return sorted(retained, key=lambda item: (int(item.get("step", -1)), str(item.get("state_path", ""))))
 
 
 def resolve_base_model(service_client: Any, requested_model: str) -> str:

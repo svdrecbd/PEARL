@@ -86,6 +86,25 @@ Primary current references:
 
 ## Phase 8 Preference Runs
 
+### Scaling-paradox v1 remote execution
+
+The scaling-paradox campaign must not be coordinated by a laptop process. Its GitHub Actions workflow
+downloads the prerelease data asset `scaling-paradox-v1-data-v1`, verifies archive SHA-256
+`6fb98995f35b871decc0ef31fcf6b794142d21bcd35ee3cd86c2f8df304c85c3`, and launches one explicitly
+confirmed run. Repository secret `TINKER_API_KEY` is required and must never be placed in workflow
+inputs or logs.
+
+Use `mode=validate` first. Paid execution uses `mode=execute`. A timed-out cell is continued by
+providing its previous Actions run ID as `resume_run_id`; this restores the uploaded
+`checkpoint_meta.json`, `checkpoint_lineage.json`, cached reference margins, and batch reports before
+calling the launcher's `--resume` path. Never re-run a failed workflow without choosing either the
+documented resume artifact or a scientifically justified terminal exclusion.
+
+ESMFold confirmation runs as a GiveMeANode H100 batch job built from
+`deploy/scaling_paradox_v1/Dockerfile.esmfold`. It writes outputs to `$GMN_OUTPUT_DIR`, emits the compact
+verdict at `$GMN_RESULT_PATH`, pins the ESMFold model revision, and requires no laptop connection after
+submission.
+
 DPO training uses [../scripts/run_tinker_dpo_smoke.py](../scripts/run_tinker_dpo_smoke.py). W&B logging is optional and additive; the local `report.json` remains the authoritative audit artifact and should include per-batch `batches`.
 
 Before any paid DPO run:

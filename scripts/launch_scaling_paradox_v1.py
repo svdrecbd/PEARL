@@ -236,10 +236,20 @@ def build_plan(config: dict[str, Any], manifest: dict[str, Any], stage_name: str
     runs = build_stage_runs(config, manifest, stage_name)
     for run in runs:
         run["cost_estimate"] = estimate_run_cost(run)
+    execution_order_seed = config["stages"][stage_name].get("execution_order_seed")
+    if execution_order_seed is not None:
+        runs.sort(
+            key=lambda run: hashlib.sha256(
+                f"{execution_order_seed}\0{run['run_contract_sha']}".encode("utf-8")
+            ).hexdigest()
+        )
+    for execution_order, run in enumerate(runs, start=1):
+        run["execution_order"] = execution_order
     contract_payload = {
         "campaign_id": config["campaign_id"],
         "stage": stage_name,
         "dataset_manifest_sha256": manifest["manifest_sha256"],
+        "execution_order_seed": execution_order_seed,
         "runs": runs,
     }
     return {
