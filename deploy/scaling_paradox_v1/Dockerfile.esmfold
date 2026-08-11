@@ -19,6 +19,7 @@ COPY scripts/run_scaling_paradox_structure.py ./scripts/run_scaling_paradox_stru
 COPY configs/structure_gate_calibration.esmfold.json ./configs/structure_gate_calibration.esmfold.json
 COPY configs/experiments/scaling_paradox_structural_v1.json ./configs/experiments/scaling_paradox_structural_v1.json
 COPY deploy/scaling_paradox_v1/run_esmf_job.sh ./deploy/scaling_paradox_v1/run_esmf_job.sh
+COPY input/generation_report.json /workspace/input/generation_report.json
 RUN chmod 0755 ./deploy/scaling_paradox_v1/run_esmf_job.sh
 
 ENTRYPOINT ["/workspace/pearl/deploy/scaling_paradox_v1/run_esmf_job.sh"]
