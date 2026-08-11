@@ -6,8 +6,55 @@ This is the drop-in guide for a lower-cost or context-limited agent. Its job is 
 bounded progress without repeating the August 10 duplicate-run and contaminated-analysis failure.
 If an instruction conflicts with the frozen protocol, the agent stops and reports the conflict.
 
-The agent is not the scientific principal investigator. It may execute an already-declared contract;
-it may not silently redesign one.
+The subagent is not the scientific principal investigator or engineering lead. It may execute an
+already-declared contract; it may not redesign, reinterpret, or extend one.
+
+## Authority classes
+
+### Primary agent
+
+The primary agent is directly accountable to the user and may exercise engineering and research
+judgment within the user's authorization. This includes:
+
+- choosing engineering architecture and implementation strategy;
+- investigating unexpected behavior and deciding whether it is mechanical or scientific;
+- designing or revising experiments prospectively;
+- choosing analysis methods and interpreting validated results;
+- deciding whether a stage gate has passed;
+- proposing or approving budgets, concurrency, resume, cancellation, or a conditional stage;
+- writing scientific claims and manuscript interpretation;
+- assigning bounded tasks to subagents and reviewing their output.
+
+Primary authority does not permit retroactive outcome-dependent changes. Once a scientific contract
+has collected data, a substantive change requires a new version, explicit rationale, and preservation
+of the old observations.
+
+### Subagent
+
+A subagent has no engineering or research decision authority. It may do only the following when the
+assignment states the exact scope:
+
+1. **Monitor:** query status, logs, provider metadata, spend, checkpoints, and artifacts; report facts.
+2. **Execute:** dispatch or resume exact pre-approved run keys, run frozen validation/analysis
+   commands, and download or hash artifacts.
+3. **Minor maintainer:** repair an obvious mechanical defect with zero scientific effect, on a branch,
+   with focused tests and primary-agent review before deployment.
+
+A repair is minor only when all of these are true:
+
+- it does not change a frozen hash, run identity, dataset contents, model, renderer, seed,
+  hyperparameter, prompt, candidate set, endpoint, threshold, cohort, statistic, or interpretation;
+- it does not decide whether to exclude, relaunch, cancel, resume, or advance a stage;
+- the before/after behavior is unambiguous and can be covered by a focused regression test;
+- it creates no paid action on its own.
+
+Examples of minor repairs: a missing import, an incorrect module entrypoint, a non-semantic portable
+path fix, or lossless report serialization. Examples that are not minor: changing a dependency
+version to alter model behavior, substituting a renderer, adjusting a threshold, skipping a failed
+candidate, changing a statistical procedure, or treating an unexpected result as invalid.
+
+If there is any doubt, the issue is not minor. The subagent reports it to the primary agent without
+patching, relaunching, or working around it.
 
 ## Supervisor dispatch template
 
@@ -16,7 +63,7 @@ Use this block when assigning work to a lower-cost agent. Do not send a vague in
 
 ```text
 Read AGENTS.md and docs/SUBAGENT_RUNBOOK.md completely before acting.
-ROLE: Observer | Builder | Operator | Analyst | Manuscript
+SUBAGENT ROLE: Monitor | Executor | Minor maintainer
 OBJECTIVE: one bounded deliverable
 IN-SCOPE FILES OR RUN KEYS: explicit list
 EXTERNAL AUTHORITY: read-only | exact mutations allowed
@@ -74,38 +121,6 @@ The disaster was not caused by one bad model. It was a control-plane failure:
 - laptop-local processes were mistaken for durable remote execution.
 
 Every rule below blocks one or more of those failure modes.
-
-## Choose exactly one operating role
-
-An agent states its role at the beginning and does not expand it without approval.
-
-### Observer
-
-Allowed: inspect Git, GitHub Actions, Tinker metadata, GiveMeANode state, artifacts, hashes, and logs.
-No writes or external mutations.
-
-### Builder
-
-Allowed: edit an explicitly scoped tracked PEARL file on a `codex/` branch, run tests, and prepare a
-PR. No paid dispatches, cancellations, deletions, data regeneration, or protocol changes.
-
-### Operator
-
-Allowed only when the task names the stage or exact run keys and a spend/concurrency boundary.
-May dispatch immutable workflows and download artifacts. May not invent a run, alter the plan,
-cancel a provider run, or move to a conditional stage without approval.
-
-### Analyst
-
-Allowed: analyze complete frozen artifacts using the declared unit hierarchy. May not fill missing
-data, pool incompatible cohorts, relabel a pilot as confirmatory, or alter selection rules after
-seeing outcomes.
-
-### Manuscript
-
-Allowed: write Introduction and Methods from frozen documentation; write Results only from complete,
-validated tables. Unknown results remain explicit placeholders. Never infer a result from a running
-job, training loss alone, or a candidate-level pooled count.
 
 ## Mandatory start-of-task checklist
 
@@ -167,8 +182,9 @@ Wave B is blocked until every Wave A cell is terminal-valid or has been explicit
 resumed. Wave C has the same gate on Wave B. Submit allowed run keys in ascending execution order;
 they may run and finish concurrently.
 
-An Operator must obtain run keys from the generated plan, verify the frozen plan SHA, and dispatch
-one workflow per run key. There is deliberately no bulk paid shell loop. For each allowed cell:
+An Executor subagent must obtain run keys from the generated plan, verify the frozen plan SHA, and
+dispatch one workflow per run key. There is deliberately no bulk paid shell loop. For each allowed
+cell:
 
 ```bash
 gh workflow run scaling-paradox-v1.yml --ref main \
@@ -220,6 +236,10 @@ That is expected. Two DPO trainer records with the same contract are not expecte
 escalation.
 
 ## Scientific analysis rules
+
+These rules are executed mechanically by a subagent only when a primary agent has already selected
+and frozen the analysis. A subagent may run the declared script and verify outputs; it may not choose
+the method, interpret the result, or write the scientific claim.
 
 - Independent training seed is the experimental unit.
 - Candidates and prompts are nested observations, not replicates.
