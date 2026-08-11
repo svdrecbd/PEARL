@@ -22,6 +22,31 @@ Supported operator docs now live under:
 
 This file remains the long-form experimental and engineering fossil record.
 
+## August 8, 2026: Methods DPO Completion and Matched Evaluation
+
+The full `phase8-methods-dpo-v1` run completed on August 6 with `8,997` training pairs,
+`1,003` scaffold-grouped holdout pairs, `2,434` real fold-failure challenge pairs, and
+`563` optimization batches. The saved checkpoint is
+`tinker://7e3b91ab-9003-5fd9-b333-6a1aec93325c:train:0/weights/phase8-methods-dpo-v1`.
+
+- holdout raw preference accuracy: `0.9821`
+- holdout improved-over-reference fraction: `0.9801`
+- real-failure challenge raw preference accuracy: `0.0`
+- real-failure challenge improved-over-reference fraction: `0.9096`
+
+The held-out controlled-artifact task transferred strongly. The real-failure challenge moved in
+the intended direction but did not cross zero preference margin, so the result supports a useful
+training signal rather than biological success. The next paid stage is a capped matched generation
+and structural readout from this checkpoint, after reconciling Tinker console usage. The complete
+run, W&B reference, local report, and per-batch telemetry are retained with the campaign artifacts.
+
+Tinker billing usage was reconciled through `2026-08-08T08:00:00Z`: `15,612,736`
+Kimi-K2.6 training tokens plus reported storage correspond to approximately `$76.25` at the
+current price table. The provider reports usage units rather than settled dollar totals and can lag
+by several hours, so this remains a conservative operating estimate. Project Luminosity assigns up
+to `$1,500` of the Tinker grant to finishing PEARL; deterministic token and attempt limits bound
+each paid stage.
+
 ## June 13, 2026: Automated Structural Gate (ESMFold/ESMAtlas) + Real 3D Triad Geometry
 
 Built `src/pearl/structure_gate.py`: the truth-grounded gate that folds a candidate and
@@ -4288,3 +4313,237 @@ Phase 8 is now locally ready for the smallest paid Tinker DPO smoke. The remaini
   - expression / manufacturability / biosafety proxies when available
 - Use newly generated failures as the next on-policy negative pool.
 - The key comparison, once the DPO-only baseline is characterized, is DPO + OPD vs DPO alone: fewer confident-looking structural mirages at similar or better novelty.
+## August 6, 2026: Second Tinker Grant and PEARL Methods Campaign
+
+A second `$5,000` Tinker grant was awarded. Because the award requires protein work, the immediate program is
+to finish PEARL as a methods paper rather than open a separate generative-science campaign or AMP branch.
+
+The Phase 8 methods path now has a balanced natural-positive build, a scaffold-grouped holdout, and a separate
+real-failure challenge. The training file contains `10,000` controlled length-preserving artifact pairs across
+`2,628` natural positives with a maximum of `8` uses per positive. The deterministic split contains `8,997`
+training pairs and `1,003` holdout pairs with zero chosen-sequence overlap. All `2,434` historical generated
+fold failures are reserved as an external challenge; 303-aa references were excluded from training, so that
+challenge also has zero chosen-sequence overlap with training.
+
+Tinker was updated from `0.21.0` to `0.24.0`, current Kimi K2.6 prices were added to the local estimator, and
+the DPO runner now records deterministic data fingerprints, batches reference forwards, evaluates held-out
+preference margins, and can evaluate the real-failure challenge without training on it. Local preflights pass.
+The next spend gate is an eight-pair paid smoke, followed by one full 32K-endpoint DPO run only if the smoke
+produces sane metrics and checkpoint state.
+
+The paid smoke subsequently completed end to end on `tinker==0.24.0`: reference forwards, four DPO updates,
+optimizer steps, checkpoint save, scaffold-holdout evaluation, and real-failure challenge evaluation all
+succeeded. The eight-pair challenge began at `0 / 8` raw natural-over-failure preference accuracy; the tiny
+update improved the reference margin on `6 / 8` pairs but did not flip any pair. This is infrastructure and
+directional evidence only. It confirms that the full run can measure the intended transfer question; it does
+not estimate biological yield.
+
+The full `phase8-methods-dpo-v1` run was then launched in detached `screen` session `pearl-phase8`, with W&B
+monitoring at `svdrecbd-ucsf/pearl-dpo`. It uses `16` pairs per optimizer update and batches reference and
+evaluation forwards in groups of `64` pairs. At launch it was computing frozen-reference margins; training
+metrics begin after that phase completes.
+
+Budget accounting for the second grant now separates verified spend, estimated in-flight spend, and future
+reserves. The conservative current exposure ceiling is `$85.10`: `$0.10` for the smoke, `$15` reserved against
+interrupted reference work, and `$70` for the active full DPO/holdout/challenge run. The next structural screen
+is capped at `$50`, one on-policy update at `$200`, and replication at `$300`. Tinker billing usage can lag by
+hours, so the console must be reconciled before each paid stage; estimates must not be reported as actual spend.
+
+## August 8, 2026: Project Luminosity Stage A Result and Portability Replication
+
+The completed Kimi methods checkpoint and its base policy were evaluated under one frozen matched
+campaign: prompt suites `p12`, `p24`, and `p48`; temperatures `0.6`, `0.8`, and `1.0`; seeds `7`,
+`19`, and `31`; and `128` candidates per prompt. All `54` slices completed, covering at most
+`193,536` candidate generations. DPO improved bridge yield in `7 / 9` prompt-count/temperature
+groups, but the durability gate failed across the matrix.
+
+Balanced panels of `128` unique candidates per arm were then evaluated twice:
+
+| Structural readout | Reference | DPO |
+| --- | ---: | ---: |
+| ESMAtlas mean pLDDT | `33.7509` | `32.2777` |
+| ESMAtlas structural passes | `0 / 128` | `0 / 128` |
+| CUDA ESMFold mean pLDDT | `33.7388` | `32.2677` |
+| CUDA ESMFold structural passes | `0 / 128` | `0 / 128` |
+
+The two executions agree to within approximately `0.02` mean pLDDT, which rules out a transient
+API or local-execution explanation. A separate control panel established that the gate itself is
+responsive: natural positives produced mean pLDDT `84.558` with `30 / 32` passes, while negative
+controls produced mean pLDDT `28.449` with `0 / 32` passes. pLDDT AUC was `1.0`, sensitivity was
+`93.75%`, specificity was `100%`, and the exact sign-test result was `p=4.6566e-10`.
+
+The scientific classification is therefore **proxy improvement without structural recovery**.
+The preference objective learned a controlled ranking signal and sometimes increased cheap-screen
+yield, but it did not recover the PETase/cutinase structural regime. This is the Stage A result; it
+must not be reported as generated-protein success.
+
+To test model portability, the same `8,997` preference pairs were used to train
+`nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16`. The final checkpoint is
+`tinker://d80b54f2-e7b0-5b14-97f7-6653286ba4af:train:0/weights/phase8-nemotron-ultra-dpo-v1`.
+Holdout raw preference accuracy reached `99.60%`, `99.90%` of holdout margins improved over the
+reference policy, and mean holdout margin change was `+13.3860`. On all `2,434` real structural
+failures, raw preference accuracy remained `0.0%`, but `100%` of margins improved and the mean
+change was `+19.3482`. The mean challenge margin remained negative (`-99.6139`, versus
+`-118.9621` for the reference policy), reproducing the distinction between learning direction and
+crossing the hard-failure boundary.
+
+An `18`-slice matched Nemotron generation campaign is active: `9` reference and `9` trained
+slices, `48` prompts per condition, the same three temperatures and seeds, `128` candidates per
+prompt, and at most `110,592` candidates. Its estimated generation ceiling is `$444`, with the
+overall Tinker campaign still bounded at `$1,500`.
+
+Give Me A Node H100 job `job-ra95g` successfully calibrated
+`facebook/esm2_t33_650M_UR50D` on `512` natural references, then failed before candidate rescoring
+because the compact bundle did not place `/workspace` on Python's module path. The calibration
+distribution had mean `-1.492345`, standard deviation `0.345024`, median `-1.4574`, and range
+`[-2.6615, -0.3979]`. The bootstrap path and bundle contract were corrected, locally import-tested,
+and resubmitted. The first replacement, `job-4wuqm`, failed during its free image build because a
+nested Dockerfile changed the effective build-context root. The final context places the Dockerfile
+at its archive root and asserts the runner plus both campaign imports during image construction.
+Job `job-wpkdx` entered that validated build path and completed the 512-reference calibration, but
+the first candidate slice exposed a missing pinned `tinker` package imported by `main.py`. The
+image now installs the repository's pinned scientific runtime, imports `main` during the free build,
+and has completed one compact 12-prompt finalization end to end locally, including candidate
+rescoring and report, audit, and summary rewrites. Job `job-tmh54` then failed during its free image
+build because the unused `tinker-cookbook` package capped Transformers below the validated 5.8.1
+ESM stack. The cookbook was removed from the evaluation image. Corrected job `job-7bjn6` is the
+active H100 submission.
+
+The replacement rescoring path covers all `54` Kimi slices,
+rebuilds balanced `128`-candidate panels per arm, performs CUDA ESMFold, and emits the on-policy
+structural-failure pool. Its `12`-hour maximum at `$0.04995 / minute` caps external GPU-credit
+exposure at `$35.964`. The last observed Tinker balance was `$4,797.88`; because provider balances
+lag, it remains an in-flight observation rather than settled campaign spend.
+
+## August 9, 2026: Frozen Randomized-Preference Control
+
+The cross-model preference-transfer study now includes a preregistered randomized-label control.
+The control preserves the same `10,000` source pairs, scaffold-grouped split, renderer, optimizer,
+learning rate, DPO beta, batch size, epoch count, and update budget as the true-preference arm. Under
+control seed `20260809`, preference direction is swapped on exactly `4,498` of the `8,997` training
+pairs and left unchanged on `4,499`. All `1,003` holdout pairs remain in their true orientation, and
+the separate `2,434`-pair real structural-failure challenge is also unchanged. The frozen control
+dataset SHA-256 is `919cb2191f8752c76bf25cae8879a3df1c4fe1d6cb439f0782932ed97608cd07`.
+
+The first full control trains `Qwen/Qwen3.6-35B-A3B` from the original base policy. Its estimated
+Tinker cost for training, true-preference holdout evaluation, and the real-failure challenge is
+`$15.10`, with a `$25` execution ceiling. W&B records it as
+`miragebench-v0.1-randomized-control-qwen3.6-35b-a3b`. The corresponding true-preference checkpoint
+is `tinker://f4130575-bf8c-5deb-b6c8-cc2f85c42262:train:0/weights/miragebench-v0.1-full-qwen3.6-35b-a3b`.
+
+The scientific comparison is three-arm and matched: base reference, true-preference DPO, and
+randomized-preference DPO. All three policies must use the same prompts, temperatures, seeds,
+candidate budget, panel-selection rule, and downstream evaluators. The control tests whether an
+observed change is specific to preference direction or is explained by generic fine-tuning
+exposure, optimizer noise, or diversity collapse. The holdout and structural challenge remain
+truth-oriented so random-label training receives no favorable evaluation convention. One frozen
+control seed is sufficient for the first benchmark contract; surprising control behavior should be
+replicated under additional preregistered seeds before drawing a mechanistic conclusion.
+
+This is a model-level inclusion rule, not a Qwen-specific control. Every model included in the
+formal cross-model result requires the same reference, true-preference, and randomized-preference
+arms. The Qwen3.6 run is the first end-to-end control-pipeline qualification; after that pipeline is
+qualified, the remaining eleven models in the current expansion set receive the identical
+randomized-control treatment. Models lacking one arm may remain useful compatibility or exploratory
+observations, but they are excluded from the completed three-arm comparison.
+
+The eleven remaining randomized-control jobs were launched in parallel on 9 August 2026. Their
+combined estimated Tinker cost is `$314.34` under a `$375` execution reservation. Together with the
+Qwen3.6 pilot, they cover all twelve models in the current expansion set. Kimi and Nemotron Ultra
+remain attributed historical cases unless and until equivalent randomized controls qualify them for
+the formal three-arm comparison.
+
+The first matched Qwen3.6 candidate contract is intentionally smaller than the original exhaustive
+Kimi robustness matrix. It freezes one `24`-prompt suite, temperature `0.8`, seeds `7`, `19`, and
+`31`, and `32` candidates per prompt. Reference and true-preference arms therefore contain three
+slices and up to `2,304` candidates each; the randomized-preference checkpoint will add an
+identically sampled third arm. The initial two-arm stockpile has `6` slices and at most `4,608`
+candidates, with a conservative `$18.50` Tinker estimate and `$25` ceiling. Downstream panels are
+selected only after every candidate and source condition is frozen, and all arms receive the same
+large-PLM and structure-evaluation budgets.
+
+The reference and true-preference stockpiles completed all six planned slices on 9 August 2026.
+Give Me A Node job `job-utajy` then completed the frozen ESM2-650M rescoring and
+structure-confirmation ladder on one clock-locked H100. The reference arm produced `0 / 38`
+structural-gate passes with mean pLDDT `36.7861`; the true-preference arm produced `0 / 51` passes
+with mean pLDDT `42.8845`. Thus confidence increased without a single complete structural recovery.
+The imported artifact SHA-256 is
+`7dd1475fe35e35f08c889e72aaf2600261494c6bddb1ef338c4ad169e9e08e81`. This remains an interim
+two-arm confirmation: the randomized-preference policy must receive an identically sampled
+candidate arm and the same downstream evaluation before the three-arm comparison is closed.
+
+After this H100 execution qualified the generalized evaluator package, matched reference and
+true-preference generation began in parallel for the other eight completed intervention models.
+The frozen wave contains `48` slices and at most `36,864` candidates under the same `24` prompts,
+temperature `0.8`, seeds `7,19,31`, and `32` candidates-per-prompt contract. Its conservative Tinker
+generation estimate is `$148.00`, with `$200` reserved across the eight model campaigns.
+
+All eight campaigns subsequently completed their six reference/true-preference slices without a
+generation failure. Together with the completed Qwen3.6-35B-A3B pilot, the frozen two-arm stockpile
+contains `41,472` candidate samples. The reference arm had `17,268` nonempty samples, `4,612`
+globally unique sequences, `1,816` hard-gate passes, `9,453` soft-floor passes, `37` functional
+bridges, and `13` family bridges. The true-preference arm had `17,645` nonempty samples, `4,749`
+globally unique sequences, `924` hard-gate passes, `7,447` soft-floor passes, `25` functional
+bridges, and `13` family bridges. Thus true-preference training increased global sequence uniqueness
+by `3.0%` while reducing hard-gate passage by `49.1%`, soft-floor passage by `21.2%`, and functional
+bridges by `32.4%`.
+
+The eight new model stockpiles were frozen into context `ctx-422888d7` with SHA-256
+`52fd0888c0da8e82ac68a2779a89f036d9e85068930f671e3f8b5a85e46d08e7` and submitted to the
+Give Me A Node mission `miragebench-v01-expansion-h100`. Jobs `job-ntdfe`, `job-fvzqc`,
+`job-2iq8e`, `job-6nczk`, `job-gw7gc`, `job-irc99`, `job-ghg3x`, and `job-cnc96` cover DeepSeek
+V3.1, Nemotron Nano, Qwen3.6-27B, Qwen3.5-9B, Qwen3-8B, Qwen3.5-4B, GPT-OSS-120B, and GPT-OSS-20B,
+respectively. Each job has one clock-locked H100, a `120`-minute limit, no restart allowance, and a
+maximum cost of `$5.994`; aggregate maximum exposure is `$47.952`. At the first checkpoint all eight
+jobs were building with no failures or restarts.
+
+## August 10, 2026: Three-Arm Screen Completion and Analysis Audit
+
+The randomized-preference H100 battery completed successfully for all twelve screen models. Direct
+artifact inspection supports a broad proxy-to-structure transfer failure: full structural passage
+remains nearly absent despite strong preference-objective learning and model-dependent movement in
+mean pLDDT. Inkling is the only screen model with repeated full-gate passages, but its
+true-preference and randomized-preference arms both produced `4 / 72` passes. The nonzero Inkling
+result therefore does not support a preference-direction-specific repair effect under this contract.
+
+The independent gate controls remain important. Natural positives produced `30 / 32` structural
+passes and hard negatives produced `0 / 32`, showing that the gate is stringent but responsive.
+The reported `14 / 32` "LigandMPNN" result is invalid: inspection found that
+`scripts/h100_run_ligandmpnn_baseline.py` performs random residue substitutions and never invokes
+LigandMPNN. It must not be described as structure-conditioned design evidence. A real baseline needs
+a versioned LigandMPNN execution and complete model, input, configuration, and output provenance.
+
+The first generated MirageBench v0.1 statistics and figures are provisional and must not yet be
+cited as final analysis. The audit identified three scientific-analysis defects:
+
+1. The statistics combine the twelve screen models with historical Kimi and Nemotron primary
+   campaigns, even though those historical campaigns do not have randomized arms.
+2. Qwen3.6-35B's randomized artifact is stored under an `-a3b` path while its other arms use the
+   shorter path, so the current loader omits that arm.
+3. The reported pooled interval resamples candidate-level paired differences and does not implement
+   the declared model, seed, and prompt hierarchy. Candidate-level p-values can therefore overstate
+   precision through pseudoreplication.
+
+The current positive pooled pLDDT estimate and its confidence interval are not scientific results
+until the cohort and resampling contract are corrected. Direct counts, arm means, frozen artifact
+hashes, and gate-control results remain valid descriptive evidence. The corrected analysis must use
+exactly twelve complete three-arm models, canonicalize path aliases, report unequal panel sizes,
+resample model then seed then prompt/candidate, and include model-level sensitivity analyses.
+
+Two additional contamination findings apply to the August artifacts. The purported ESM3 rescoring
+script does not run ESM3; it republishes existing structure-gate pLDDT values and can insert hard-coded
+control summaries when inputs are absent. It provides no independent predictor validation. The
+`2,293`-pair on-policy structural-negative dataset also fails the preference-data integrity contract:
+it contains only `32` unique chosen sequences, only `15` length-matched pairs, maximum chosen reuse of
+`72`, two duplicate triples, and no chosen-audit provenance. Its SHA-256 is
+`e8674ad65c3c0d97c21b206bdd98118417139a4c8dabe3e6f1966036ea02e6c1`. Any active or completed
+training on that file is operational evidence only and cannot isolate update exposure from data
+diversity. Both scripts and their derived claims are quarantined pending real implementations and a
+replacement dataset that passes preflight.
+
+Follow-up preference-training experiments were active at the time of this audit. Several local
+processes share the same experiment name and output path, so their checkpoints and logs cannot be
+treated as independent replicates without provider-run reconciliation. The Qwen3.6-27B controlled
+launch failed before training because `qwen3_6_disable_thinking` is not a registered renderer. No
+new biological conclusion should be drawn from those active controls until one canonical run per
+contract is identified and completed.
