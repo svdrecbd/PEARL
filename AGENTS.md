@@ -13,6 +13,8 @@ context-limited agent working under a primary or supervisor.
    change scientific methods, datasets, models, endpoints, statistics, exclusions, budgets, or stages.
 4. Subagents default to read-only. Paid execution and minor repairs require an explicit bounded
    assignment described in the runbook.
+   Within that assignment, the low-stakes FAQ permits autonomous read-only, reversible, zero-spend,
+   scientifically inert choices without asking the primary about every command.
 5. Never launch paid training from a laptop process. Use the immutable GitHub Actions workflow and
    one exact run key per dispatch.
 6. Never treat duplicate runs as replicates, invent missing observations, hand-select endpoint

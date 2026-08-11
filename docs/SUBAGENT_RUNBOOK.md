@@ -56,6 +56,80 @@ candidate, changing a statistical procedure, or treating an unexpected result as
 If there is any doubt, the issue is not minor. The subagent reports it to the primary agent without
 patching, relaunching, or working around it.
 
+## Low-stakes autonomy FAQ
+
+Rigid agents become useless when every harmless choice requires escalation. A subagent may proceed
+without asking the primary when **all** of these are true:
+
+1. the action is inside the assigned objective and file/run scope;
+2. it is read-only, or a locally reversible mechanical change;
+3. it creates no spend and no external mutation;
+4. it cannot change a scientific identity, observation, selection, interpretation, or stage gate;
+5. the result and rollback are obvious.
+
+If all five are true, use reasonable judgment and continue. If any answer is no or unclear, ask the
+primary. A subagent may perform one bounded diagnostic to resolve uncertainty; it must not spiral
+through repeated retries or broaden the investigation.
+
+### Can I choose commands and tools for a read-only check?
+
+Yes. Choose among equivalent read-only commands, narrow searches, provider queries, artifact reads,
+and log views. Prefer canonical sources and report which source was used.
+
+### Can I retry a failed status query or artifact download?
+
+Yes, up to three bounded attempts with sensible backoff when the operation is idempotent and free.
+Retrying a query is not permission to redispatch, resume, cancel, or replace a run.
+
+### Can I answer routine status, timing, path, or terminology questions?
+
+Yes. Query live state when it may have changed, label estimates as estimates, and distinguish queued,
+running, checkpointed, terminal, validated, and scientifically analyzed. Do not turn a status answer
+into interpretation of an experimental result.
+
+### Can I stop my own watcher or local diagnostic process?
+
+Yes, after verifying it is only a local observer and does not own remote work. Stopping a local
+`gh run watch` is harmless; cancelling the GitHub workflow is not.
+
+### Can I use temporary files or adjust presentation?
+
+Yes, under a validated temporary directory. It is also fine to adjust log verbosity, output ordering,
+or report formatting when content and hashes are unchanged. Do not overwrite repository artifacts or
+clean the dirty worktree.
+
+### Can I fix a missing import, typo, or portable path that blocks my assigned task?
+
+Yes, if it satisfies every minor-repair condition above. Keep the change inside the assigned scope,
+use a branch, add a focused regression test, and hand it to the primary for review. Do not merge,
+deploy, relaunch, or spend based on the repair without primary approval.
+
+### Can I run an already-frozen validation or analysis script?
+
+Yes. Mechanical execution and verification are allowed. Choosing a different method, modifying the
+script's scientific behavior, excluding outputs, or interpreting the result is a primary-agent task.
+
+### Can I classify an obvious operational status?
+
+Yes: for example, `queued`, `build_failed`, `in_progress`, `timed_out`, or `artifact missing`, when
+the provider reports it directly. Deciding that a failed cell is scientifically excludable, should be
+replaced, or has passed a stage gate belongs to the primary.
+
+### Can I touch unexpected untracked files or make the worktree clean?
+
+No. Ignore and report them. Never stage, move, rewrite, or delete quarantined or user-owned files.
+
+### Can I make a small improvement that seems obviously useful but is outside my assignment?
+
+No. Record it as a suggestion in the handoff. "Useful" is scope expansion, not low-stakes autonomy.
+
+### When should I escalate immediately?
+
+Escalate before any spend, external-state mutation not named in the assignment, frozen-contract
+change, scientific judgment, destructive action, duplicate ownership, cancellation/relaunch choice,
+or ambiguous repair. Escalation should include the observed fact and smallest safe next action, not a
+large speculative diagnosis.
+
 ## Supervisor dispatch template
 
 Use this block when assigning work to a lower-cost agent. Do not send a vague instruction such as
