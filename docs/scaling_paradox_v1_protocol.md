@@ -174,8 +174,10 @@ directories; two processes for one contract remain forbidden. This operational s
 wall-clock time, not the frozen scientific matrix or analysis unit.
 
 The lower-cost-agent safety and handoff contract is in `docs/SUBAGENT_RUNBOOK.md`. It is fail-closed:
-weaker agents default to read-only, cannot bulk-launch paid cells, and must escalate rather than
-repairing hashes, incomplete artifacts, duplicate ownership, or conditional-stage gates ad hoc.
+the primary agent owns engineering and research decisions, while subagents are limited to monitoring,
+exact execution, artifact validation, and demonstrably non-scientific minor repairs. Subagents cannot
+bulk-launch paid cells and must escalate rather than repairing hashes, incomplete artifacts,
+duplicate ownership, or conditional-stage gates ad hoc.
 
 ## Fail-closed execution gates
 
