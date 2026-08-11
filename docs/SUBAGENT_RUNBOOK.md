@@ -13,6 +13,13 @@ For the active scaling-paradox campaign, `docs/SCALING_PARADOX_EXECUTOR_PACKET.m
 happy-path checklist. Its supervisor/receipt process supersedes the older direct-dispatch examples
 below. Direct paid worker dispatch is now mechanically rejected.
 
+The clean-path research design and campaign engineering are complete. Remaining clean-path work is
+operational: invoke one frozen supervisor transition at a time, monitor remotely owned jobs, audit
+their immutable artifacts, execute the frozen analyses, and hand the validated outputs to the
+primary for interpretation and manuscript writing. This statement of campaign maturity grants no
+additional authority. Any condition that is not already handled mechanically by the supervisor or
+this runbook is an escalation to the primary, not an invitation to design a workaround.
+
 ## Authority classes
 
 ### Primary agent
@@ -377,6 +384,11 @@ the method, interpret the result, or write the scientific claim.
 - Full structural passage is a rare-event endpoint with exact intervals and model/seed-stratified
   counts.
 - Figure and analysis scripts fail on missing observations. Synthetic fallback data are prohibited.
+
+The prospective, outcome-blind interpretation map is recorded in
+`docs/scaling_paradox_v1_protocol.md`. It is context for the primary's eventual manuscript work, not
+an executor decision tree. A subagent does not inspect endpoint artifacts, traverse the map, label an
+outcome branch, alter execution, or write a scientific claim from it.
 
 ## Git and contamination rules
 

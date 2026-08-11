@@ -132,6 +132,70 @@ with an ordered trend as secondary evidence because the 27B point changes Qwen r
 At checkpoints 0, 500, 1,000, 1,500, 2,000, and terminal 2,250, evaluate the same held-out preference
 and generation contracts. Structural panels must be selected by a frozen rule before folding.
 
+## Prospective interpretation tree (primary-only and non-operative)
+
+This map was written before confirmatory endpoint review. It is a guard against post hoc storytelling,
+not a second analysis plan. It does not alter the machine-readable rescue gate, authorize a run,
+exclude an observation, change a threshold, or permit an executor to inspect results. Subagents remain
+result-blind. The primary may traverse this map only after the relevant original, replication, and
+structural artifacts are terminal-valid and the frozen analyses are complete.
+
+1. **Is the evidence matrix complete and contract-valid?**
+   - **No:** the result is not interpretable. Resume only the same immutable experimental unit when
+     authorized, or report the missing/corrupted evidence. Do not enter another branch.
+   - **Yes:** continue using the original and replication cohorts separately before considering the
+     prespecified combined analysis.
+2. **Does preference-specific optimization show the clean 4B-versus-9B capacity contrast?**
+   - **Concordant in original and replication:** the optimization evidence supports the narrow
+     fixed-rank capacity-dependent-inertia claim. Effect magnitude, intervals, and seed heterogeneity
+     still lead the report; a sign or p-value alone is insufficient.
+   - **Present in the original but weak, absent, or reversed in replication:** the result is not a
+     robust replication. Report cohort heterogeneity and do not use pooling to conceal discordance.
+   - **True-preference learning is present but the capacity contrast is absent:** the experiment
+     supports preference adaptation under the contract, not a scaling paradox.
+   - **True and shuffled arms do not separate:** there is no confirmatory evidence for
+     preference-specific adaptation, so model-size differences cannot establish the proposed
+     preference-learning mechanism.
+3. **Does the frozen biological endpoint agree with the optimization result?**
+   - **Optimization and structural yield are concordant across cohorts:** this is the strongest
+     support available for the narrow claim, linking fixed-rank optimization inertia to the declared
+     biological endpoint.
+   - **Optimization contrast without a structural-yield contrast:** report adaptation inertia at the
+     optimization endpoint; the biological consequence is not established.
+   - **Structural-yield contrast without the optimization contrast:** report the structural pattern
+     but do not attribute it to the proposed margin-learning mechanism. Treat the mechanistic link as
+     unresolved, especially given the rare-event endpoint.
+   - **Neither endpoint shows the contrast:** the confirmatory scaling-paradox claim is unsupported
+     under this contract.
+   - Checkpoint trajectories describe when a terminal pattern emerges; they cannot replace or
+     redefine the terminal primary contrast.
+4. **What do the prespecified data-exposure controls say?**
+   - A positive D2.5 update-matched-minus-one-epoch contrast supports an update-exposure limitation.
+   - A positive D10-minus-D2.5 update-matched contrast supports a data-diversity contribution at
+     matched updates.
+   - If both are positive, report mixed update and diversity contributions; if neither is positive,
+     neither manipulation rescued the endpoint under the tested contract. These controls do not
+     create a new capacity claim.
+5. **If and only if the frozen rescue gate authorized rank 128, what happened?**
+   - Improvement at 9B/27B that attenuates the rank-32 capacity gap supports a fixed-adapter-budget
+     bottleneck interpretation and weakens an intrinsic-capacity interpretation.
+   - Little or no matched improvement means increased rank did not explain the observed inertia
+     under this rescue contract.
+   - Model- or cohort-specific rescue is reported as heterogeneity, not averaged into a universal
+     rescue claim.
+   - If the gate skipped rescue, make no empirical statement about rank-128 rescue; absence of that
+     stage is not a negative rescue result.
+6. **Apply the scope boundary to every branch.**
+   - The 4B-versus-9B comparison is the clean within-release result. The 27B result remains a lineage
+     extension and cannot, by itself, establish a monotonic parameter-scaling law.
+   - Report null, mixed, and discordant outcomes directly. Do not add models, seeds, candidates,
+     thresholds, exclusions, or alternate endpoints to obtain a preferred branch.
+
+The eventual manuscript claim should therefore be labeled as one of: convergent optimization and
+biological support; optimization-only support; preference adaptation without a capacity paradox;
+non-replicated or heterogeneous evidence; or unsupported under the frozen contract. More expansive
+mechanistic or universal scaling claims require a separately designed future study.
+
 ## Frozen structural endpoint
 
 The biological endpoint is defined by
