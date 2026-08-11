@@ -179,7 +179,7 @@ bundle to GiveMeANode and collect every candidate slot. First run
 `scripts/build_scaling_paradox_gmn_manifest.py`; it refuses anything except all 111 complete,
 uniquely matched generation reports, validates every full generation contract, and emits the exact
 archive-build command and execution contract for each. The manual provider boundary is governed by
-`scripts/manage_scaling_paradox_gmn.py`. The frozen `scaling-paradox-executor-v1` tag must resolve to
+`scripts/manage_scaling_paradox_gmn.py`. The frozen `scaling-paradox-executor-v1.0.1` tag must resolve to
 the structural manifest's exact source commit; do not submit outside this sequence:
 
 ```bash

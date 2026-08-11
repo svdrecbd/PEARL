@@ -80,18 +80,18 @@ jobs:
           Path("anchor/anchor.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
           PY
 
-      - name: Preserve canonical head
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: scaling-paradox-gmn-anchor-head
-          path: anchor/anchor.json
-          if-no-files-found: error
-          retention-days: 90
-
       - name: Preserve event-specific anchor
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: scaling-paradox-gmn-event-${{ inputs.event_sha256 }}
+          path: anchor/anchor.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Commit canonical head last
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scaling-paradox-gmn-anchor-head
           path: anchor/anchor.json
           if-no-files-found: error
           retention-days: 90
