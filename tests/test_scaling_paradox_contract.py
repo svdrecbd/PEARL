@@ -199,6 +199,19 @@ def test_remote_validation_exercises_provider_access_without_spending() -> None:
     assert "contract_shas, run_keys = module.provider_contracts()" in workflow
 
 
+def test_subagent_runbook_is_bound_to_frozen_contract_and_contamination_rules() -> None:
+    root_rules = (ROOT / "AGENTS.md").read_text()
+    runbook = (ROOT / "docs" / "SUBAGENT_RUNBOOK.md").read_text()
+    assert "docs/SUBAGENT_RUNBOOK.md" in root_rules
+    assert "Never spawn another agent" in root_rules
+    assert "f63f3bd2f9f0654c819f3f5a806145847c9b899ae16859d870c7a3b320d43226" in runbook
+    assert "1f410d4346b354b789408729c2c7cfc1f0bdef3b9580716171d86593bd9e9a22" in runbook
+    assert "at most six active core cells" in runbook
+    assert "| A | 2–6 |" in runbook and "| B | 7–12 |" in runbook and "| C | 13–18 |" in runbook
+    assert "Never use `git add -A`" in runbook
+    assert "Do not use old untracked H100, ESM3, LigandMPNN, Concord, or California scripts" in runbook
+
+
 def test_core_launch_contracts_are_unique_across_arm_model_and_seed() -> None:
     launcher = load_script("launch_scaling_paradox_v1.py")
     config = {

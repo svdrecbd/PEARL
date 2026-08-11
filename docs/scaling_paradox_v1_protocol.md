@@ -163,6 +163,20 @@ holdout, the conservative planning ranges are 2.5--3.5 hours for 4B, 2.5--3.5 ho
 ceiling. Sequential randomized execution of the 18-cell core is expected to take roughly 60--70 hours
 of elapsed provider time.
 
+### Parallel execution policy
+
+The randomized run list may execute in consecutive waves with at most six active core cells. Order 1
+is a standalone sentinel. After its terminal artifact passes the full contract, checkpoint, provider,
+holdout, and challenge audit, orders 2--6 may run concurrently; orders 7--12 and 13--18 form the next
+two waves. A later wave is blocked until every earlier-wave cell is terminal-valid or explicitly
+resumed from its own artifact. Parallel cells retain unique run keys, provider metadata, and output
+directories; two processes for one contract remain forbidden. This operational schedule changes
+wall-clock time, not the frozen scientific matrix or analysis unit.
+
+The lower-cost-agent safety and handoff contract is in `docs/SUBAGENT_RUNBOOK.md`. It is fail-closed:
+weaker agents default to read-only, cannot bulk-launch paid cells, and must escalate rather than
+repairing hashes, incomplete artifacts, duplicate ownership, or conditional-stage gates ad hoc.
+
 ## Fail-closed execution gates
 
 Do not launch or continue a stage when any of the following occurs:
