@@ -89,10 +89,14 @@ Primary current references:
 ### Scaling-paradox v1 remote execution
 
 The scaling-paradox campaign must not be coordinated by a laptop process. Its GitHub Actions workflow
-downloads the prerelease data asset `scaling-paradox-v1-data-v1`, verifies archive SHA-256
-`6fb98995f35b871decc0ef31fcf6b794142d21bcd35ee3cd86c2f8df304c85c3`, and launches one explicitly
+downloads the prerelease data asset `scaling-paradox-v1-data-v2`, verifies archive SHA-256
+`ffad79ec8e104bf06979882e186290ea4d94b87531e48b111e954b6c09e8e962`, and launches one explicitly
 confirmed run. Repository secret `TINKER_API_KEY` is required and must never be placed in workflow
 inputs or logs.
+
+The superseded `scaling-paradox-v1-data-v1` release is retained only as an immutable record of the
+failed portability validation. Its manifest contains workstation-specific paths and it must not be
+used for new runs.
 
 Use `mode=validate` first. Paid execution uses `mode=execute`. A timed-out cell is continued by
 providing its previous Actions run ID as `resume_run_id`; this restores the uploaded
