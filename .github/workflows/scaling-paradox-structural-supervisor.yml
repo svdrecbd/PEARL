@@ -1,0 +1,197 @@
+name: Scaling paradox structural — reconcile and dispatch one wave
+run-name: Scaling structural supervisor ${{ github.run_id }} ${{ inputs.mode }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        required: true
+        default: status
+        type: choice
+        options: [status, advance]
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: scaling-paradox-campaign-supervisor
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STATE_DIR: supervisor/state
+      DATA_RELEASE_TAG: scaling-paradox-v1-data-v2
+      DATA_ARCHIVE: pearl-scaling-paradox-v1-data-v2.tar.gz
+      DATA_ARCHIVE_SHA256: ffad79ec8e104bf06979882e186290ea4d94b87531e48b111e954b6c09e8e962
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install --requirement requirements.txt
+      - name: Restore frozen data and all audited training state
+        run: |
+          gh release download "$DATA_RELEASE_TAG" --pattern "$DATA_ARCHIVE"
+          printf '%s  %s\n' "$DATA_ARCHIVE_SHA256" "$DATA_ARCHIVE" | sha256sum --check --strict
+          tar -xzf "$DATA_ARCHIVE"
+          python scripts/manage_scaling_paradox_campaign.py sync-github --state-dir "$STATE_DIR"
+          gate_run=$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/artifacts" \
+            -f name="scaling-paradox-core-analysis-gate" \
+            --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .workflow_run.id // empty')
+          test -n "$gate_run" || { echo "core analysis gate is absent"; exit 1; }
+          gate_source=$(gh run view "$gate_run" --json workflowName,headSha,status,conclusion)
+          test "$(jq -r .workflowName <<<"$gate_source")" = "Scaling paradox campaign — validate and dispatch one exact wave"
+          test "$(jq -r .headSha <<<"$gate_source")" = "$GITHUB_SHA"
+          test "$(jq -r .status <<<"$gate_source")" = completed
+          test "$(jq -r .conclusion <<<"$gate_source")" = success
+          mkdir -p "$STATE_DIR/analysis"
+          gh run download "$gate_run" --name scaling-paradox-core-analysis-gate --dir "$STATE_DIR/analysis"
+
+      - name: Verify optimization campaign completion and build exact structural manifest
+        run: |
+          python scripts/manage_scaling_paradox_campaign.py next \
+            --state-dir "$STATE_DIR" --active-paid-cells 0 --output supervisor/training_state.json
+          test "$(jq -r .action supervisor/training_state.json)" = training_and_checkpoint_evaluation_complete \
+            || { echo "optimization campaign is not complete"; exit 1; }
+          python scripts/build_scaling_paradox_structural_manifest.py \
+            --state-dir "$STATE_DIR" --output supervisor/structural_manifest.json
+
+      - name: Audit existing structural generation artifacts and select next wave
+        run: |
+          python - <<'PY'
+          import hashlib, json, subprocess, tempfile
+          from pathlib import Path
+
+          manifest = json.load(open("supervisor/structural_manifest.json"))
+          by_key = {row["job_key"]: row for row in manifest["jobs"]}
+          completed = set()
+          rows = json.loads(subprocess.run([
+              "gh", "run", "list", "--workflow", "scaling-paradox-structural-generation.yml",
+              "--limit", "200", "--json", "databaseId,status,conclusion,displayTitle",
+          ], check=True, capture_output=True, text=True).stdout)
+          active = [row for row in rows if row["status"] in {"queued", "in_progress", "waiting", "pending"}]
+          if active:
+              Path("supervisor/structural_action.json").write_text(json.dumps({"action": "wait", "active": len(active)}))
+              raise SystemExit(0)
+          for row in rows:
+              title = row["displayTitle"]
+              prefix = "Scaling structural generation "
+              if not title.startswith(prefix):
+                  continue
+              job_key = title[len(prefix):].split(" supervisor-", 1)[0]
+              if job_key not in by_key or job_key in completed:
+                  raise SystemExit(f"unknown or duplicate structural generation job: {job_key}")
+              if row["status"] != "completed" or row["conclusion"] != "success":
+                  raise SystemExit(f"structural generation job requires explicit resume review: {job_key}")
+              with tempfile.TemporaryDirectory(prefix="structural-audit-") as temporary:
+                  subprocess.run([
+                      "gh", "run", "download", str(row["databaseId"]),
+                      "--name", f"scaling-paradox-structural-generation-{job_key}",
+                      "--dir", temporary,
+                  ], check=True)
+                  reports = list(Path(temporary).rglob("generation_report.json"))
+                  if len(reports) != 1:
+                      raise SystemExit(f"generation artifact absent/non-unique: {job_key}")
+                  report = json.load(open(reports[0]))
+                  contract = report.get("contract") or {}
+                  job = by_key[job_key]
+                  source = job.get("source_training") or {}
+                  checks = {
+                      "model": job["model"], "arm": job["arm"],
+                      "training_seed": job["training_seed"], "checkpoint_step": job["checkpoint_step"],
+                      "checkpoint_path": job["checkpoint_path"],
+                  }
+                  if any(contract.get(key) != value for key, value in checks.items()):
+                      raise SystemExit(f"generation contract differs from manifest: {job_key}")
+                  if source and (contract.get("source_training") or {}).get("source_run_contract_sha") != source["run_contract_sha"]:
+                      raise SystemExit(f"generation source differs from manifest: {job_key}")
+                  if source:
+                      observed_source = contract.get("source_training") or {}
+                      bindings = {
+                          "source_run_contract_file_sha256": "run_contract_file_sha256",
+                          "source_training_report_file_sha256": "training_report_file_sha256",
+                          "source_checkpoint_lineage_file_sha256": "checkpoint_lineage_file_sha256",
+                      }
+                      if any(observed_source.get(a) != source[b] for a, b in bindings.items()):
+                          raise SystemExit(f"generation source file hashes differ from manifest: {job_key}")
+                  if report.get("status") != "complete" or report.get("completed_candidate_count") != 96:
+                      raise SystemExit(f"generation cell is incomplete: {job_key}")
+              completed.add(job_key)
+          action = {"action": "complete", "job_keys": []}
+          for wave in manifest["waves"]:
+              present = [key for key in wave["job_keys"] if key in completed]
+              if len(present) == len(wave["job_keys"]):
+                  continue
+              if present:
+                  raise SystemExit(f"partially complete structural wave {wave['wave_index']} requires escalation")
+              action = {"action": "dispatch", "wave_index": wave["wave_index"], "job_keys": wave["job_keys"]}
+              break
+          Path("supervisor/structural_action.json").write_text(json.dumps(action, indent=2, sort_keys=True) + "\n")
+          PY
+          printf 'STRUCTURAL_ACTION=%s\n' "$(jq -r .action supervisor/structural_action.json)" >> "$GITHUB_ENV"
+
+      - name: Publish exact structural manifest
+        if: env.STRUCTURAL_ACTION == 'dispatch' && inputs.mode == 'advance'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scaling-paradox-structural-manifest-${{ github.run_id }}
+          path: |
+            supervisor/structural_manifest.json
+            supervisor/structural_action.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Dispatch and identify one structural wave
+        if: env.STRUCTURAL_ACTION == 'dispatch' && inputs.mode == 'advance'
+        env:
+          SUPERVISOR_RUN_ID: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, time
+          from pathlib import Path
+
+          manifest = json.load(open("supervisor/structural_manifest.json"))
+          action = json.load(open("supervisor/structural_action.json"))
+          records = []
+          for job_key in action["job_keys"]:
+              subprocess.run([
+                  "gh", "workflow", "run", "scaling-paradox-structural-generation.yml", "--ref", "main",
+                  "-f", f"job_key={job_key}",
+                  "-f", f"structural_manifest_sha={manifest['structural_manifest_sha']}",
+                  "-f", f"supervisor_run_id={os.environ['SUPERVISOR_RUN_ID']}",
+              ], check=True)
+              title = f"Scaling structural generation {job_key} supervisor-{os.environ['SUPERVISOR_RUN_ID']}"
+              child = None
+              for _ in range(30):
+                  rows = json.loads(subprocess.run([
+                      "gh", "run", "list", "--workflow", "scaling-paradox-structural-generation.yml",
+                      "--limit", "100", "--json", "databaseId,displayTitle",
+                  ], check=True, capture_output=True, text=True).stdout)
+                  matches = [row["databaseId"] for row in rows if row["displayTitle"] == title]
+                  if len(matches) == 1:
+                      child = matches[0]
+                      break
+                  time.sleep(2)
+              if child is None:
+                  raise SystemExit(f"structural child did not become observable: {job_key}")
+              records.append({"job_key": job_key, "child_actions_run_id": child})
+              Path("supervisor/structural_dispatch.json").write_text(json.dumps({"dispatches": records}, indent=2) + "\n")
+          PY
+
+      - name: Preserve structural supervisor records
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scaling-paradox-structural-supervisor-${{ github.run_id }}
+          path: |
+            supervisor/structural_manifest.json
+            supervisor/structural_action.json
+            supervisor/structural_dispatch.json
+          if-no-files-found: warn
+          retention-days: 90

@@ -251,11 +251,65 @@ def test_replication_workflow_is_dedicated_and_no_spend_validatable() -> None:
     assert "reports/scaling_paradox_v1_replication" in workflow
     assert "scaling-paradox-v1-replication-${{ inputs.run_key }}" in workflow
     assert "Verify Tinker provider access without spending" in workflow
-    assert "configs/experiments/scaling_paradox_v1_replication_gate.json" in workflow
-    assert "reviewed v1 core gate receipt is absent" in workflow
+    assert "Verify one-time supervisor authorization" in workflow
+    assert "--campaign replication" in workflow
+    assert "INPUT_STAGE: ${{ inputs.stage }}" in workflow
+    assert '--stage "$INPUT_STAGE"' in workflow
+    assert "paid execution requires supervisor_run_id" in workflow
     assert "if: inputs.mode == 'validate'" in workflow
     assert '"paid_execution": False' in workflow
-    assert "--confirm-contract-sha \"${{ inputs.launch_plan_sha }}\"" in workflow
+    assert '--confirm-contract-sha "$INPUT_PLAN_SHA"' in workflow
+
+
+def test_launcher_defers_both_frozen_endpoint_partitions_to_dedicated_evaluator() -> None:
+    source = (ROOT / "scripts" / "launch_scaling_paradox_v1.py").read_text()
+    launch = source[source.index("command = [", source.index("def launch_one")) :]
+    assert '"--holdout-pairs-path"' not in launch
+    assert '"--challenge-pairs-path"' not in launch
+    evaluator = (ROOT / "scripts" / "evaluate_scaling_paradox_checkpoint.py").read_text()
+    assert 'path_key="holdout_path"' in evaluator
+    assert 'path_key="challenge_path"' in evaluator
+
+
+def test_campaign_supervisor_is_global_exact_and_worker_enforced() -> None:
+    supervisor = (ROOT / ".github" / "workflows" / "scaling-paradox-supervisor.yml").read_text()
+    original = (ROOT / ".github" / "workflows" / "scaling-paradox-v1.yml").read_text()
+    evaluator = (ROOT / ".github" / "workflows" / "scaling-paradox-checkpoint-evaluation.yml").read_text()
+    assert "group: scaling-paradox-campaign-supervisor" in supervisor
+    assert "Reconstruct authoritative campaign state from Actions artifacts" in supervisor
+    assert "Compute the only permitted next transition" in supervisor
+    assert "Dispatch and identify every authorized child" in supervisor
+    assert "--ref\", \"main\"" in supervisor
+    verifier = (ROOT / "scripts" / "verify_scaling_paradox_authorization.py").read_text()
+    assert 'supervisor.get("headSha") != os.environ.get("GITHUB_SHA")' in verifier
+    assert "Verify one-time supervisor authorization" in original
+    assert "Materialize corrected terminal endpoint evaluation" not in original
+    assert "one immutable checkpoint evaluation" in evaluator
+    assert "source run contract differs from frozen plan" in evaluator
+    assert "evaluate_scaling_paradox_checkpoint.py" in evaluator
+
+
+def test_executor_manifest_freezes_all_parallel_waves_and_budget() -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    executor = json.loads(
+        (ROOT / "configs" / "experiments" / "scaling_paradox_executor_v1.json").read_text()
+    )
+    manifest = manager.build_manifest(executor)
+    assert manifest["global_max_active_paid_cells"] == 6
+    assert manifest["planned_training_ceiling_usd"] == 1191.28
+    assert manifest["planned_checkpoint_evaluation_ceiling_usd"] == 92.74
+    assert manifest["planned_pre_structural_tinker_ceiling_usd"] == 1284.02
+    assert len(manifest["phases"]) == 6
+    assert all(len(wave["run_keys"]) <= 6 for phase in manifest["phases"] for wave in phase["waves"])
+    assert sum(
+        len(wave["run_keys"]) for phase in manifest["phases"] for wave in phase["waves"]
+    ) == 60
+    assert manifest["phases"][0]["plan_sha"] == (
+        "f63f3bd2f9f0654c819f3f5a806145847c9b899ae16859d870c7a3b320d43226"
+    )
+    assert manifest["phases"][1]["plan_sha"] == (
+        "ac90ed77143986eeaec127983df8306c7ced37cd7aed38b87fdc2cb6e7c66b5d"
+    )
 
 
 def test_subagent_runbook_is_bound_to_frozen_contract_and_contamination_rules() -> None:

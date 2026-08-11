@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
+FROM docker.io/nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04@sha256:9175fa92f96de35a8cfb9493f0dfcf9435c7a597e9d95ad41d2cae382a95e3f9
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -18,6 +18,7 @@ COPY src ./src
 COPY scripts/run_scaling_paradox_structure.py ./scripts/run_scaling_paradox_structure.py
 COPY configs/structure_gate_calibration.esmfold.json ./configs/structure_gate_calibration.esmfold.json
 COPY configs/experiments/scaling_paradox_structural_v1.json ./configs/experiments/scaling_paradox_structural_v1.json
+COPY configs/experiments/scaling_paradox_structural_v1_replication.json ./configs/experiments/scaling_paradox_structural_v1_replication.json
 COPY deploy/scaling_paradox_v1/run_esmf_job.sh ./deploy/scaling_paradox_v1/run_esmf_job.sh
 COPY input/generation_report.json /workspace/input/generation_report.json
 RUN chmod 0755 ./deploy/scaling_paradox_v1/run_esmf_job.sh

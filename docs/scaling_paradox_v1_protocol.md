@@ -97,6 +97,20 @@ Only if Stage 1 reproduces capacity-dependent inertia, repeat the 9B and 27B tru
 rank 128 for all three seeds. Rescue of normalized margin learning weakens an intrinsic-capacity
 interpretation and supports a fixed-adapter bottleneck.
 
+Prospective executor amendment (frozen before core outcome review): “reproduces” is evaluated only by
+the objective `combined_core_adapter_rescue` gate in
+`configs/experiments/scaling_paradox_executor_v1.json`. Both the original and replication clean
+4B-minus-9B means must be strictly positive with at least two of three positive seeds in each cohort;
+the combined 4B true-minus-shuffled mean must be positive; and at least four of six combined seeds
+must be positive for both 4B-minus-9B and 4B-minus-27B. No p-value threshold is used. Failure skips
+both rescue cohorts without tuning or substitution.
+
+The frozen data-exposure estimands are paired seed-level 4B contrasts on the primary held-out
+per-residue margin-delta endpoint: 2.5K update-matched minus 2.5K one-epoch isolates update exposure,
+and D10 true-preference minus 2.5K update-matched isolates data diversity at matched updates. If the
+rescue gate passes, the rescue estimand is rank-128 minus matched rank-32 true-preference margin delta,
+reported separately for 9B and 27B, by cohort and in the prespecified six-seed combination.
+
 The previous 4B-only beta sweep is pilot/supplementary work. It is not part of the causal scaling
 test because beta was not crossed with model capacity.
 
@@ -132,6 +146,8 @@ untouched real-failure challenge by `scripts/build_scaling_paradox_structural_pa
   generations are structural-yield failures; no reward-ranked or hand-selected shortlist is allowed.
 - The primary structural contrast uses base and terminal step 2,250. Steps 500, 1,000, 1,500, and
   2,000 are a preregistered secondary trajectory.
+- The structural matrix is restricted to the fixed-rank core. Data-exposure and rank-128 rescue are
+  optimization-endpoint controls and do not receive post hoc structural panels.
 - Folding uses `facebook/esmfold_v1` revision
   `75a3841ee059df2bf4d56688166c8fb459ddd97a`, Transformers 5.5.4, and Torch 2.12.0.
 - A full pass requires mean pLDDT at least 70 and a side-chain Ser--His--Asp relay with both declared
@@ -145,6 +161,19 @@ The evaluator is fully automated, so there is no subjective panel selection to b
 remains the experimental unit; the 96 candidate attempts in a cell are nested observations.
 
 ## Disconnect-safe execution
+
+Executor amendment: paid execution is now accepted only through
+`.github/workflows/scaling-paradox-supervisor.yml`, with a one-time exact-wave authorization and a
+campaign-global lock. The first sentinel and Wave A were launched before this guard existed; their
+training/checkpoint artifacts remain part of the frozen cohort.
+
+The pre-supervisor launcher also passed the frozen D10 holdout as the runtime challenge input and did
+not populate a holdout evaluation, even though each immutable run contract correctly recorded both
+the holdout and real-failure challenge. Those inline evaluations are invalid; training is not
+repeated. `scaling-paradox-checkpoint-evaluation.yml` performs a separate immutable terminal-
+checkpoint evaluation on both correctly hashed partitions. No cell passes a wave gate without this
+repair receipt. The primary normalization divides chosen and rejected sequence log-probability sums
+by their respective residue counts before taking the preference margin.
 
 Paid Tinker cells run through `.github/workflows/scaling-paradox-v1.yml`, not a process whose lifetime
 depends on the operator laptop. The workflow accepts exactly one immutable run key and launch-plan SHA,

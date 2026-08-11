@@ -6,6 +6,8 @@ context-limited agent working under a primary or supervisor.
 
 1. Read `docs/SUBAGENT_RUNBOOK.md` and `docs/scaling_paradox_v1_protocol.md` before acting. If the
    prospective replication is in scope, also read `docs/scaling_paradox_v1_replication_protocol.md`.
+   For campaign execution, also read `docs/SCALING_PARADOX_EXECUTOR_PACKET.md`; it supersedes older
+   manual paid-dispatch examples.
 2. The primary agent owns engineering and research judgment within the user's authority. It may
    design, investigate, interpret, and make versioned decisions. It may not silently rewrite a frozen
    contract after data collection begins.
@@ -16,8 +18,8 @@ context-limited agent working under a primary or supervisor.
    assignment described in the runbook.
    Within that assignment, the low-stakes FAQ permits autonomous read-only, reversible, zero-spend,
    scientifically inert choices without asking the primary about every command.
-5. Never launch paid training from a laptop process. Use the immutable GitHub Actions workflow and
-   one exact run key per dispatch.
+5. Never launch paid training from a laptop process or directly invoke a paid worker workflow. Use
+   the campaign supervisor, which authorizes one exact frozen wave and dispatches one key per worker.
 6. Never treat duplicate runs as replicates, invent missing observations, hand-select endpoint
    candidates, or combine pilot and confirmatory cohorts.
 7. Never stage, import, copy, rewrite, or delete quarantined untracked Concord/California material.

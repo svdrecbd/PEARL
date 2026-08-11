@@ -10,7 +10,25 @@ if [[ ! -s "$input_report" ]]; then
 fi
 
 mkdir -p "$output_root"
+structural_config="${STRUCTURAL_CONFIG:-}"
+if [[ -z "$structural_config" ]]; then
+  structural_config="$(python3 - "$input_report" <<'PY'
+import json
+import sys
+
+campaign = json.load(open(sys.argv[1]))["contract"]["campaign_id"]
+configs = {
+    "pearl-scaling-paradox-v1": "configs/experiments/scaling_paradox_structural_v1.json",
+    "pearl-scaling-paradox-v1-replication": "configs/experiments/scaling_paradox_structural_v1_replication.json",
+}
+if campaign not in configs:
+    raise SystemExit(f"unknown structural campaign: {campaign}")
+print(configs[campaign])
+PY
+)"
+fi
 python3 scripts/run_scaling_paradox_structure.py \
+  --config "$structural_config" \
   --generation-report "$input_report" \
   --output-dir "$output_root"
 
@@ -32,6 +50,8 @@ result = {
     "full_structural_gate_passes": report["full_structural_gate_passes"],
     "full_structural_gate_yield": report["full_structural_gate_yield"],
     "fold_contract_sha": report["contract"]["fold_contract_sha"],
+    "generation_run_key": report["contract"]["generation_run_key"],
+    "generation_contract_sha": report["contract"]["generation_contract_sha"],
 }
 pathlib.Path(sys.argv[2]).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
 PY

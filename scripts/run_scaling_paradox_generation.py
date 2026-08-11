@@ -51,6 +51,52 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def source_training_identity(args: argparse.Namespace) -> dict[str, Any] | None:
+    if args.arm == "base":
+        return None
+    contract_arg = getattr(args, "source_run_contract", None)
+    report_arg = getattr(args, "source_training_report", None)
+    lineage_arg = getattr(args, "source_checkpoint_lineage", None)
+    if not contract_arg or not report_arg or not lineage_arg:
+        raise ValueError(
+            "trained structural generation requires source run contract, terminal report, and checkpoint lineage"
+        )
+    contract_path = repo_path(contract_arg)
+    report_path = repo_path(report_arg)
+    lineage_path = repo_path(lineage_arg)
+    contract = read_json(contract_path)
+    report = read_json(report_path)
+    lineage = read_json(lineage_path)
+    if report.get("contract_sha") != contract.get("run_contract_sha"):
+        raise RuntimeError("structural source report differs from its run contract")
+    expected = {
+        "model": args.model,
+        "arm": args.arm,
+        "training_seed": int(args.training_seed),
+    }
+    if any(contract.get(key) != value for key, value in expected.items()):
+        raise RuntimeError("structural source cell differs from requested model/arm/seed")
+    if lineage.get("contract_sha") != contract.get("run_contract_sha"):
+        raise RuntimeError("structural source checkpoint lineage has the wrong contract")
+    matches = [
+        row for row in lineage.get("checkpoints", [])
+        if int(row.get("step", -1)) == int(args.checkpoint_step)
+        and row.get("state_path") == args.checkpoint_path
+    ]
+    if len(matches) != 1:
+        raise RuntimeError("requested structural checkpoint is absent or non-unique in source lineage")
+    if int(args.checkpoint_step) == int(contract["max_steps"]):
+        if report.get("checkpoint_path") != args.checkpoint_path or not matches[0].get("terminal"):
+            raise RuntimeError("terminal structural checkpoint differs from source report/lineage")
+    return {
+        "source_run_key": contract["run_key"],
+        "source_run_contract_sha": contract["run_contract_sha"],
+        "source_run_contract_file_sha256": sha256_file(contract_path),
+        "source_training_report_file_sha256": sha256_file(report_path),
+        "source_checkpoint_lineage_file_sha256": sha256_file(lineage_path),
+    }
+
+
 def message_text(message: Any) -> str:
     content = message.get("content", "") if isinstance(message, dict) else ""
     if isinstance(content, str):
@@ -79,6 +125,7 @@ def build_contract(args: argparse.Namespace, config: dict[str, Any], panel_path:
     if args.arm != "base" and (args.checkpoint_step == 0 or not args.checkpoint_path):
         raise ValueError("trained evaluation requires a nonzero checkpoint step and --checkpoint-path")
     renderer = str(training_config["common"]["renderer"])
+    source_identity = source_training_identity(args)
     identity = {
         "campaign_id": config["campaign_id"],
         "structural_contract": config["contract"],
@@ -93,6 +140,7 @@ def build_contract(args: argparse.Namespace, config: dict[str, Any], panel_path:
         "checkpoint_step": int(args.checkpoint_step),
         "checkpoint_path": args.checkpoint_path,
         "sampling": config["sampling"],
+        "source_training": source_identity,
     }
     identity["generation_contract_sha"] = sha256_value(identity)
     identity["run_key"] = (
@@ -147,6 +195,9 @@ def main() -> None:
     parser.add_argument("--training-seed", type=int, required=True)
     parser.add_argument("--checkpoint-step", type=int, required=True)
     parser.add_argument("--checkpoint-path")
+    parser.add_argument("--source-run-contract")
+    parser.add_argument("--source-training-report")
+    parser.add_argument("--source-checkpoint-lineage")
     parser.add_argument("--output-dir", default=str(ROOT / "reports" / "scaling_paradox_v1" / "structural"))
     parser.add_argument("--shape-only", action="store_true")
     args = parser.parse_args()

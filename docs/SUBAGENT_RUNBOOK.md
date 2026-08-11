@@ -9,6 +9,10 @@ If an instruction conflicts with the frozen protocol, the agent stops and report
 The subagent is not the scientific principal investigator or engineering lead. It may execute an
 already-declared contract; it may not redesign, reinterpret, or extend one.
 
+For the active scaling-paradox campaign, `docs/SCALING_PARADOX_EXECUTOR_PACKET.md` is the exact
+happy-path checklist. Its supervisor/receipt process supersedes the older direct-dispatch examples
+below. Direct paid worker dispatch is now mechanically rejected.
+
 ## Authority classes
 
 ### Primary agent

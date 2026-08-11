@@ -1,0 +1,146 @@
+{
+  "contract": "pearl.scaling-paradox-executor/1",
+  "created_before_core_outcome_review": true,
+  "global_max_active_paid_cells": 6,
+  "max_authorized_tinker_usd": 1800.0,
+  "max_authorized_givemeanode_usd": 482.01,
+  "givemeanode_max_active_jobs": 6,
+  "givemeanode_hardware": "NVIDIA H100",
+  "givemeanode_entrypoint": "deploy/scaling_paradox_v1/run_esmf_job.sh",
+  "givemeanode_anchor_ref": "scaling-paradox-executor-v1",
+  "planned_training_ceiling_usd": 1191.28,
+  "planned_checkpoint_evaluation_ceiling_usd": 92.74,
+  "planned_pre_structural_tinker_ceiling_usd": 1284.02,
+  "planned_structural_sampling_ceiling_usd": 13.52,
+  "planned_total_tinker_ceiling_usd": 1297.54,
+  "legacy_original_core_actions_runs": {
+    "31458799761": {
+      "head_sha": "aefb523918589cc07f88f8235422d498cf6140ae",
+      "run_key": "core-fixed-rank-qwen3p6-27b-shuffled-seed43-f7cdbeb31b"
+    },
+    "31515075803": {
+      "head_sha": "e7cd08c28bf6d1e29d22da1b4d5157e4ebdbb7c5",
+      "run_key": "core-fixed-rank-qwen3p5-4b-true-seed29-64d74e84a7"
+    },
+    "31515078937": {
+      "head_sha": "e7cd08c28bf6d1e29d22da1b4d5157e4ebdbb7c5",
+      "run_key": "core-fixed-rank-qwen3p5-9b-true-seed29-81861bdd7a"
+    },
+    "31515082412": {
+      "head_sha": "e7cd08c28bf6d1e29d22da1b4d5157e4ebdbb7c5",
+      "run_key": "core-fixed-rank-qwen3p5-9b-shuffled-seed17-b8728186fd"
+    },
+    "31515086034": {
+      "head_sha": "e7cd08c28bf6d1e29d22da1b4d5157e4ebdbb7c5",
+      "run_key": "core-fixed-rank-qwen3p5-4b-shuffled-seed29-3125f379ed"
+    },
+    "31515090195": {
+      "head_sha": "e7cd08c28bf6d1e29d22da1b4d5157e4ebdbb7c5",
+      "run_key": "core-fixed-rank-qwen3p6-27b-true-seed29-585a2b88bf"
+    }
+  },
+  "campaigns": {
+    "original": {
+      "campaign_id": "pearl-scaling-paradox-v1",
+      "config": "configs/experiments/scaling_paradox_v1.json",
+      "plan_dir": "reports/scaling_paradox_v1",
+      "workflow": "scaling-paradox-v1.yml",
+      "artifact_prefix": "scaling-paradox-",
+      "stages": {
+        "core": {
+          "plan_sha": "f63f3bd2f9f0654c819f3f5a806145847c9b899ae16859d870c7a3b320d43226",
+          "run_count": 18,
+          "estimated_cost_usd": 416.83,
+          "waves": [[1], [2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [13, 14, 15, 16, 17, 18]]
+        },
+        "data_exposure": {
+          "plan_sha": "69cd1dbb26435d1a7ce75131c831f2c22c35429023631048edcdaba3a6b185d1",
+          "run_count": 6,
+          "estimated_cost_usd": 25.35,
+          "waves": [[1, 2, 3, 4, 5, 6]]
+        },
+        "adapter_rescue": {
+          "plan_sha": "d45bcd186da111fada645ea66c736cb0bf1f059a4d3df1a4e4879dc3f7bc5420",
+          "run_count": 6,
+          "estimated_cost_usd": 184.17,
+          "waves": [[1, 2, 3, 4, 5, 6]],
+          "conditional_gate": "combined_core_adapter_rescue"
+        }
+      }
+    },
+    "replication": {
+      "campaign_id": "pearl-scaling-paradox-v1-replication",
+      "config": "configs/experiments/scaling_paradox_v1_replication.json",
+      "plan_dir": "reports/scaling_paradox_v1_replication",
+      "workflow": "scaling-paradox-v1-replication.yml",
+      "artifact_prefix": "scaling-paradox-v1-replication-",
+      "stages": {
+        "core": {
+          "plan_sha": "ac90ed77143986eeaec127983df8306c7ced37cd7aed38b87fdc2cb6e7c66b5d",
+          "run_count": 18,
+          "estimated_cost_usd": 416.83,
+          "waves": [[1], [2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [13, 14, 15, 16, 17, 18]]
+        },
+        "data_exposure": {
+          "plan_sha": "d074ac39873cd07d512e3f653b6f6fb840f7a7df8b095d832f69e90b9b4c028a",
+          "run_count": 6,
+          "estimated_cost_usd": 25.35,
+          "waves": [[1, 2, 3, 4, 5, 6]]
+        },
+        "adapter_rescue": {
+          "plan_sha": "db618b3a67b76d78d1712b1855f60c4f7764593d46b2e44b4376c6432cc31085",
+          "run_count": 6,
+          "estimated_cost_usd": 184.17,
+          "waves": [[1, 2, 3, 4, 5, 6]],
+          "conditional_gate": "combined_core_adapter_rescue"
+        }
+      }
+    }
+  },
+  "stage_order": [
+    "original:core",
+    "replication:core",
+    "original:data_exposure",
+    "replication:data_exposure",
+    "original:adapter_rescue",
+    "replication:adapter_rescue"
+  ],
+  "adapter_rescue_gate": {
+    "id": "combined_core_adapter_rescue",
+    "metric": "holdout per-residue true-minus-shuffled margin-delta effect",
+    "original_clean_4b_minus_9b_mean_strictly_positive": true,
+    "original_clean_positive_seed_count_minimum": 2,
+    "replication_clean_4b_minus_9b_mean_strictly_positive": true,
+    "replication_clean_positive_seed_count_minimum": 2,
+    "combined_4b_true_minus_shuffled_mean_strictly_positive": true,
+    "combined_clean_4b_minus_9b_positive_seed_count_minimum": 4,
+    "combined_extension_4b_minus_27b_positive_seed_count_minimum": 4,
+    "no_p_value_threshold": true,
+    "failure_action": "skip_both_adapter_rescue_stages_and_continue_without_substitution_or_tuning"
+  },
+  "structural_scope": {
+    "included_training_stages": ["core"],
+    "excluded_training_stages": {
+      "data_exposure": "optimization_endpoint_only",
+      "adapter_rescue": "optimization_endpoint_only"
+    },
+    "base_cells": 3,
+    "original_core_terminal_cells": 18,
+    "replication_core_terminal_cells": 18,
+    "candidates_per_cell": 96,
+    "replication_reuses_original_base": true,
+    "secondary_original_checkpoint_trajectory": [500, 1000, 1500, 2000],
+    "replication_checkpoint_trajectory": "terminal_only"
+  },
+  "stop_conditions": [
+    "unknown or mismatched plan hash",
+    "missing or ambiguous artifact ownership",
+    "more than one provider DPO trainer for one contract",
+    "provider corrupted is not explicitly false",
+    "active paid cell count is unknown or would exceed six",
+    "estimated authorized spend would exceed the frozen envelope",
+    "wave predecessor lacks training and evaluation audit receipts",
+    "checkpoint lineage is missing, unordered, or belongs to another contract",
+    "any request to replace a seed, change a threshold, tune a method, or inspect interim outcomes"
+  ]
+}

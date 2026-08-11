@@ -218,11 +218,17 @@ def main() -> None:
                     "failure_reason": None if full_pass else "structural_gate_failed",
                 }
             except Exception as error:
-                row = {
-                    **base,
-                    "failure_reason": f"{type(error).__name__}: {error}",
-                    "full_structural_gate_pass": False,
+                interruption = report_payload(contract, results, status="infrastructure_interrupted")
+                interruption["infrastructure_error"] = {
+                    "candidate_id": cid,
+                    "error_type": type(error).__name__,
+                    "message": str(error),
+                    "counted_as_scientific_failure": False,
                 }
+                atomic_write_json(report_path, interruption)
+                raise RuntimeError(
+                    f"structural backend interrupted at {cid}; candidate remains unobserved for resume"
+                ) from error
         results.append(row)
         completed.add(cid)
         atomic_write_json(report_path, report_payload(contract, results, status="running"))

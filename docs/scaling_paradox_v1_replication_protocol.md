@@ -76,6 +76,8 @@ Analysis proceeds in this order:
 The biological endpoint remains full structural-gate yield. The frozen 24-prompt × 4-sample-seed
 panel is reused unchanged. Replication terminal checkpoints add new training-seed experimental units;
 the already-frozen base-model panel is a common baseline and is not regenerated or counted twice.
+Structural evaluation is restricted to the fixed-rank core; replication data-exposure and rank-128
+rescue remain optimization-endpoint controls.
 Candidate attempts remain nested observations and every attempted candidate stays in the denominator.
 The preregistered v1 checkpoint trajectory remains a secondary v1 analysis; the replication cohort
 is required to repeat the primary terminal structural contrast, not every secondary trajectory.
@@ -86,6 +88,18 @@ lineage; they are not replaced with new seeds.
 
 ## Operational gates and waves
 
+Prospective executor amendment: replication paid cells are not authorized by a hand-edited boolean
+gate file. They are dispatched only through `.github/workflows/scaling-paradox-supervisor.yml` after
+the controller has collected exact original training, provider-identity, and corrected two-partition
+evaluation receipts. The supervisor pins one commit, takes the campaign-global lock, and authorizes
+one wave of at most six cells. Direct paid worker dispatch is rejected.
+
+The replication data-exposure controls are the exact 4B true-preference 2.5K and 5K cells at seeds
+362034, 257621, and 520620. If and only if the frozen combined six-seed gate in
+`configs/experiments/scaling_paradox_executor_v1.json` passes, replication repeats the 9B and 27B
+true-preference rank-128 rescue at those same three replication seeds. Gate failure skips both
+original and replication rescue stages without replacement, tuning, or reinterpretation.
+
 Replication execution is blocked until:
 
 1. all 18 original v1 core cells are terminal-valid or resumed to terminal validity;
@@ -93,12 +107,11 @@ Replication execution is blocked until:
 3. the replication launch plan regenerates to its frozen SHA from the merged commit;
 4. a no-spend run of `.github/workflows/scaling-paradox-v1-replication.yml` verifies the remote
    dataset archive, plan identity, and provider access;
-5. a reviewed `configs/experiments/scaling_paradox_v1_replication_gate.json` records all 18 v1 cells
-   as terminal-valid with complete contract, lineage, provider, holdout, and challenge audits;
+5. the campaign controller observes sanitized evidence receipts for all 18 original cells; and
 6. the provider contains no replication run key or contract SHA.
 
-The paid workflow fails when the gate receipt is absent or incomplete. This protocol intentionally
-does not create that receipt in advance; it can be committed only from terminal v1 evidence.
+The paid worker fails when its one-time supervisor authorization is absent or does not contain its
+exact run key, plan, stage, cohort, and source commit.
 
 After the gate, use the independently randomized order in consecutive waves:
 
@@ -115,6 +128,13 @@ GitHub Actions workflow; a laptop process may generate or verify a plan but may 
 
 ## Conditional stages
 
-This amendment authorizes only the replicated fixed-rank core. Expansion of data-exposure or
-rank-128 rescue seeds requires another prospective version after their original v1 gates are
-resolved. Replication budget is not permission to start a conditional stage early.
+This August 11 executor amendment prospectively adds the same three replication seeds to the frozen
+v1 data-exposure and rank-128 rescue matrices. Replicated data exposure is the exact two-cell 4B
+D2.5 comparison at 563 and 2,250 updates for all three replication seeds. It begins only after both
+fixed-rank cores are terminal-valid.
+
+Replicated adapter rescue is the exact rank-128 9B and 27B true-preference matrix for all three
+replication seeds. Both original and replicated rescue stages remain blocked until the combined
+six-seed optimization analysis satisfies every frozen rescue-gate predicate in
+`configs/experiments/scaling_paradox_executor_v1.json`. A failed gate skips rescue; it never triggers
+parameter tuning, replacement seeds, or an alternate rescue.
