@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import os
+import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -265,10 +266,29 @@ def build_plan(config: dict[str, Any], manifest: dict[str, Any], stage_name: str
     }
 
 
+def resolve_tinker_cli() -> str:
+    explicit = os.environ.get("TINKER_CLI", "").strip()
+    if explicit:
+        candidate = Path(explicit).expanduser()
+        if not candidate.is_file() or not os.access(candidate, os.X_OK):
+            raise RuntimeError(f"TINKER_CLI is not an executable file: {candidate}")
+        return str(candidate)
+    sibling = Path(sys.executable).resolve().parent / "tinker"
+    if sibling.is_file() and os.access(sibling, os.X_OK):
+        return str(sibling)
+    local = ROOT / ".venv" / "bin" / "tinker"
+    if local.is_file() and os.access(local, os.X_OK):
+        return str(local)
+    discovered = shutil.which("tinker")
+    if discovered:
+        return discovered
+    raise RuntimeError("could not find the tinker CLI on PATH or in the project virtual environment")
+
+
 def provider_contracts() -> tuple[set[str], set[str]]:
-    cli = ROOT / ".venv" / "bin" / "tinker"
+    cli = resolve_tinker_cli()
     result = subprocess.run(
-        [str(cli), "-f", "json", "run", "list", "--limit=0"],
+        [cli, "-f", "json", "run", "list", "--limit=0"],
         cwd=ROOT,
         check=True,
         capture_output=True,
@@ -309,15 +329,38 @@ def launch_one(
         )
         if active.returncode == 0:
             raise RuntimeError("an active local process already owns this run key")
-    provider_shas, provider_keys = provider_contracts()
+    run_dir.mkdir(parents=True, exist_ok=True)
+    preflight_path = run_dir / "launch_preflight.json"
+    preflight = {
+        "run_key": run["run_key"],
+        "run_contract_sha": run["run_contract_sha"],
+        "launch_plan_contract_sha": plan["launch_plan_contract_sha"],
+        "status": "checking_provider",
+        "paid_training_started": False,
+    }
+    preflight_path.write_text(json.dumps(preflight, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    try:
+        provider_shas, provider_keys = provider_contracts()
+    except Exception as error:
+        preflight.update(
+            {
+                "status": "provider_preflight_failed",
+                "failure": f"{type(error).__name__}: {error}",
+            }
+        )
+        preflight_path.write_text(json.dumps(preflight, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        raise
     if not resume and (run["run_contract_sha"] in provider_shas or run["run_key"] in provider_keys):
+        preflight["status"] = "duplicate_provider_contract"
+        preflight_path.write_text(json.dumps(preflight, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         raise RuntimeError("provider already contains this immutable run contract; refusing a duplicate launch")
 
-    run_dir.mkdir(parents=True, exist_ok=True)
+    preflight["status"] = "provider_preflight_passed"
+    preflight_path.write_text(json.dumps(preflight, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if not contract_path.exists():
         contract_path.write_text(json.dumps(run, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     command = [
-        str(ROOT / ".venv" / "bin" / "python"),
+        sys.executable,
         "-u",
         str(ROOT / "scripts" / "run_tinker_dpo_smoke.py"),
         "--name",
@@ -361,6 +404,8 @@ def launch_one(
     log_path = run_dir / "trainer.log"
     with log_path.open("a", encoding="utf-8") as log_handle:
         process = subprocess.Popen(command, cwd=ROOT, env=os.environ.copy(), stdout=log_handle, stderr=subprocess.STDOUT)
+    preflight.update({"status": "trainer_started", "paid_training_started": True, "pid": process.pid})
+    preflight_path.write_text(json.dumps(preflight, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     launch_record = {
         "pid": process.pid,
         "launched_at_utc": datetime.now(UTC).isoformat(),
