@@ -27,6 +27,7 @@
       "models": ["qwen3p5-4b", "qwen3p5-9b", "qwen3p6-27b"],
       "dataset": "d10_train_true",
       "max_pairs": 100,
+      "max_challenge_pairs": 100,
       "max_steps": 25
     },
     "core": {

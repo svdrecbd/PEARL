@@ -20,7 +20,11 @@ SRC_ROOT = ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from pearl.phase8_readiness import TINKER_MODEL_PRICES, estimate_dpo_cost  # noqa: E402
+from pearl.phase8_readiness import (  # noqa: E402
+    TINKER_MODEL_PRICES,
+    estimate_dpo_cost,
+    estimate_preference_evaluation_cost,
+)
 from pearl.model_rendering import RendererContract  # noqa: E402
 from pearl.preference_distillation import load_jsonl  # noqa: E402
 
@@ -38,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-key", help="Required with --execute; launches exactly one planned run")
     parser.add_argument("--confirm-contract-sha", help="Required with --execute")
     parser.add_argument("--resume", action="store_true", help="Resume the same immutable local run directory")
+    parser.add_argument("--wait", action="store_true", help="Supervise the trainer and return only after it exits")
     return parser.parse_args()
 
 
@@ -115,6 +120,7 @@ def base_contract(
         "max_steps": int(common["max_steps"]),
         "save_every_steps": int(common["save_every_steps"]),
         "max_pairs": common.get("max_pairs"),
+        "max_challenge_pairs": common.get("max_challenge_pairs"),
     }
     identity["run_contract_sha"] = sha256_value(identity)
     identity["run_key"] = (
@@ -137,7 +143,7 @@ def build_stage_runs(config: dict[str, Any], manifest: dict[str, Any], stage_nam
                 for seed in stage["seeds"]:
                     overrides = {
                         key: stage[key]
-                        for key in ("max_pairs", "max_steps", "rank")
+                        for key in ("max_pairs", "max_challenge_pairs", "max_steps", "rank")
                         if key in stage
                     }
                     runs.append(
@@ -191,17 +197,39 @@ def build_stage_runs(config: dict[str, Any], manifest: dict[str, Any], stage_nam
 
 def estimate_run_cost(run: dict[str, Any]) -> dict[str, float]:
     rows = load_jsonl(repo_path(run["dataset_path"]))
+    holdout_rows = load_jsonl(repo_path(run["holdout_path"]))
     pair_count = min(len(rows), int(run["max_pairs"])) if run.get("max_pairs") else len(rows)
+    holdout_pair_count = (
+        min(len(holdout_rows), int(run["max_challenge_pairs"]))
+        if run.get("max_challenge_pairs")
+        else len(holdout_rows)
+    )
     batches_per_epoch = math.ceil(pair_count / int(run["batch_pairs"]))
     epochs = max(1, math.ceil(int(run["max_steps"]) / batches_per_epoch))
-    estimate = estimate_dpo_cost(
+    prices = TINKER_MODEL_PRICES[str(run["model"])]
+    training = estimate_dpo_cost(
         pair_rows=rows,
-        prices=TINKER_MODEL_PRICES[str(run["model"])],
+        prices=prices,
         pair_count=pair_count,
         epochs=epochs,
     )
-    estimate["estimated_epochs"] = float(epochs)
-    return estimate
+    evaluation = estimate_preference_evaluation_cost(
+        pair_rows=holdout_rows,
+        prices=prices,
+        pair_count=holdout_pair_count,
+        policy_count=2,
+    )
+    return {
+        **training,
+        "estimated_epochs": float(epochs),
+        "holdout_pair_count": float(holdout_pair_count),
+        "estimated_holdout_prefill_tokens": evaluation["estimated_prefill_tokens"],
+        "estimated_training_cost_usd": training["estimated_cost_usd"],
+        "estimated_evaluation_cost_usd": evaluation["estimated_cost_usd"],
+        "estimated_cost_usd": round(
+            training["estimated_cost_usd"] + evaluation["estimated_cost_usd"], 4
+        ),
+    }
 
 
 def build_plan(config: dict[str, Any], manifest: dict[str, Any], stage_name: str) -> dict[str, Any]:
@@ -248,7 +276,9 @@ def provider_contracts() -> tuple[set[str], set[str]]:
     return contract_shas, run_keys
 
 
-def launch_one(run: dict[str, Any], plan: dict[str, Any], plan_dir: Path, *, resume: bool) -> int:
+def launch_one(
+    run: dict[str, Any], plan: dict[str, Any], plan_dir: Path, *, resume: bool, wait: bool
+) -> tuple[int, int | None]:
     run_dir = plan_dir / "runs" / str(run["run_key"])
     contract_path = run_dir / "run_contract.json"
     if contract_path.exists() and not resume:
@@ -316,6 +346,8 @@ def launch_one(run: dict[str, Any], plan: dict[str, Any], plan_dir: Path, *, res
     ]
     if run.get("max_pairs"):
         command.extend(["--max-pairs", str(run["max_pairs"])])
+    if run.get("max_challenge_pairs"):
+        command.extend(["--max-challenge-pairs", str(run["max_challenge_pairs"])])
     log_path = run_dir / "trainer.log"
     with log_path.open("a", encoding="utf-8") as log_handle:
         process = subprocess.Popen(command, cwd=ROOT, env=os.environ.copy(), stdout=log_handle, stderr=subprocess.STDOUT)
@@ -328,7 +360,7 @@ def launch_one(run: dict[str, Any], plan: dict[str, Any], plan_dir: Path, *, res
     (run_dir / "launch_record.json").write_text(
         json.dumps(launch_record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    return process.pid
+    return process.pid, process.wait() if wait else None
 
 
 def main() -> None:
@@ -353,8 +385,15 @@ def main() -> None:
         raise SystemExit(f"run key {args.run_key!r} is not unique in {plan_path}")
     if not os.environ.get("TINKER_API_KEY"):
         raise SystemExit("TINKER_API_KEY is required for paid execution")
-    pid = launch_one(matches[0], plan, plan_dir, resume=args.resume)
-    print(json.dumps({"launched": args.run_key, "pid": pid, "plan": str(plan_path)}, indent=2))
+    pid, returncode = launch_one(matches[0], plan, plan_dir, resume=args.resume, wait=args.wait)
+    print(
+        json.dumps(
+            {"launched": args.run_key, "pid": pid, "returncode": returncode, "plan": str(plan_path)},
+            indent=2,
+        )
+    )
+    if returncode not in (None, 0):
+        raise SystemExit(returncode)
 
 
 if __name__ == "__main__":
