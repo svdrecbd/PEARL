@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 from collections import Counter
 from pathlib import Path
@@ -45,6 +46,7 @@ def main() -> None:
         seed=args.split_seed,
         group_field=args.holdout_group_field,
     )
+    random.Random(args.training_seed).shuffle(pair_rows)
     if args.max_pairs is not None:
         pair_rows = pair_rows[: args.max_pairs]
     if args.max_holdout_pairs is not None:
@@ -112,12 +114,16 @@ def main() -> None:
             print(f"Warning: Failed to load checkpoint metadata. Error: {exc}", flush=True)
 
     training_client = (
-        service_client.create_training_client_from_state(path=current_state_path)
+        service_client.create_training_client_from_state(
+            path=current_state_path,
+            user_metadata=training_user_metadata(args, task="physical_to_sequence_dpo"),
+        )
         if current_state_path
         else service_client.create_lora_training_client(
             base_model=base_model,
             rank=args.rank,
-            user_metadata={"pearl_task": "physical_to_sequence_dpo"},
+            seed=args.training_seed,
+            user_metadata=training_user_metadata(args, task="physical_to_sequence_dpo"),
         )
     )
     renderer_contract = RendererContract(
@@ -217,12 +223,16 @@ def main() -> None:
         print("--- COMPUTING REFERENCE MARGINS (Upfront Forward Pass) ---", flush=True)
         reference_state_path = args.reference_state_path or args.init_state_path
         reference_client = (
-            service_client.create_training_client_from_state(path=reference_state_path)
+            service_client.create_training_client_from_state(
+                path=reference_state_path,
+                user_metadata=training_user_metadata(args, task="reference_policy"),
+            )
             if reference_state_path
             else service_client.create_lora_training_client(
                 base_model=base_model,
                 rank=args.rank,
-                user_metadata={"pearl_task": "reference_policy"},
+                seed=args.training_seed,
+                user_metadata=training_user_metadata(args, task="reference_policy"),
             )
         )
         reference_margins = forward_preference_margins(
@@ -420,6 +430,10 @@ def main() -> None:
         "beta": args.beta,
         "learning_rate": args.learning_rate,
         "rank": args.rank,
+        "training_seed": args.training_seed,
+        "campaign_id": args.campaign_id,
+        "run_key": args.run_key or args.name,
+        "contract_sha": args.contract_sha,
         "renderer": renderer_report,
         "init_state_path": args.init_state_path,
         "reference_state_path": args.reference_state_path,
@@ -463,6 +477,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--holdout-fraction", type=float, default=0.0)
     parser.add_argument("--holdout-group-field", default="chosen_record_id")
     parser.add_argument("--split-seed", type=int, default=20260806)
+    parser.add_argument(
+        "--training-seed",
+        type=int,
+        default=20260806,
+        help="Tinker LoRA initialization seed and deterministic training-row order seed",
+    )
+    parser.add_argument("--campaign-id", default="pearl-phase8")
+    parser.add_argument("--run-key")
+    parser.add_argument("--contract-sha")
     parser.add_argument("--eval-batch-pairs", type=int, default=64)
     parser.add_argument("--beta", type=float, default=0.05)
     parser.add_argument("--learning-rate", type=float, default=5e-7)
@@ -470,6 +493,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--eval-only", action="store_true")
     return parser.parse_args()
+
+
+def training_user_metadata(args: argparse.Namespace, *, task: str) -> dict[str, str]:
+    metadata = {
+        "pearl_task": task,
+        "campaign_id": str(args.campaign_id),
+        "run_key": str(args.run_key or args.name),
+        "training_seed": str(args.training_seed),
+    }
+    if args.contract_sha:
+        metadata["contract_sha"] = str(args.contract_sha)
+    return metadata
 
 
 def resolve_base_model(service_client: Any, requested_model: str) -> str:
@@ -507,6 +542,10 @@ def build_prepare_report(
         "beta": args.beta,
         "learning_rate": args.learning_rate,
         "rank": args.rank,
+        "training_seed": args.training_seed,
+        "campaign_id": args.campaign_id,
+        "run_key": args.run_key or args.name,
+        "contract_sha": args.contract_sha,
         "init_state_path": args.init_state_path,
         "reference_state_path": args.reference_state_path,
         "checkpoint_path": checkpoint_path,
@@ -708,6 +747,10 @@ def init_wandb_run(
                     "epochs": args.epochs,
                     "batch_pairs": args.batch_pairs,
                     "rank": args.rank,
+                    "training_seed": args.training_seed,
+                    "campaign_id": args.campaign_id,
+                    "run_key": args.run_key or args.name,
+                    "contract_sha": args.contract_sha,
                     "renderer": args.renderer,
                     "reasoning_effort": args.reasoning_effort,
                     "init_state_path": args.init_state_path,
