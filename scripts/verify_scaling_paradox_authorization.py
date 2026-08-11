@@ -29,6 +29,10 @@ def main() -> None:
     parser.add_argument("--run-key", required=True)
     parser.add_argument("--plan-sha", required=True)
     parser.add_argument("--source-run-id", type=int)
+    parser.add_argument(
+        "--supervisor-workflow-name",
+        default="Scaling paradox campaign — validate and dispatch one exact wave",
+    )
     parser.add_argument("--receipt-output")
     args = parser.parse_args()
 
@@ -73,7 +77,7 @@ def main() -> None:
         text=True,
     )
     supervisor = json.loads(result.stdout)
-    if supervisor.get("workflowName") != "Scaling paradox campaign — validate and dispatch one exact wave":
+    if supervisor.get("workflowName") != args.supervisor_workflow_name:
         raise SystemExit("authorization did not come from the campaign supervisor")
     if supervisor.get("headSha") != os.environ.get("GITHUB_SHA"):
         raise SystemExit("worker and supervisor source commits differ")

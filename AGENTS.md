@@ -8,6 +8,9 @@ context-limited agent working under a primary or supervisor.
    prospective replication is in scope, also read `docs/scaling_paradox_v1_replication_protocol.md`.
    For campaign execution, also read `docs/SCALING_PARADOX_EXECUTOR_PACKET.md`; it supersedes older
    manual paid-dispatch examples.
+   If frontier adaptation v2 is in scope, also read `docs/frontier_adaptation_v2_protocol.md` and
+   `docs/FRONTIER_ADAPTATION_V2_EXECUTOR_PACKET.md`; these supersede v1 execution instructions for
+   the contemporary-model campaign but do not alter or absorb v1 evidence.
 2. The primary agent owns engineering and research judgment within the user's authority. It may
    design, investigate, interpret, and make versioned decisions. It may not silently rewrite a frozen
    contract after data collection begins.

@@ -82,18 +82,19 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
                 sum(float(row["cost_estimate"]["estimated_training_cost_usd"]) for row in rows), 4
             )
             endpoint_cost = 0.0
-            for row in rows:
-                prices = launcher.TINKER_MODEL_PRICES[str(row["model"])]
-                for path_key in ("holdout_path", "challenge_path"):
-                    partition_rows = launcher.load_jsonl(repo_path(row[path_key]))
-                    endpoint_cost += float(
-                        launcher.estimate_preference_evaluation_cost(
-                            pair_rows=partition_rows,
-                            prices=prices,
-                            pair_count=len(partition_rows),
-                            policy_count=2,
-                        )["estimated_cost_usd"]
-                    )
+            if stage.get("evaluation_required", True):
+                for row in rows:
+                    prices = launcher.TINKER_MODEL_PRICES[str(row["model"])]
+                    for path_key in ("holdout_path", "challenge_path"):
+                        partition_rows = launcher.load_jsonl(repo_path(row[path_key]))
+                        endpoint_cost += float(
+                            launcher.estimate_preference_evaluation_cost(
+                                pair_rows=partition_rows,
+                                prices=prices,
+                                pair_count=len(partition_rows),
+                                policy_count=2,
+                            )["estimated_cost_usd"]
+                        )
             endpoint_cost = round(endpoint_cost, 4)
             waves.append(
                 {
@@ -114,10 +115,23 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
                 "campaign_id": campaign["campaign_id"],
                 "stage": stage_name,
                 "workflow": campaign["workflow"],
+                "workflow_name": campaign.get("workflow_name"),
+                "artifact_prefix": campaign["artifact_prefix"],
+                "evaluation_workflow": campaign.get(
+                    "evaluation_workflow", "scaling-paradox-checkpoint-evaluation.yml"
+                ),
+                "evaluation_workflow_name": campaign.get(
+                    "evaluation_workflow_name",
+                    "Scaling paradox — one immutable checkpoint evaluation",
+                ),
+                "evaluation_artifact_prefix": campaign.get(
+                    "evaluation_artifact_prefix", "scaling-paradox-evaluation-"
+                ),
                 "config": campaign["config"],
                 "plan_dir": campaign["plan_dir"],
                 "plan_sha": stage["plan_sha"],
                 "conditional_gate": stage.get("conditional_gate"),
+                "evaluation_required": stage.get("evaluation_required", True),
                 "waves": waves,
             }
         )
@@ -133,6 +147,10 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
         "planned_pre_structural_tinker_ceiling_usd": executor[
             "planned_pre_structural_tinker_ceiling_usd"
         ],
+        "supervisor_workflow_name": executor.get(
+            "supervisor_workflow_name",
+            "Scaling paradox campaign — validate and dispatch one exact wave",
+        ),
         "phases": phases,
     }
     observed_training = round(
@@ -154,6 +172,10 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
         executor["planned_pre_structural_tinker_ceiling_usd"]
     ):
         raise RuntimeError("pre-structural plan exceeds the frozen Tinker ceiling")
+    if float(executor["planned_pre_structural_tinker_ceiling_usd"]) > float(
+        executor["max_authorized_tinker_usd"]
+    ):
+        raise RuntimeError("frozen pre-structural ceiling exceeds the authorized Tinker envelope")
     payload["manifest_sha256"] = sha256_value(payload)
     return payload
 
@@ -220,15 +242,22 @@ def collect_actions_artifact(
     artifacts = gh_json(
         ["gh", "api", f"repos/{repository}/actions/runs/{actions_run_id}/artifacts"]
     ).get("artifacts", [])
+    training_prefixes = tuple(
+        str(campaign["artifact_prefix"]) for campaign in executor["campaigns"].values()
+    )
+    evaluation_prefixes = tuple(
+        str(campaign.get("evaluation_artifact_prefix", "scaling-paradox-evaluation-"))
+        for campaign in executor["campaigns"].values()
+    )
     if kind == "training":
         candidates = [
             row for row in artifacts
-            if row.get("name", "").startswith(("scaling-paradox-", "scaling-paradox-v1-replication-"))
-            and not row.get("name", "").startswith("scaling-paradox-evaluation-")
+            if row.get("name", "").startswith(training_prefixes)
+            and not row.get("name", "").startswith(evaluation_prefixes)
         ]
     else:
         candidates = [
-            row for row in artifacts if row.get("name", "").startswith("scaling-paradox-evaluation-")
+            row for row in artifacts if row.get("name", "").startswith(evaluation_prefixes)
         ]
     if len(candidates) != 1 or candidates[0].get("expired"):
         raise RuntimeError("Actions run has no unique unexpired campaign artifact")
@@ -321,7 +350,10 @@ def collect_actions_artifact(
             )
             if (
                 supervisor.get("workflowName")
-                != "Scaling paradox campaign — validate and dispatch one exact wave"
+                != executor.get(
+                    "supervisor_workflow_name",
+                    "Scaling paradox campaign — validate and dispatch one exact wave",
+                )
                 or supervisor.get("headSha") != run["headSha"]
                 or supervisor.get("status") != "completed"
                 or supervisor.get("conclusion") != "success"
@@ -341,18 +373,28 @@ def collect_actions_artifact(
                 partition_contracts=partition_contracts(entry),
                 source_actions_run_id=actions_run_id,
             )
-    expected_workflows = {
-        "training": {
-            "original": "Scaling paradox v1 — one immutable run",
-            "replication": "Scaling paradox v1 replication — one immutable run",
-        },
-        "evaluation": {
-            "original": "Scaling paradox — one immutable checkpoint evaluation",
-            "replication": "Scaling paradox — one immutable checkpoint evaluation",
-        },
+    campaign_contract = executor["campaigns"][campaign]
+    fallback_training_names = {
+        "original": "Scaling paradox v1 — one immutable run",
+        "replication": "Scaling paradox v1 replication — one immutable run",
     }
-    if run.get("workflowName") != expected_workflows[kind][campaign]:
+    expected_workflow = (
+        campaign_contract.get("workflow_name", fallback_training_names[campaign])
+        if kind == "training"
+        else campaign_contract.get(
+            "evaluation_workflow_name",
+            "Scaling paradox — one immutable checkpoint evaluation",
+        )
+    )
+    if run.get("workflowName") != expected_workflow:
         raise RuntimeError("Actions workflow identity differs from the frozen campaign")
+    expected_prefix = (
+        campaign_contract["artifact_prefix"]
+        if kind == "training"
+        else campaign_contract.get("evaluation_artifact_prefix", "scaling-paradox-evaluation-")
+    )
+    if artifact["name"] != f"{expected_prefix}{run_key}":
+        raise RuntimeError("Actions artifact name differs from the frozen campaign")
     receipt["source_artifact_id"] = int(artifact["id"])
     receipt["source_artifact_name"] = artifact["name"]
     receipt["source_commit_sha"] = run["headSha"]
@@ -375,8 +417,13 @@ def sync_github_state(
     *, executor: dict[str, Any], plans: dict[tuple[str, str], dict[str, Any]], state_dir: Path
 ) -> dict[str, int]:
     workflows = {
-        "training": ("scaling-paradox-v1.yml", "scaling-paradox-v1-replication.yml"),
-        "evaluation": ("scaling-paradox-checkpoint-evaluation.yml",),
+        "training": tuple(dict.fromkeys(
+            str(campaign["workflow"]) for campaign in executor["campaigns"].values()
+        )),
+        "evaluation": tuple(dict.fromkeys(
+            str(campaign.get("evaluation_workflow", "scaling-paradox-checkpoint-evaluation.yml"))
+            for campaign in executor["campaigns"].values()
+        )),
     }
     counts = {"training": 0, "evaluation": 0}
     legacy = {int(value) for value in executor.get("legacy_original_core_actions_runs", {})}
@@ -384,7 +431,7 @@ def sync_github_state(
         for workflow in names:
             result = subprocess.run(
                 [
-                    "gh", "run", "list", "--workflow", workflow, "--limit", "100",
+                    "gh", "run", "list", "--workflow", workflow, "--limit", "500",
                     "--json", "databaseId,status,displayTitle",
                 ],
                 check=False,
@@ -574,8 +621,18 @@ def next_authorization(
                 )
                 for key in keys
             }
+            if not phase.get("evaluation_required", True):
+                continue
             missing_evaluation = [key for key, value in evaluation.items() if value is None]
             if missing_evaluation:
+                if active_paid_cells:
+                    return {
+                        "contract": "pearl.scaling-paradox-authorization/1",
+                        "action": "wait",
+                        "reason": "paid_cells_are_active",
+                        "active_paid_cells": active_paid_cells,
+                        "authorized_run_keys": [],
+                    }
                 if active_paid_cells + len(missing_evaluation) > maximum:
                     return {
                         "contract": "pearl.scaling-paradox-authorization/1",
@@ -607,12 +664,12 @@ def next_authorization(
                     "wave_index": wave["wave_index"],
                     "campaign": phase["campaign"],
                     "stage": phase["stage"],
-                    "workflow": "scaling-paradox-checkpoint-evaluation.yml",
+                    "workflow": phase["evaluation_workflow"],
                     "source_workflow": phase["workflow"],
                     "plan_sha": phase["plan_sha"],
                     "authorized_run_keys": missing_evaluation,
                     "source_actions_run_ids": source_run_ids,
-                    "source_artifact_prefix": manifest_artifact_prefix(manifest, phase["campaign"]),
+                    "source_artifact_prefix": phase["artifact_prefix"],
                     "estimated_cost_usd": wave["estimated_checkpoint_evaluation_cost_usd"],
                     "max_active_after_dispatch": len(missing_evaluation),
                 }
@@ -627,12 +684,13 @@ def next_authorization(
 
 def manifest_artifact_prefix(manifest: dict[str, Any], campaign: str) -> str:
     prefixes = {
-        "original": "scaling-paradox-",
-        "replication": "scaling-paradox-v1-replication-",
+        phase["artifact_prefix"]
+        for phase in manifest["phases"]
+        if phase["campaign"] == campaign
     }
-    if campaign not in prefixes:
-        raise RuntimeError("unknown campaign artifact prefix")
-    return prefixes[campaign]
+    if len(prefixes) != 1:
+        raise RuntimeError("unknown or ambiguous campaign artifact prefix")
+    return prefixes.pop()
 
 
 def main() -> None:

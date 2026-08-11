@@ -1,0 +1,146 @@
+{
+  "campaign_id": "pearl-frontier-adaptation-v2-original",
+  "claim": "Under a fixed rank-32 adapter, preference dataset, and optimizer-update budget, preference-specific adaptation elasticity declines at larger model tiers within multiple contemporary open-model families.",
+  "dataset_manifest": "data/phase8_dpo/scaling_paradox_v1/dataset_manifest.json",
+  "available_tinker_credit_usd_at_freeze": 3200.42,
+  "available_givemeanode_credit_usd_at_freeze": 481.83,
+  "available_tinker_credit_usd": 3200.42,
+  "training_seeds": [17, 29, 43],
+  "common": {
+    "beta": 0.05,
+    "learning_rate": 5e-7,
+    "batch_pairs": 4,
+    "rank": 32,
+    "save_every_steps": 500,
+    "max_steps": 2250,
+    "renderer": "raw_completion_v1"
+  },
+  "models": [
+    {
+      "tag": "inkling-small",
+      "model": "thinkingmachines/Inkling-Small",
+      "renderer": "inkling_tml_v0",
+      "model_family": "inkling",
+      "model_generation": "inkling",
+      "total_parameters_b": 276,
+      "active_parameters_b": 12,
+      "architecture_class": "moe",
+      "analysis_role": "primary_within_family_small"
+    },
+    {
+      "tag": "inkling",
+      "model": "thinkingmachines/Inkling",
+      "renderer": "inkling_tml_v0",
+      "model_family": "inkling",
+      "model_generation": "inkling",
+      "total_parameters_b": 975,
+      "active_parameters_b": 41,
+      "architecture_class": "moe",
+      "analysis_role": "primary_within_family_large"
+    },
+    {
+      "tag": "nemotron3-nano",
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "renderer": "nemotron3_disable_thinking",
+      "model_family": "nemotron",
+      "model_generation": "nemotron3",
+      "total_parameters_b": 30,
+      "active_parameters_b": 3,
+      "architecture_class": "hybrid_moe",
+      "analysis_role": "primary_within_generation_small"
+    },
+    {
+      "tag": "nemotron3-super",
+      "model": "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16",
+      "renderer": "nemotron3_disable_thinking",
+      "model_family": "nemotron",
+      "model_generation": "nemotron3",
+      "total_parameters_b": 120,
+      "active_parameters_b": 12,
+      "architecture_class": "hybrid_moe",
+      "analysis_role": "primary_within_generation_middle"
+    },
+    {
+      "tag": "nemotron3-ultra",
+      "model": "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+      "renderer": "nemotron3_ultra_disable_thinking",
+      "model_family": "nemotron",
+      "model_generation": "nemotron3",
+      "total_parameters_b": 550,
+      "active_parameters_b": 55,
+      "architecture_class": "hybrid_moe",
+      "analysis_role": "primary_within_generation_large"
+    },
+    {
+      "tag": "nemotron3p5-lightning",
+      "model": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+      "renderer": "nemotron3_disable_thinking",
+      "model_family": "nemotron",
+      "model_generation": "nemotron3.5",
+      "total_parameters_b": 30,
+      "active_parameters_b": 3,
+      "architecture_class": "hybrid_moe",
+      "analysis_role": "matched_capacity_release_control"
+    },
+    {
+      "tag": "gptoss-20b",
+      "model": "openai/gpt-oss-20b",
+      "renderer": "gpt_oss_low_reasoning",
+      "model_family": "gpt_oss",
+      "model_generation": "gpt_oss",
+      "total_parameters_b": 21,
+      "active_parameters_b": 3.6,
+      "architecture_class": "moe",
+      "analysis_role": "primary_within_family_small"
+    },
+    {
+      "tag": "gptoss-120b",
+      "model": "openai/gpt-oss-120b",
+      "renderer": "gpt_oss_low_reasoning",
+      "model_family": "gpt_oss",
+      "model_generation": "gpt_oss",
+      "total_parameters_b": 117,
+      "active_parameters_b": 5.1,
+      "architecture_class": "moe",
+      "analysis_role": "primary_within_family_large"
+    }
+  ],
+  "stages": {
+    "smoke": {
+      "description": "One 25-step renderer, ownership, and checkpoint smoke per model; no scientific inference.",
+      "execution_order_seed": 1141842882,
+      "seeds": [17],
+      "arms": ["true"],
+      "models": ["inkling-small", "inkling", "nemotron3-nano", "nemotron3-super", "nemotron3-ultra", "nemotron3p5-lightning", "gptoss-20b", "gptoss-120b"],
+      "dataset": "d10_train_true",
+      "max_pairs": 100,
+      "max_challenge_pairs": 100,
+      "max_steps": 25
+    },
+    "core": {
+      "description": "Original three-seed, true-versus-shuffled contemporary frontier adaptation matrix.",
+      "execution_order_seed": 1870058241,
+      "seeds": [17, 29, 43],
+      "arms": ["true", "shuffled"],
+      "models": ["inkling-small", "inkling", "nemotron3-nano", "nemotron3-super", "nemotron3-ultra", "nemotron3p5-lightning", "gptoss-20b", "gptoss-120b"],
+      "dataset_by_arm": {
+        "true": "d10_train_true",
+        "shuffled": "d10_train_shuffled"
+      },
+      "max_steps": 2250
+    }
+  },
+  "analysis_contract": {
+    "primary_endpoint": "held-out per-residue true-minus-shuffled DPO margin change from the matched reference policy",
+    "primary_pairs": [
+      ["inkling-small", "inkling"],
+      ["nemotron3-nano", "nemotron3-super"],
+      ["nemotron3-nano", "nemotron3-ultra"],
+      ["gptoss-20b", "gptoss-120b"]
+    ],
+    "ordered_ladders": [["nemotron3-nano", "nemotron3-super", "nemotron3-ultra"]],
+    "release_controls": [["nemotron3-nano", "nemotron3p5-lightning"]],
+    "analysis_unit": "independent training seed; prompts and candidates are nested observations",
+    "parameter_policy": "report total and active parameters; do not fit a pooled raw-parameter slope across dense and MoE architectures"
+  }
+}

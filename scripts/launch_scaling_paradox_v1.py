@@ -96,6 +96,7 @@ def base_contract(
     holdout_name = holdout_partition(dataset)
     holdout = manifest["partitions"][holdout_name]
     challenge = manifest["partitions"]["real_failure_challenge"]
+    renderer = str(model.get("renderer") or common["renderer"])
     identity = {
         "campaign_id": config["campaign_id"],
         "stage": stage_name,
@@ -110,9 +111,9 @@ def base_contract(
         "challenge_sha256": challenge["sha256"],
         "dataset_manifest_sha256": manifest["manifest_sha256"],
         "training_seed": int(seed),
-        "renderer": common["renderer"],
+        "renderer": renderer,
         "renderer_contract_fingerprint": RendererContract(
-            name=common["renderer"], model_name=model["model"]
+            name=renderer, model_name=model["model"]
         ).fingerprint(),
         "rank": int(common["rank"]),
         "beta": float(common["beta"]),
@@ -123,6 +124,16 @@ def base_contract(
         "max_pairs": common.get("max_pairs"),
         "max_challenge_pairs": common.get("max_challenge_pairs"),
     }
+    for field in (
+        "model_family",
+        "model_generation",
+        "total_parameters_b",
+        "active_parameters_b",
+        "architecture_class",
+        "analysis_role",
+    ):
+        if field in model:
+            identity[field] = model[field]
     identity["run_contract_sha"] = sha256_value(identity)
     identity["run_key"] = (
         f"{stage_name}-{tag}-{model['tag']}-{arm}-seed{seed}-"

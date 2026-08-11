@@ -1,0 +1,114 @@
+{
+  "contract": "pearl.frontier-adaptation-executor/2",
+  "created_before_any_v2_outcome_review": true,
+  "scientific_role": "contemporary frontier-scale confirmatory extension of the frozen Qwen scaling-paradox study",
+  "global_max_active_paid_cells": 6,
+  "max_authorized_tinker_usd": 2300.0,
+  "observed_tinker_credit_at_freeze_usd": 3200.42,
+  "max_authorized_givemeanode_usd": 481.83,
+  "observed_givemeanode_credit_at_freeze_usd": 481.83,
+  "givemeanode_max_active_jobs": 6,
+  "givemeanode_hardware": "NVIDIA H100",
+  "givemeanode_entrypoint": "deploy/scaling_paradox_v1/run_esmf_job.sh",
+  "givemeanode_anchor_ref": "frontier-adaptation-v2-executor-v1.0.0",
+  "supervisor_workflow_name": "Frontier adaptation v2 — validate and dispatch one exact wave",
+  "planned_training_ceiling_usd": 1910.27,
+  "planned_checkpoint_evaluation_ceiling_usd": 139.12,
+  "planned_pre_structural_tinker_ceiling_usd": 2049.39,
+  "planned_structural_sampling_ceiling_usd": 10.0,
+  "planned_total_tinker_ceiling_usd": 2059.39,
+  "campaigns": {
+    "original": {
+      "campaign_id": "pearl-frontier-adaptation-v2-original",
+      "config": "configs/experiments/frontier_adaptation_v2_original.json",
+      "plan_dir": "reports/frontier_adaptation_v2_original",
+      "workflow": "frontier-adaptation-v2.yml",
+      "workflow_name": "Frontier adaptation v2 — one immutable run",
+      "artifact_prefix": "frontier-adaptation-v2-original-",
+      "evaluation_workflow": "frontier-adaptation-v2-checkpoint-evaluation.yml",
+      "evaluation_workflow_name": "Frontier adaptation v2 — one immutable checkpoint evaluation",
+      "evaluation_artifact_prefix": "frontier-adaptation-v2-evaluation-",
+      "stages": {
+        "smoke": {
+          "plan_sha": "5c81d3419992415bc7b4681027e2c79b4f9ccfd30a0364581fb376e2aa67bb8f",
+          "run_count": 8,
+          "estimated_cost_usd": 2.54,
+          "evaluation_required": false,
+          "waves": [[1], [2, 3, 4, 5, 6], [7, 8]]
+        },
+        "core": {
+          "plan_sha": "ce4fd33d9f5f8d62d42a4ddc383222adc18c48ba1399920073beaf44879842c6",
+          "run_count": 48,
+          "estimated_cost_usd": 1001.2,
+          "evaluation_required": true,
+          "waves": [[1], [2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [13, 14, 15, 16, 17, 18], [19, 20, 21, 22, 23, 24], [25, 26, 27, 28, 29, 30], [31, 32, 33, 34, 35, 36], [37, 38, 39, 40, 41, 42], [43, 44, 45, 46, 47, 48]]
+        }
+      }
+    },
+    "replication": {
+      "campaign_id": "pearl-frontier-adaptation-v2-replication",
+      "config": "configs/experiments/frontier_adaptation_v2_replication.json",
+      "plan_dir": "reports/frontier_adaptation_v2_replication",
+      "workflow": "frontier-adaptation-v2.yml",
+      "workflow_name": "Frontier adaptation v2 — one immutable run",
+      "artifact_prefix": "frontier-adaptation-v2-replication-",
+      "evaluation_workflow": "frontier-adaptation-v2-checkpoint-evaluation.yml",
+      "evaluation_workflow_name": "Frontier adaptation v2 — one immutable checkpoint evaluation",
+      "evaluation_artifact_prefix": "frontier-adaptation-v2-evaluation-",
+      "stages": {
+        "core": {
+          "plan_sha": "85660f7b99193e34a546f9eb50dfe18ff10fe42d3127232686be9b5ee7fd2593",
+          "run_count": 48,
+          "estimated_cost_usd": 1001.2,
+          "evaluation_required": true,
+          "waves": [[1], [2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [13, 14, 15, 16, 17, 18], [19, 20, 21, 22, 23, 24], [25, 26, 27, 28, 29, 30], [31, 32, 33, 34, 35, 36], [37, 38, 39, 40, 41, 42], [43, 44, 45, 46, 47, 48]]
+        }
+      }
+    }
+  },
+  "stage_order": [
+    "original:smoke",
+    "original:core",
+    "replication:core"
+  ],
+  "analysis_contract": {
+    "primary_unit": "seed-matched true-minus-shuffled terminal adaptation effect",
+    "family_stratification_required": true,
+    "pooled_raw_parameter_regression_prohibited": true,
+    "primary_pairs": [
+      ["inkling-small", "inkling"],
+      ["nemotron3-nano", "nemotron3-super"],
+      ["nemotron3-nano", "nemotron3-ultra"],
+      ["gptoss-20b", "gptoss-120b"]
+    ],
+    "ordered_ladders": [
+      ["nemotron3-nano", "nemotron3-super", "nemotron3-ultra"]
+    ],
+    "release_controls": [
+      ["nemotron3-nano", "nemotron3p5-lightning"]
+    ],
+    "qwen_v1_role": "separate dense low-capacity historical anchor; never pooled into v2 confirmatory inference"
+  },
+  "structural_scope": {
+    "included_training_stages": ["core"],
+    "excluded_training_stages": {"smoke": "operational_validation_only"},
+    "base_cells": 8,
+    "original_core_terminal_cells": 48,
+    "replication_core_terminal_cells": 48,
+    "total_structural_cells": 104,
+    "candidates_per_cell": 96,
+    "checkpoint_trajectory": "terminal_only"
+  },
+  "stop_conditions": [
+    "unknown or mismatched plan hash",
+    "missing or ambiguous artifact ownership",
+    "more than one provider trainer or evaluator owner for one contract",
+    "provider corrupted is not explicitly false",
+    "active paid cell count is unknown or would exceed six",
+    "estimated authorized spend would exceed the frozen envelope",
+    "wave predecessor lacks every required training and evaluation audit receipt",
+    "checkpoint lineage is missing, unordered, or belongs to another contract",
+    "renderer smoke fails for any model",
+    "any request to replace a seed, change a threshold, tune a method, pool architecture families, or inspect interim outcomes"
+  ]
+}

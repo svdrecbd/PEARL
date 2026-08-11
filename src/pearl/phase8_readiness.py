@@ -14,10 +14,12 @@ class ModelTokenPrices:
 
 TINKER_MODEL_PRICES: dict[str, ModelTokenPrices] = {
     "thinkingmachines/Inkling": ModelTokenPrices(prefill_per_million=1.87, sample_per_million=4.68, train_per_million=5.61),
+    "thinkingmachines/Inkling-Small": ModelTokenPrices(prefill_per_million=0.58, sample_per_million=1.44, train_per_million=1.73),
     "deepseek-ai/DeepSeek-V3.1": ModelTokenPrices(prefill_per_million=1.695, sample_per_million=4.215, train_per_million=3.718),
     "moonshotai/Kimi-K2.6": ModelTokenPrices(prefill_per_million=2.205, sample_per_million=5.49, train_per_million=4.84),
     "moonshotai/Kimi-K2.6:peft:131072": ModelTokenPrices(prefill_per_million=5.15, sample_per_million=12.81, train_per_million=15.40),
     "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16": ModelTokenPrices(prefill_per_million=0.195, sample_per_million=0.495, train_per_million=0.44),
+    "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16": ModelTokenPrices(prefill_per_million=0.195, sample_per_million=0.495, train_per_million=0.44),
     "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16": ModelTokenPrices(prefill_per_million=0.57, sample_per_million=1.44, train_per_million=1.276),
     "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16": ModelTokenPrices(prefill_per_million=2.49, sample_per_million=6.225, train_per_million=5.478),
     "Qwen/Qwen3.6-35B-A3B": ModelTokenPrices(prefill_per_million=0.54, sample_per_million=1.335, train_per_million=1.177),

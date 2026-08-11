@@ -167,10 +167,10 @@ def main() -> None:
             raise RuntimeError(f"generation contract differs from exact manifest job {job_key}")
         observed[job_key] = path
     if set(observed) != {job["job_key"] for job in manifest["jobs"]}:
-        raise RuntimeError("GMN manifest requires all 111 exact generation reports")
+        raise RuntimeError("GMN manifest requires all 104 exact generation reports")
     output_dir = Path(args.context_output_dir)
     rows = []
-    executor = read_json(ROOT / "configs/experiments/scaling_paradox_executor_v1.json")
+    executor = read_json(ROOT / "configs/experiments/frontier_adaptation_v2_executor.json")
     anchor_commit = subprocess.run(
         ["git", "rev-parse", f"{executor['givemeanode_anchor_ref']}^{{commit}}"],
         check=True,
@@ -189,12 +189,17 @@ def main() -> None:
         text=True,
         cwd=ROOT,
     ).stdout.splitlines()
+    structural_config_paths = sorted({str(job["structural_config"]) for job in manifest["jobs"]})
+    training_config_paths = sorted(
+        {str(read_json(ROOT / path)["training_config"]) for path in structural_config_paths}
+    )
     runtime_paths = [
         "requirements.txt",
         "scripts/run_scaling_paradox_structure.py",
         "configs/structure_gate_calibration.esmfold.json",
-        "configs/experiments/scaling_paradox_structural_v1.json",
-        "configs/experiments/scaling_paradox_structural_v1_replication.json",
+        *structural_config_paths,
+        *training_config_paths,
+        "configs/experiments/scaling_paradox_structural_panel_v1.jsonl",
         executor["givemeanode_entrypoint"],
         *source_paths,
     ]
@@ -248,7 +253,7 @@ def main() -> None:
             }
         )
     payload = {
-        "contract": "pearl.scaling-paradox-gmn-manifest/1",
+        "contract": "pearl.frontier-adaptation-gmn-manifest/2",
         "source_structural_manifest_sha": manifest["structural_manifest_sha"],
         "source_structural_manifest_file_sha256": sha256_file(manifest_path),
         "git_ref": args.git_ref,
