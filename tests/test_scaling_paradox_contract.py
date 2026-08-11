@@ -97,6 +97,21 @@ def test_runner_metadata_carries_seed_and_contract_identity() -> None:
     }
 
 
+def test_launcher_resolves_tinker_cli_portably(tmp_path, monkeypatch) -> None:
+    launcher = load_script("launch_scaling_paradox_v1.py")
+    fake_cli = tmp_path / "tinker"
+    fake_cli.write_text("#!/bin/sh\nexit 0\n")
+    fake_cli.chmod(0o755)
+
+    monkeypatch.setenv("TINKER_CLI", str(fake_cli))
+    assert launcher.resolve_tinker_cli() == str(fake_cli)
+    monkeypatch.delenv("TINKER_CLI")
+    monkeypatch.setattr(launcher.sys, "executable", str(tmp_path / "python"))
+    assert launcher.resolve_tinker_cli() == str(fake_cli)
+    source = (ROOT / "scripts" / "launch_scaling_paradox_v1.py").read_text()
+    assert 'command = [\n        sys.executable,' in source
+
+
 def test_checkpoint_lineage_is_durable_ordered_and_idempotent() -> None:
     runner = load_script("run_tinker_dpo_smoke.py")
     lineage = runner.record_checkpoint(
