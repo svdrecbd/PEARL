@@ -75,6 +75,14 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def portable_repo_path(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(ROOT.resolve()).as_posix()
+    except ValueError as exc:
+        raise ValueError(f"frozen dataset outputs must live beneath the repository root: {resolved}") from exc
+
+
 def stable_rank(value: str, seed: int) -> str:
     return hashlib.sha256(f"{seed}:{value}".encode("utf-8")).hexdigest()
 
@@ -432,7 +440,7 @@ def main() -> None:
             require_length_matched=name != "real_failure_challenge",
         )
         manifest["partitions"][name] = {
-            "path": str(path),
+            "path": portable_repo_path(path),
             "sha256": sha256_file(path),
             **summary,
         }

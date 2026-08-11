@@ -49,9 +49,9 @@ jobs:
       TINKER_API_KEY: ${{ secrets.TINKER_API_KEY }}
       WANDB_MODE: disabled
       PYTHONUNBUFFERED: "1"
-      DATA_RELEASE_TAG: scaling-paradox-v1-data-v1
-      DATA_ARCHIVE: pearl-scaling-paradox-v1-data.tar.gz
-      DATA_ARCHIVE_SHA256: 6fb98995f35b871decc0ef31fcf6b794142d21bcd35ee3cd86c2f8df304c85c3
+      DATA_RELEASE_TAG: scaling-paradox-v1-data-v2
+      DATA_ARCHIVE: pearl-scaling-paradox-v1-data-v2.tar.gz
+      DATA_ARCHIVE_SHA256: ffad79ec8e104bf06979882e186290ea4d94b87531e48b111e954b6c09e8e962
     steps:
       - name: Check out the exact submitted branch
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -111,7 +111,7 @@ jobs:
               "stage": "${{ inputs.stage }}",
               "run_key": "${{ inputs.run_key }}",
               "launch_plan_sha": "${{ inputs.launch_plan_sha }}",
-              "dataset_archive_sha256": "6fb98995f35b871decc0ef31fcf6b794142d21bcd35ee3cd86c2f8df304c85c3",
+              "dataset_archive_sha256": "ffad79ec8e104bf06979882e186290ea4d94b87531e48b111e954b6c09e8e962",
               "dataset_manifest_sha256": "1f410d4346b354b789408729c2c7cfc1f0bdef3b9580716171d86593bd9e9a22",
               "paid_execution": False,
           }

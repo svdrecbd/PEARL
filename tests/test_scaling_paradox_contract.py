@@ -131,6 +131,16 @@ def test_frozen_structural_panel_is_balanced_and_unique() -> None:
     }
 
 
+def test_dataset_manifest_uses_portable_repository_relative_paths() -> None:
+    manifest = json.loads(
+        (ROOT / "data" / "phase8_dpo" / "scaling_paradox_v1" / "dataset_manifest.json").read_text()
+    )
+    for partition in manifest["partitions"].values():
+        path = Path(partition["path"])
+        assert not path.is_absolute()
+        assert path.parts[:3] == ("data", "phase8_dpo", "scaling_paradox_v1")
+
+
 def test_structural_generation_contract_has_96_deterministic_candidate_slots() -> None:
     generator = load_script("run_scaling_paradox_generation.py")
     config_path = ROOT / "configs" / "experiments" / "scaling_paradox_structural_v1.json"
