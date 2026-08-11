@@ -119,6 +119,45 @@ jobs:
           path.write_text(json.dumps(receipt, indent=2) + "\n")
           PY
 
+      - name: Verify Tinker provider access without spending
+        if: inputs.mode == 'validate'
+        run: |
+          python - <<'PY'
+          import importlib.util
+          import json
+          from pathlib import Path
+
+          run_dir = Path("reports/scaling_paradox_v1/runs/${{ inputs.run_key }}")
+          path = run_dir / "provider_preflight.json"
+          receipt = {
+              "contract": "pearl.scaling-paradox-provider-preflight/1",
+              "run_key": "${{ inputs.run_key }}",
+              "status": "checking_provider",
+              "paid_execution": False,
+          }
+          path.write_text(json.dumps(receipt, indent=2) + "\n")
+          try:
+              script = Path("scripts/launch_scaling_paradox_v1.py")
+              spec = importlib.util.spec_from_file_location("scaling_paradox_launcher", script)
+              module = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(module)
+              contract_shas, run_keys = module.provider_contracts()
+              receipt.update({
+                  "status": "provider_access_verified",
+                  "provider_contract_sha_count": len(contract_shas),
+                  "provider_run_key_count": len(run_keys),
+                  "tinker_cli": module.resolve_tinker_cli(),
+              })
+          except Exception as error:
+              receipt.update({
+                  "status": "provider_access_failed",
+                  "failure": f"{type(error).__name__}: {error}",
+              })
+              path.write_text(json.dumps(receipt, indent=2) + "\n")
+              raise
+          path.write_text(json.dumps(receipt, indent=2) + "\n")
+          PY
+
       - name: Run one supervised Tinker cell
         if: inputs.mode == 'execute'
         run: |
