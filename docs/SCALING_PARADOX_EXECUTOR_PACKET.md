@@ -22,6 +22,26 @@ plans. Training is capped at $1,191.28 and the mandatory two-partition checkpoin
 $92.74, for a $1,284.02 pre-structural Tinker ceiling, below the $1,800 campaign envelope. Structural sampling requires its separately
 frozen manifest before authorization.
 
+## Campaign maturity and completion boundary
+
+The clean-path scientific design, execution contracts, controller, analysis code, and structural
+manifests are in place. No new engineering or research choice is expected during ordinary campaign
+execution. What remains is legwork: repeatedly invoke the frozen supervisor, monitor its remotely
+owned children, collect and audit terminal artifacts, perform the mechanically specified GMN
+submissions, run the frozen analyses, and deliver the complete evidence packet to the primary for
+interpretation and manuscript writing.
+
+This does not mean “keep going at any cost.” A hash mismatch, duplicate owner, ambiguous resume,
+provider corruption, missing observation, unplanned spend, or behavior not covered by the frozen
+state machine ends the clean path and requires primary review. The campaign is scientifically
+complete only when every required cell has a terminal-valid receipt and every declared analysis
+passes its completeness checks; a green workflow or a promising preliminary value is not
+completion.
+
+The protocol contains a prospective, non-operative interpretation tree. It creates no transition,
+gate, exclusion, rescue, or permission. Executors remain result-blind and must not use it to classify
+results or influence campaign execution.
+
 ## Important evaluation correction
 
 The original launcher used by the sentinel and active Wave A recorded the correct frozen holdout and
@@ -36,15 +56,18 @@ per-residue normalization, and emits a sanitized operational receipt. Future tra
 same dedicated evaluation path. A cell cannot open the next wave without training,
 provider-identity, and both-partition evaluation receipts.
 
-## Current restart state (query live state before relying on it)
+## Bootstrap ownership records (always query live state)
 
-As of 2026-08-11 13:33 PDT:
+The allowlisted legacy original-core Actions IDs are `31458799761`, `31515075803`, `31515078937`,
+`31515082412`, `31515086034`, and `31515090195`. Corrected Sentinel evaluation was authorized by
+supervisor run `31537995393`, which recorded child run `31538248638`. These IDs are restart aids and
+ownership records, not evidence of current status or scientific validity. Query GitHub, provider
+metadata, and audited artifacts on every restart. Never infer that a documented run is still active,
+terminal-valid, or ready to open a gate.
 
-- original sentinel Actions run `31458799761` is terminal-success and awaits collection plus corrected
-  checkpoint evaluation;
-- original Wave A Actions runs `31515075803`, `31515078937`, `31515082412`, and `31515086034` are
-  terminal-success; `31515090195` remains in progress;
-- no replication, data-exposure, rescue, or structural cell is authorized yet.
+At the time this packet was updated, no replication, data-exposure, rescue, or structural cell had
+been authorized. That observation is explicitly non-authoritative once time has passed; the remote
+supervisor reconstructs the actual state.
 
 These jobs run on GitHub/Tinker. Closing this laptop or losing its network does not stop them. A
 training worker has a 330-minute supervised execution window inside a 355-minute Actions job; a
@@ -134,6 +157,10 @@ python scripts/analyze_scaling_paradox_optimization.py \
 Do not open the output or describe what it means. The predeclared gate uses six independent training
 seeds, has no p-value threshold, and either authorizes both frozen rescue cohorts or skips both with
 no tuning, substitutions, or second chance.
+
+The primary-only interpretation tree in `docs/scaling_paradox_v1_protocol.md` is not part of this
+command and must not be traversed by an Executor. The supervisor consumes only the machine-readable
+gate contract.
 
 After all data-exposure cells and any gate-authorized rescue cells are complete, run the frozen
 control analysis without changing its estimands:
