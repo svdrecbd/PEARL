@@ -107,7 +107,9 @@ documented resume artifact or a scientifically justified terminal exclusion.
 ESMFold confirmation runs as a GiveMeANode H100 batch job built from
 `deploy/scaling_paradox_v1/Dockerfile.esmfold`. It writes outputs to `$GMN_OUTPUT_DIR`, emits the compact
 verdict at `$GMN_RESULT_PATH`, pins the ESMFold model revision, and requires no laptop connection after
-submission.
+submission. The submitted build context must contain the immutable generation report at
+`input/generation_report.json`; the Dockerfile copies it into the image so execution does not depend on
+the submitting workstation or an external runtime mount.
 
 DPO training uses [../scripts/run_tinker_dpo_smoke.py](../scripts/run_tinker_dpo_smoke.py). W&B logging is optional and additive; the local `report.json` remains the authoritative audit artifact and should include per-batch `batches`.
 

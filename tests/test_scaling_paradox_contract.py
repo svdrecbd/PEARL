@@ -166,6 +166,13 @@ def test_structural_generation_contract_has_96_deterministic_candidate_slots() -
     assert contract["run_key"].startswith("struct-qwen3p5-4b-base-seed0-step0-")
 
 
+def test_structural_image_embeds_immutable_generation_report() -> None:
+    dockerfile = (ROOT / "deploy" / "scaling_paradox_v1" / "Dockerfile.esmfold").read_text()
+    assert "COPY input/generation_report.json /workspace/input/generation_report.json" in dockerfile
+    entrypoint = (ROOT / "deploy" / "scaling_paradox_v1" / "run_esmf_job.sh").read_text()
+    assert "GENERATION_REPORT:-/workspace/input/generation_report.json" in entrypoint
+
+
 def test_core_launch_contracts_are_unique_across_arm_model_and_seed() -> None:
     launcher = load_script("launch_scaling_paradox_v1.py")
     config = {
