@@ -431,7 +431,7 @@ def test_gmn_manager_enforces_six_active_jobs_and_spend(tmp_path: Path) -> None:
     manifest = {
             "contract": "pearl.scaling-paradox-gmn-manifest/1",
             "source_commit_sha": "b" * 40,
-            "anchor_ref": "scaling-paradox-executor-v1",
+            "anchor_ref": "scaling-paradox-executor-v1.0.1",
         "max_active_jobs": 6,
         "max_authorized_usd": 482.01,
         "jobs": jobs,

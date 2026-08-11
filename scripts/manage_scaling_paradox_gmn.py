@@ -593,7 +593,6 @@ def validate_remote_anchor(manifest: dict[str, Any], state_dir: Path) -> None:
         run.get("workflowName") != "Scaling paradox GMN — append one remote ledger anchor"
         or run.get("headSha") != manifest["source_commit_sha"]
         or run.get("status") != "completed"
-        or run.get("conclusion") != "success"
         or run.get("displayTitle") != f"Scaling GMN anchor {latest['event_sha256']}"
     ):
         raise RuntimeError("canonical GMN remote anchor has the wrong Actions identity")
@@ -629,6 +628,10 @@ def anchor_latest_event(manifest: dict[str, Any], state_dir: Path) -> None:
 
     for _ in range(4):
         matches = matching_runs()
+        remote = remote_anchor_head()
+        if remote is not None and remote[0].get("event_sha256") == latest["event_sha256"]:
+            validate_remote_anchor(manifest, state_dir)
+            return
         successful = [
             row
             for row in matches

@@ -7,7 +7,7 @@
   "givemeanode_max_active_jobs": 6,
   "givemeanode_hardware": "NVIDIA H100",
   "givemeanode_entrypoint": "deploy/scaling_paradox_v1/run_esmf_job.sh",
-  "givemeanode_anchor_ref": "scaling-paradox-executor-v1",
+  "givemeanode_anchor_ref": "scaling-paradox-executor-v1.0.1",
   "planned_training_ceiling_usd": 1191.28,
   "planned_checkpoint_evaluation_ceiling_usd": 92.74,
   "planned_pre_structural_tinker_ceiling_usd": 1284.02,
