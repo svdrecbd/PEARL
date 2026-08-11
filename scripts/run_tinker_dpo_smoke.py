@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 from collections import Counter
 from pathlib import Path
@@ -45,6 +46,7 @@ def main() -> None:
         seed=args.split_seed,
         group_field=args.holdout_group_field,
     )
+    random.Random(args.training_seed).shuffle(pair_rows)
     if args.max_pairs is not None:
         pair_rows = pair_rows[: args.max_pairs]
     if args.max_holdout_pairs is not None:
@@ -94,6 +96,8 @@ def main() -> None:
     service_client = tinker.ServiceClient()
     base_model = resolve_base_model(service_client, args.model)
     checkpoint_meta_path = output_dir / "checkpoint_meta.json"
+    checkpoint_lineage_path = output_dir / "checkpoint_lineage.json"
+    checkpoint_lineage = load_checkpoint_lineage(checkpoint_lineage_path)
     start_epoch = 0
     start_batch_index = 0
     current_state_path = args.init_state_path
@@ -112,12 +116,16 @@ def main() -> None:
             print(f"Warning: Failed to load checkpoint metadata. Error: {exc}", flush=True)
 
     training_client = (
-        service_client.create_training_client_from_state(path=current_state_path)
+        service_client.create_training_client_from_state(
+            path=current_state_path,
+            user_metadata=training_user_metadata(args, task="physical_to_sequence_dpo"),
+        )
         if current_state_path
         else service_client.create_lora_training_client(
             base_model=base_model,
             rank=args.rank,
-            user_metadata={"pearl_task": "physical_to_sequence_dpo"},
+            seed=args.training_seed,
+            user_metadata=training_user_metadata(args, task="physical_to_sequence_dpo"),
         )
     )
     renderer_contract = RendererContract(
@@ -217,12 +225,16 @@ def main() -> None:
         print("--- COMPUTING REFERENCE MARGINS (Upfront Forward Pass) ---", flush=True)
         reference_state_path = args.reference_state_path or args.init_state_path
         reference_client = (
-            service_client.create_training_client_from_state(path=reference_state_path)
+            service_client.create_training_client_from_state(
+                path=reference_state_path,
+                user_metadata=training_user_metadata(args, task="reference_policy"),
+            )
             if reference_state_path
             else service_client.create_lora_training_client(
                 base_model=base_model,
                 rank=args.rank,
-                user_metadata={"pearl_task": "reference_policy"},
+                seed=args.training_seed,
+                user_metadata=training_user_metadata(args, task="reference_policy"),
             )
         )
         reference_margins = forward_preference_margins(
@@ -360,6 +372,17 @@ def main() -> None:
                             "completed_steps": total_steps,
                         },
                     )
+                    checkpoint_lineage = record_checkpoint(
+                        checkpoint_lineage,
+                        step=total_steps,
+                        state_path=chkpt_result.path,
+                        checkpoint_name=checkpoint_name,
+                        terminal=False,
+                    )
+                    atomic_write_json(
+                        checkpoint_lineage_path,
+                        {"contract_sha": args.contract_sha, "checkpoints": checkpoint_lineage},
+                    )
                     atomic_write_json(output_dir / "batch_reports_checkpoint.json", batch_reports)
                     print(f"Checkpoint saved at step {total_steps}: {chkpt_result.path}", flush=True)
                 except Exception as exc:
@@ -381,6 +404,17 @@ def main() -> None:
     if not args.eval_only:
         save_result = training_client.save_state(args.checkpoint_name or sanitize_name(args.name)).result()
         checkpoint_path = save_result.path
+        checkpoint_lineage = record_checkpoint(
+            checkpoint_lineage,
+            step=len(batch_reports),
+            state_path=checkpoint_path,
+            checkpoint_name=args.checkpoint_name or sanitize_name(args.name),
+            terminal=True,
+        )
+        atomic_write_json(
+            checkpoint_lineage_path,
+            {"contract_sha": args.contract_sha, "checkpoints": checkpoint_lineage},
+        )
     holdout_diagnostics = None
     if holdout_datums:
         holdout_policy_margins = forward_preference_margins(
@@ -420,6 +454,10 @@ def main() -> None:
         "beta": args.beta,
         "learning_rate": args.learning_rate,
         "rank": args.rank,
+        "training_seed": args.training_seed,
+        "campaign_id": args.campaign_id,
+        "run_key": args.run_key or args.name,
+        "contract_sha": args.contract_sha,
         "renderer": renderer_report,
         "init_state_path": args.init_state_path,
         "reference_state_path": args.reference_state_path,
@@ -428,6 +466,7 @@ def main() -> None:
         "challenge": challenge_summary,
         "challenge_preference_diagnostics": challenge_diagnostics,
         "checkpoint_path": checkpoint_path,
+        "checkpoint_lineage": checkpoint_lineage,
         "batches": batch_reports,
     }
     atomic_write_json(report_path, report)
@@ -463,6 +502,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--holdout-fraction", type=float, default=0.0)
     parser.add_argument("--holdout-group-field", default="chosen_record_id")
     parser.add_argument("--split-seed", type=int, default=20260806)
+    parser.add_argument(
+        "--training-seed",
+        type=int,
+        default=20260806,
+        help="Tinker LoRA initialization seed and deterministic training-row order seed",
+    )
+    parser.add_argument("--campaign-id", default="pearl-phase8")
+    parser.add_argument("--run-key")
+    parser.add_argument("--contract-sha")
     parser.add_argument("--eval-batch-pairs", type=int, default=64)
     parser.add_argument("--beta", type=float, default=0.05)
     parser.add_argument("--learning-rate", type=float, default=5e-7)
@@ -470,6 +518,52 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--eval-only", action="store_true")
     return parser.parse_args()
+
+
+def training_user_metadata(args: argparse.Namespace, *, task: str) -> dict[str, str]:
+    metadata = {
+        "pearl_task": task,
+        "campaign_id": str(args.campaign_id),
+        "run_key": str(args.run_key or args.name),
+        "training_seed": str(args.training_seed),
+    }
+    if args.contract_sha:
+        metadata["contract_sha"] = str(args.contract_sha)
+    return metadata
+
+
+def load_checkpoint_lineage(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    rows = payload.get("checkpoints", []) if isinstance(payload, dict) else []
+    return [dict(row) for row in rows if isinstance(row, dict) and row.get("state_path")]
+
+
+def record_checkpoint(
+    lineage: list[dict[str, Any]],
+    *,
+    step: int,
+    state_path: str,
+    checkpoint_name: str,
+    terminal: bool,
+) -> list[dict[str, Any]]:
+    row = {
+        "step": int(step),
+        "state_path": str(state_path),
+        "checkpoint_name": str(checkpoint_name),
+        "terminal": bool(terminal),
+    }
+    retained = [
+        dict(existing)
+        for existing in lineage
+        if int(existing.get("step", -1)) != int(step) and existing.get("state_path") != state_path
+    ]
+    retained.append(row)
+    return sorted(retained, key=lambda item: (int(item.get("step", -1)), str(item.get("state_path", ""))))
 
 
 def resolve_base_model(service_client: Any, requested_model: str) -> str:
@@ -507,6 +601,10 @@ def build_prepare_report(
         "beta": args.beta,
         "learning_rate": args.learning_rate,
         "rank": args.rank,
+        "training_seed": args.training_seed,
+        "campaign_id": args.campaign_id,
+        "run_key": args.run_key or args.name,
+        "contract_sha": args.contract_sha,
         "init_state_path": args.init_state_path,
         "reference_state_path": args.reference_state_path,
         "checkpoint_path": checkpoint_path,
@@ -708,6 +806,10 @@ def init_wandb_run(
                     "epochs": args.epochs,
                     "batch_pairs": args.batch_pairs,
                     "rank": args.rank,
+                    "training_seed": args.training_seed,
+                    "campaign_id": args.campaign_id,
+                    "run_key": args.run_key or args.name,
+                    "contract_sha": args.contract_sha,
                     "renderer": args.renderer,
                     "reasoning_effort": args.reasoning_effort,
                     "init_state_path": args.init_state_path,

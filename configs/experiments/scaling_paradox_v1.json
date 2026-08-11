@@ -1,0 +1,78 @@
+{
+  "campaign_id": "pearl-scaling-paradox-v1",
+  "claim": "Under a fixed low-rank and update budget, preference adaptation exhibits capacity-dependent inertia; adapter-budget rescue distinguishes an optimization bottleneck from an intrinsic model-scaling effect.",
+  "dataset_manifest": "data/phase8_dpo/scaling_paradox_v1/dataset_manifest.json",
+  "available_tinker_credit_usd": 3374.04,
+  "available_givemeanode_credit_usd": 482.01,
+  "training_seeds": [17, 29, 43],
+  "common": {
+    "beta": 0.05,
+    "learning_rate": 5e-7,
+    "batch_pairs": 4,
+    "rank": 32,
+    "save_every_steps": 500,
+    "max_steps": 2250,
+    "renderer": "qwen3_5_disable_thinking"
+  },
+  "models": [
+    {"tag": "qwen3p5-4b", "model": "Qwen/Qwen3.5-4B"},
+    {"tag": "qwen3p5-9b", "model": "Qwen/Qwen3.5-9B"},
+    {"tag": "qwen3p6-27b", "model": "Qwen/Qwen3.6-27B"}
+  ],
+  "stages": {
+    "smoke": {
+      "description": "One 25-step renderer and lineage smoke per model; no scientific inference.",
+      "seeds": [17],
+      "arms": ["true"],
+      "models": ["qwen3p5-4b", "qwen3p5-9b", "qwen3p6-27b"],
+      "dataset": "d10_train_true",
+      "max_pairs": 100,
+      "max_challenge_pairs": 100,
+      "max_steps": 25
+    },
+    "core": {
+      "description": "Confirmatory fixed-rank capacity test with direction-specific shuffled controls.",
+      "execution_order_seed": 20260811,
+      "seeds": [17, 29, 43],
+      "arms": ["true", "shuffled"],
+      "models": ["qwen3p5-4b", "qwen3p5-9b", "qwen3p6-27b"],
+      "dataset_by_arm": {
+        "true": "d10_train_true",
+        "shuffled": "d10_train_shuffled"
+      },
+      "max_steps": 2250
+    },
+    "data_exposure": {
+      "description": "At 4B, separate diversity from optimizer-update exposure using the nested 2.5k subset.",
+      "seeds": [17, 29, 43],
+      "models": ["qwen3p5-4b"],
+      "cells": [
+        {"tag": "d2p5-one-epoch", "dataset": "d2p5_train_true", "max_steps": 563},
+        {"tag": "d2p5-update-matched", "dataset": "d2p5_train_true", "max_steps": 2250}
+      ]
+    },
+    "adapter_rescue": {
+      "description": "If the core trend replicates, test whether fourfold adapter capacity rescues larger-model adaptation.",
+      "seeds": [17, 29, 43],
+      "models": ["qwen3p5-9b", "qwen3p6-27b"],
+      "dataset": "d10_train_true",
+      "rank": 128,
+      "max_steps": 2250
+    }
+  },
+  "preregistered_endpoints": {
+    "primary_optimization": "held-out per-residue DPO margin change from the matched reference policy",
+    "primary_biological": "held-out full structural-gate yield on a frozen prompt and seed panel",
+    "secondary": [
+      "held-out preference accuracy",
+      "KL and update norm",
+      "adapter norm and trainable-parameter fraction",
+      "mean pLDDT",
+      "catalytic geometry passage",
+      "family retention and sequence diversity"
+    ],
+    "analysis_unit": "independent training seed, with prompts and candidates nested beneath seed and model",
+    "claim_boundary": "Qwen lineage under the declared LoRA contract; cross-architecture results are descriptive only"
+  },
+  "stage_gate": "No stage may execute until its launch-plan contract SHA is explicitly confirmed. Adapter rescue begins only if the core fixed-rank trend reproduces across seeds."
+}

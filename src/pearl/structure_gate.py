@@ -416,8 +416,15 @@ class EsmFoldLocalBackend:
 
     name = "esmfold"
 
-    def __init__(self, *, model_name: str | None = None, device: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        model_name: str | None = None,
+        revision: str | None = None,
+        device: str | None = None,
+    ) -> None:
         self.model_name = model_name or os.environ.get("ESMFOLD_MODEL_NAME", "facebook/esmfold_v1")
+        self.revision = revision or os.environ.get("ESMFOLD_MODEL_REVISION") or None
         self.device = device or os.environ.get("ESMFOLD_DEVICE", "")
         self._model = None
 
@@ -427,8 +434,8 @@ class EsmFoldLocalBackend:
         import torch
         from transformers import AutoTokenizer, EsmForProteinFolding
 
-        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        model = EsmForProteinFolding.from_pretrained(self.model_name)
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name, revision=self.revision)
+        model = EsmForProteinFolding.from_pretrained(self.model_name, revision=self.revision)
         if self.device:
             device = torch.device(self.device)
         elif torch.cuda.is_available():
