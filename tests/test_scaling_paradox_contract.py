@@ -171,6 +171,10 @@ def test_structural_image_embeds_immutable_generation_report() -> None:
     assert "COPY input/generation_report.json /workspace/input/generation_report.json" in dockerfile
     entrypoint = (ROOT / "deploy" / "scaling_paradox_v1" / "run_esmf_job.sh").read_text()
     assert "GENERATION_REPORT:-/workspace/input/generation_report.json" in entrypoint
+    builder = (ROOT / "deploy" / "scaling_paradox_v1" / "build_esmf_context.sh").read_text()
+    assert 'git archive --format=tar "$git_ref"' in builder
+    assert 'cp "$generation_report" "$context_root/input/generation_report.json"' in builder
+    assert '"$context_root/Dockerfile.esmfold"' in builder
 
 
 def test_core_launch_contracts_are_unique_across_arm_model_and_seed() -> None:
