@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import sys
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -20,11 +21,13 @@ from pearl.opd_lite import validate_sparse_target_rows
 from pearl.phase8_readiness import (
     TINKER_MODEL_PRICES,
     estimate_dpo_cost,
+    estimate_preference_evaluation_cost,
     estimate_policy_sampling_cost,
     estimate_sparse_opd_cost,
     estimate_teacher_trace_cost,
 )
 from pearl.preference_distillation import load_jsonl
+from pearl.tinker_dpo import split_pair_rows_grouped
 
 
 def main() -> None:
@@ -58,6 +61,8 @@ def main() -> None:
 
     pilot_cost = (
         dpo["costs"]["full_10k_one_epoch"]["estimated_cost_usd"]
+        + dpo["costs"]["holdout_preference_eval"]["estimated_cost_usd"]
+        + dpo["costs"]["real_failure_challenge_eval"]["estimated_cost_usd"]
         + sampling["estimated_cost_usd"]
     )
     if sparse["exists"]:
@@ -121,10 +126,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--name", default="phase8-paid-readiness")
     parser.add_argument("--output-dir", default=str(ROOT / "reports" / "phase8_paid_preflight"))
     parser.add_argument("--model", default="moonshotai/Kimi-K2.6")
-    parser.add_argument("--pairs-path", default=str(ROOT / "data" / "phase8_dpo" / "dpo_preferences_hybrid_10k.jsonl"))
+    parser.add_argument("--pairs-path", default=str(ROOT / "data" / "phase8_dpo" / "dpo_preferences_methods_10k.jsonl"))
     parser.add_argument(
         "--preflight-path",
-        default=str(ROOT / "data" / "phase8_dpo" / "dpo_preferences_hybrid_10k_preflight.json"),
+        default=str(ROOT / "data" / "phase8_dpo" / "dpo_preferences_methods_10k_preflight.json"),
     )
     parser.add_argument("--rollouts-path", default=str(ROOT / "reports" / "opd_lite" / "rollouts.jsonl"))
     parser.add_argument(
@@ -137,6 +142,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dpo-smoke-pairs", type=int, default=8)
     parser.add_argument("--dpo-full-pairs", type=int, default=10_000)
+    parser.add_argument("--max-chosen-uses", type=int, default=8)
+    parser.add_argument("--holdout-fraction", type=float, default=0.1)
+    parser.add_argument("--holdout-group-field", default="chosen_record_id")
+    parser.add_argument("--split-seed", type=int, default=20260806)
+    parser.add_argument(
+        "--challenge-pairs-path",
+        default=str(ROOT / "data" / "phase8_dpo" / "dpo_real_fold_failures_challenge.jsonl"),
+    )
     parser.add_argument("--opd-smoke-rows", type=int, default=8)
     parser.add_argument("--opd-pilot-rows", type=int, default=256)
     parser.add_argument("--teacher-count", type=int, default=4)
@@ -164,13 +177,56 @@ def inspect_dpo(*, args: argparse.Namespace, prices: Any) -> dict[str, Any]:
     exists = pairs_path.exists()
     rows = load_jsonl(pairs_path) if exists else []
     preflight_payload = read_json(preflight_path) if preflight_path.exists() else {}
-    shape_ok = exists and bool(rows) and preflight_payload.get("ready_for_paid_dpo_smoke") is True
+    chosen_use_counts = Counter(str(row.get("chosen") or "") for row in rows)
+    max_observed_chosen_uses = max(chosen_use_counts.values(), default=0)
+    chosen_balance_ok = max_observed_chosen_uses <= args.max_chosen_uses
+    train_rows, holdout_rows = split_pair_rows_grouped(
+        rows,
+        holdout_fraction=args.holdout_fraction,
+        seed=args.split_seed,
+        group_field=args.holdout_group_field,
+    )
+    train_groups = {str(row.get(args.holdout_group_field) or row.get("chosen") or "") for row in train_rows}
+    holdout_groups = {str(row.get(args.holdout_group_field) or row.get("chosen") or "") for row in holdout_rows}
+    holdout_ok = bool(holdout_rows) and not (train_groups & holdout_groups)
+    challenge_path = repo_path(args.challenge_pairs_path)
+    challenge_rows = load_jsonl(challenge_path) if challenge_path.exists() else []
+    challenge_chosen = {str(row.get("chosen") or "") for row in challenge_rows}
+    train_chosen = {str(row.get("chosen") or "") for row in train_rows}
+    challenge_overlap_count = len((challenge_chosen & train_chosen) - {""})
+    challenge_ok = bool(challenge_rows) and challenge_overlap_count == 0
+    shape_ok = bool(
+        exists
+        and rows
+        and preflight_payload.get("ready_for_paid_dpo_smoke") is True
+        and chosen_balance_ok
+        and holdout_ok
+        and challenge_ok
+    )
     return {
         "exists": exists,
         "path": str(pairs_path),
         "preflight_path": str(preflight_path),
         "pair_count": len(rows),
         "preflight_ready": preflight_payload.get("ready_for_paid_dpo_smoke"),
+        "max_chosen_uses_allowed": args.max_chosen_uses,
+        "max_observed_chosen_uses": max_observed_chosen_uses,
+        "chosen_balance_ready": chosen_balance_ok,
+        "holdout": {
+            "fraction_requested": args.holdout_fraction,
+            "group_field": args.holdout_group_field,
+            "split_seed": args.split_seed,
+            "train_pair_count": len(train_rows),
+            "holdout_pair_count": len(holdout_rows),
+            "group_overlap_count": len(train_groups & holdout_groups),
+            "ready": holdout_ok,
+        },
+        "real_failure_challenge": {
+            "path": str(challenge_path),
+            "pair_count": len(challenge_rows),
+            "chosen_sequence_overlap_count": challenge_overlap_count,
+            "ready": challenge_ok,
+        },
         "ready": shape_ok,
         "costs": {
             "smoke": estimate_dpo_cost(
@@ -182,6 +238,16 @@ def inspect_dpo(*, args: argparse.Namespace, prices: Any) -> dict[str, Any]:
                 pair_rows=rows,
                 prices=prices,
                 pair_count=min(args.dpo_full_pairs, len(rows)),
+            ),
+            "holdout_preference_eval": estimate_preference_evaluation_cost(
+                pair_rows=holdout_rows,
+                prices=prices,
+                pair_count=len(holdout_rows),
+            ),
+            "real_failure_challenge_eval": estimate_preference_evaluation_cost(
+                pair_rows=challenge_rows,
+                prices=prices,
+                pair_count=len(challenge_rows),
             ),
         },
     }
@@ -261,12 +327,26 @@ def build_commands(args: argparse.Namespace) -> dict[str, str]:
             ".venv/bin/python scripts/run_tinker_dpo_smoke.py "
             "--name phase8-bio-dpo-shape "
             f"--pairs-path {rel(repo_path(args.pairs_path))} --shape-only"
+            f" --holdout-fraction {args.holdout_fraction}"
+            f" --holdout-group-field {args.holdout_group_field} --split-seed {args.split_seed}"
         ),
         "dpo_smoke": (
             ".venv/bin/python scripts/run_tinker_dpo_smoke.py "
             "--name phase8-bio-dpo-smoke "
             f"--pairs-path {rel(repo_path(args.pairs_path))} "
-            f"--max-pairs {args.dpo_smoke_pairs} --batch-pairs 2 --model {args.model}"
+            f"--max-pairs {args.dpo_smoke_pairs} --max-holdout-pairs {args.dpo_smoke_pairs} "
+            f"--holdout-fraction {args.holdout_fraction} --holdout-group-field {args.holdout_group_field} "
+            f"--split-seed {args.split_seed} --batch-pairs 2 --model {args.model}"
+            f" --challenge-pairs-path {rel(repo_path(args.challenge_pairs_path))}"
+            f" --max-challenge-pairs {args.dpo_smoke_pairs} --require-challenge-chosen-disjoint"
+        ),
+        "dpo_methods_run": (
+            ".venv/bin/python scripts/run_tinker_dpo_smoke.py "
+            "--name phase8-methods-dpo-v1 "
+            f"--pairs-path {rel(repo_path(args.pairs_path))} "
+            f"--holdout-fraction {args.holdout_fraction} --holdout-group-field {args.holdout_group_field} "
+            f"--split-seed {args.split_seed} --challenge-pairs-path {rel(repo_path(args.challenge_pairs_path))} "
+            f"--require-challenge-chosen-disjoint --model {args.model}"
         ),
         "teacher_trace_shape": (
             ".venv/bin/python scripts/build_tinker_teacher_traces.py "

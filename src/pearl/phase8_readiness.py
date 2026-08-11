@@ -13,10 +13,21 @@ class ModelTokenPrices:
 
 
 TINKER_MODEL_PRICES: dict[str, ModelTokenPrices] = {
-    "moonshotai/Kimi-K2.6": ModelTokenPrices(prefill_per_million=1.47, sample_per_million=3.66, train_per_million=4.40),
+    "thinkingmachines/Inkling": ModelTokenPrices(prefill_per_million=1.87, sample_per_million=4.68, train_per_million=5.61),
+    "deepseek-ai/DeepSeek-V3.1": ModelTokenPrices(prefill_per_million=1.695, sample_per_million=4.215, train_per_million=3.718),
+    "moonshotai/Kimi-K2.6": ModelTokenPrices(prefill_per_million=2.205, sample_per_million=5.49, train_per_million=4.84),
     "moonshotai/Kimi-K2.6:peft:131072": ModelTokenPrices(prefill_per_million=5.15, sample_per_million=12.81, train_per_million=15.40),
-    "moonshotai/Kimi-K2.5": ModelTokenPrices(prefill_per_million=1.47, sample_per_million=3.66, train_per_million=4.40),
-    "moonshotai/Kimi-K2.5:peft:131072": ModelTokenPrices(prefill_per_million=5.15, sample_per_million=12.81, train_per_million=15.40),
+    "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16": ModelTokenPrices(prefill_per_million=0.195, sample_per_million=0.495, train_per_million=0.44),
+    "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16": ModelTokenPrices(prefill_per_million=0.57, sample_per_million=1.44, train_per_million=1.276),
+    "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16": ModelTokenPrices(prefill_per_million=2.49, sample_per_million=6.225, train_per_million=5.478),
+    "Qwen/Qwen3.6-35B-A3B": ModelTokenPrices(prefill_per_million=0.54, sample_per_million=1.335, train_per_million=1.177),
+    "Qwen/Qwen3.6-27B": ModelTokenPrices(prefill_per_million=1.86, sample_per_million=5.595, train_per_million=4.103),
+    "Qwen/Qwen3.5-397B-A17B": ModelTokenPrices(prefill_per_million=3.00, sample_per_million=7.50, train_per_million=6.60),
+    "Qwen/Qwen3.5-9B": ModelTokenPrices(prefill_per_million=0.66, sample_per_million=1.995, train_per_million=1.463),
+    "Qwen/Qwen3.5-4B": ModelTokenPrices(prefill_per_million=0.33, sample_per_million=1.005, train_per_million=0.737),
+    "Qwen/Qwen3-8B": ModelTokenPrices(prefill_per_million=0.195, sample_per_million=0.60, train_per_million=0.44),
+    "openai/gpt-oss-120b": ModelTokenPrices(prefill_per_million=0.33, sample_per_million=0.84, train_per_million=0.737),
+    "openai/gpt-oss-20b": ModelTokenPrices(prefill_per_million=0.18, sample_per_million=0.45, train_per_million=0.396),
 }
 
 
@@ -141,6 +152,27 @@ def estimate_policy_sampling_cost(
         "estimated_cost_usd": round(
             cost_from_million_tokens(prefill_tokens, prices.prefill_per_million)
             + cost_from_million_tokens(sample_tokens, prices.sample_per_million),
+            4,
+        ),
+    }
+
+
+def estimate_preference_evaluation_cost(
+    *,
+    pair_rows: list[dict[str, Any]],
+    prices: ModelTokenPrices,
+    pair_count: int,
+    policy_count: int = 2,
+) -> dict[str, float]:
+    selected = pair_rows[:pair_count]
+    token_count = sum(estimate_pair_datum_tokens(row) for row in selected)
+    prefill_tokens = token_count * max(0, policy_count)
+    return {
+        "pair_count": float(len(selected)),
+        "policy_count": float(max(0, policy_count)),
+        "estimated_prefill_tokens": float(prefill_tokens),
+        "estimated_cost_usd": round(
+            cost_from_million_tokens(prefill_tokens, prices.prefill_per_million),
             4,
         ),
     }

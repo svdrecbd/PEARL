@@ -6,6 +6,71 @@
 
 name: phase8-physical-to-sequence-loop-v1
 
+methods_campaign:
+  status: full_dpo_reference_evaluation_completed
+  training_pairs: data/phase8_dpo/dpo_preferences_methods_10k.jsonl
+  real_failure_challenge: data/phase8_dpo/dpo_real_fold_failures_challenge.jsonl
+  dataset_sha256: eeb9ceb6b336881d34e5a8759d5b964e20706a10ef11cc4c5d1c12f62b42e8e7
+  natural_positive_count: 2628
+  max_pairs_per_natural_positive: 8
+  excluded_training_lengths: [303]
+  scaffold_grouped_holdout_fraction: 0.10
+  split_seed: 20260806
+  train_pair_count: 8997
+  holdout_pair_count: 1003
+  train_holdout_chosen_overlap: 0
+  real_failure_challenge_pair_count: 2434
+  train_challenge_chosen_overlap: 0
+  training_negative_type: length_preserving_known_artifact_replacement
+  challenge_negative_type: phase7_generated_fold_failure
+  primary_question: does_preference_training_transfer_from_controlled_artifacts_to_real_proxy_collapse
+  model: moonshotai/Kimi-K2.6
+  context_endpoint: 32k
+  estimated_dpo_holdout_challenge_cost_usd: 67.51
+  estimated_total_with_initial_matched_sampling_usd: 72.20
+  spend_gate: paid_smoke_then_single_full_run_then_matched_structural_readout
+  paid_smoke:
+    checkpoint: tinker://61132e74-2f61-5359-931f-ffea5d6b6ec4:train:0/weights/phase8-methods-dpo-smoke-v1
+    train_pairs: 8
+    holdout_pairs: 8
+    challenge_pairs: 8
+    challenge_margin_improved_fraction: 0.75
+    challenge_raw_preference_accuracy: 0.0
+    interpretation: infrastructure_pass_only_sample_too_small_for_biology
+  completed_run:
+    name: phase8-methods-dpo-v1
+    wandb_run: https://wandb.ai/svdrecbd-ucsf/pearl-dpo/runs/yse75co4
+    local_log: reports/tinker_dpo_smoke/phase8-methods-dpo-v1/run.log
+    report: reports/tinker_dpo_smoke/phase8-methods-dpo-v1/report.json
+    checkpoint: tinker://7e3b91ab-9003-5fd9-b333-6a1aec93325c:train:0/weights/phase8-methods-dpo-v1
+    phase: heldout_and_real_failure_diagnostics_complete
+    batches: 563
+    holdout_raw_preference_accuracy: 0.9820538384845464
+    holdout_improved_over_reference_fraction: 0.9800598205383848
+    challenge_raw_preference_accuracy: 0.0
+    challenge_improved_over_reference_fraction: 0.9096138044371405
+  grant_budget:
+    currency: USD_Tinker_credits
+    award_total: 5000.00
+    as_of: 2026-08-08T15:34:53Z
+    reconciliation_source: Tinker_console_reported_credit_balance
+    reconciled_estimated_spend: 202.12
+    reconciliation_caveat: provider_reported_balance_lags_and_active_campaign_cost_is_not_final
+    booked_exposure:
+      current_total: 1576.25
+      current_uncommitted_balance_floor: 3423.75
+    future_stage_caps:
+      luminosity_pearl_campaign: 1500.00
+      matched_reference_vs_dpo_generation_and_structure: within_luminosity_campaign
+      opd_feasibility_and_training: decision_gated_within_luminosity_campaign
+      confirmation_or_replication: decision_gated_within_luminosity_campaign
+      post_campaign_balance_floor: 3423.75
+    hard_stops:
+      - no_second_training_branch_before_active_run_readout
+      - no_large_generation_before_heldout_transfer_check
+      - no_replication_before_structural_endpoint
+      - reconcile_console_usage_before_each_paid_stage
+
 current_dpo_baseline:
   status: strong_training_signal_unresolved_structural_yield
   readout_doc: docs/phase8_dpo_pilot_readout.md
@@ -31,8 +96,8 @@ current_dpo_baseline:
     local_batch_reports: restored
     regression_test: tests/test_tinker_dpo.py::TinkerDpoTests::test_train_cli_persists_batch_reports_with_fake_tinker
   recommended_dpo_followup:
-    shuffle_pairs: true
-    heldout_preference_diagnostic: true
+    shuffle_pairs: implemented
+    heldout_preference_diagnostic: implemented
     prompt_counts: [12, 24]
     temperatures: [0.6, 0.8]
     seeds: [7, 19, 31]

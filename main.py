@@ -21,6 +21,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from pearl.checkpoints import load_sampler_checkpoint_map, persist_sampler_checkpoint_mapping
 from pearl.io_utils import load_json_object
+from pearl.model_rendering import RAW_RENDERER, RendererContract, build_generation_input
 from pearl.openai_compat_sampler import OpenAICompatibleSamplingClient
 from pearl.reports import (
     ReportContext,
@@ -67,6 +68,8 @@ OPENAI_TOKENIZER_NAME = os.environ.get("PEARL_OPENAI_TOKENIZER", "").strip()
 OPENAI_TIMEOUT_SECONDS = float(os.environ.get("PEARL_OPENAI_TIMEOUT_SECONDS", "120.0"))
 OPENAI_MAX_RETRIES = max(1, int(os.environ.get("PEARL_OPENAI_MAX_RETRIES", "3")))
 OPENAI_TRUST_REMOTE_CODE = os.environ.get("PEARL_OPENAI_TRUST_REMOTE_CODE", "1").strip().lower() not in {"0", "false", "no"}
+MODEL_RENDERER_NAME = os.environ.get("PEARL_MODEL_RENDERER", RAW_RENDERER).strip() or RAW_RENDERER
+MODEL_REASONING_EFFORT = float(os.environ.get("PEARL_MODEL_REASONING_EFFORT", "0.0"))
 CHECKPOINT_NAME = os.environ.get("CHECKPOINT_NAME", "dry_run_lora_v1")
 REPORT_PATH = os.environ.get("REPORT_PATH")
 CANDIDATE_AUDIT_PATH = os.environ.get("CANDIDATE_AUDIT_PATH")
@@ -432,9 +435,17 @@ def main() -> None:
         )
         phase_started_at = time.perf_counter()
         emit_timing_event(phase="encode_prompt_input", status="start", step=step)
-        prompt_input = types.ModelInput.from_ints(
-            tokenizer.encode(sequence_prompt, add_special_tokens=False)
-        )
+        prompt_input = None
+        if not EVAL_ONLY:
+            prompt_input, _ = build_generation_input(
+                sequence_prompt,
+                tokenizer,
+                RendererContract(
+                    name=MODEL_RENDERER_NAME,
+                    model_name=base_model,
+                    reasoning_effort=MODEL_REASONING_EFFORT,
+                ),
+            )
         emit_timing_event(phase="encode_prompt_input", status="end", started_at=phase_started_at, step=step)
         family_reward_info = compute_family_reward(family_evaluation) if family_evaluation is not None else {
             "family_reward": 0.0,
@@ -567,6 +578,7 @@ def main() -> None:
             )
             continue
 
+        assert prompt_input is not None
         datum = build_policy_gradient_datum(
             prompt_input=prompt_input,
             sampled_tokens=sampled_sequence.tokens,
@@ -701,7 +713,11 @@ def initialize_runtime(
             base_model=base_model,
         )
         if sampling_client is not None:
-            tokenizer = get_sampling_tokenizer(sampling_client=sampling_client)
+            tokenizer = (
+                get_sampling_tokenizer(sampling_client=sampling_client)
+                if MODEL_RENDERER_NAME == RAW_RENDERER
+                else None
+            )
             return {
                 "training_client": None,
                 "sampling_client": sampling_client,
@@ -713,7 +729,11 @@ def initialize_runtime(
     assert service_client is not None
     training_client = create_training_client(service_client=service_client, base_model=base_model)
     emit_timing_event(phase="create_training_client", status="end", started_at=phase_started_at)
-    tokenizer = get_training_tokenizer(training_client=training_client)
+    tokenizer = (
+        get_training_tokenizer(training_client=training_client)
+        if MODEL_RENDERER_NAME == RAW_RENDERER
+        else None
+    )
     return {
         "training_client": training_client,
         "sampling_client": None,
@@ -1139,9 +1159,16 @@ def sample_valid_sequence(
     phase_started_at = time.perf_counter()
     emit_timing_event(phase="sample_prepare_prompt_input", status="start", step=step)
     prompt_input = None
+    model_renderer = None
     if not isinstance(sampling_client, OpenAICompatibleSamplingClient):
-        prompt_input = types.ModelInput.from_ints(
-            tokenizer.encode(sequence_prompt, add_special_tokens=False)
+        prompt_input, model_renderer = build_generation_input(
+            sequence_prompt,
+            tokenizer,
+            RendererContract(
+                name=MODEL_RENDERER_NAME,
+                model_name=os.environ.get("TINKER_BASE_MODEL"),
+                reasoning_effort=MODEL_REASONING_EFFORT,
+            ),
         )
     emit_timing_event(phase="sample_prepare_prompt_input", status="end", started_at=phase_started_at, step=step)
 
@@ -1155,6 +1182,10 @@ def sample_valid_sequence(
         ).result()
     else:
         assert prompt_input is not None
+        if model_renderer is not None:
+            sampling_params = sampling_params.model_copy(
+                update={"stop": model_renderer.get_stop_sequences()}
+            )
         sample_result = sampling_client.sample(
             prompt=prompt_input,
             num_samples=CANDIDATE_SAMPLE_COUNT,
@@ -1174,7 +1205,11 @@ def sample_valid_sequence(
         if sampled_sequence.logprobs is None and not EVAL_ONLY:
             raise RuntimeError("Tinker sampling response did not include token logprobs")
 
-        sampled_text = tokenizer.decode(sampled_sequence.tokens, skip_special_tokens=False).strip()
+        if model_renderer is not None:
+            parsed_message, _termination = model_renderer.parse_response(sampled_sequence.tokens)
+            sampled_text = message_text(parsed_message).strip()
+        else:
+            sampled_text = tokenizer.decode(sampled_sequence.tokens, skip_special_tokens=False).strip()
 
         # Aggressive extraction for 'chatty' or 'thinking' models
         if "SEQUENCE=" in sampled_text:
@@ -1317,6 +1352,19 @@ def sample_valid_sequence(
         candidate_audit,
         CANDIDATE_SAMPLE_COUNT,
     )
+
+
+def message_text(message: Any) -> str:
+    content = message.get("content", "") if isinstance(message, dict) else ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            str(part.get("text") or "")
+            for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        )
+    return str(content or "")
 
 
 def build_candidate_audit_entry(candidate: dict[str, Any], is_selected: bool) -> dict[str, Any]:

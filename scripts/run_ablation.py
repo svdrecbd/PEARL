@@ -41,6 +41,8 @@ def main() -> None:
         "name": args.name,
         "variant": args.variant,
         "model": args.model,
+        "renderer": args.renderer,
+        "reasoning_effort": args.reasoning_effort,
         "python_executable": python_executable,
         "init_state_path": args.init_state_path,
         "eval_only": args.eval_only,
@@ -87,6 +89,8 @@ def main() -> None:
             "DRY_RUN_PROMPT_COUNT": str(args.prompt_count),
             "TINKER_CANDIDATE_SAMPLE_COUNT": str(args.candidate_sample_count),
             "TINKER_BASE_MODEL": args.model,
+            "PEARL_MODEL_RENDERER": args.renderer,
+            "PEARL_MODEL_REASONING_EFFORT": str(args.reasoning_effort),
             "PROMPT_VARIANT": args.variant,
             "CHECKPOINT_NAME": sanitize_name(args.name),
             "REPORT_PATH": str(report_path),
@@ -163,6 +167,12 @@ def parse_args() -> argparse.Namespace:
         help="Prompt variant to test",
     )
     parser.add_argument("--model", default="Qwen/Qwen3-8B")
+    parser.add_argument("--renderer", default=os.environ.get("PEARL_MODEL_RENDERER", "raw_completion_v1"))
+    parser.add_argument(
+        "--reasoning-effort",
+        type=float,
+        default=float(os.environ.get("PEARL_MODEL_REASONING_EFFORT", "0.0")),
+    )
     parser.add_argument("--prompts-path", required=True)
     parser.add_argument("--reference-records-path", required=True)
     parser.add_argument("--output-dir", default=str(ROOT / "reports" / "ablations"))

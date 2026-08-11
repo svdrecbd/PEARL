@@ -116,6 +116,7 @@ def main() -> None:
                         run_name=run_name,
                         variant=args.variant,
                         model=args.model,
+                        renderer=args.renderer,
                         prompts_path=prompts_path,
                         reference_records_path=Path(args.reference_records_path),
                         output_dir=Path(args.ablation_output_dir),
@@ -250,6 +251,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--name", required=True)
     parser.add_argument("--init-state-path", required=True)
     parser.add_argument("--model", default="moonshotai/Kimi-K2.6")
+    parser.add_argument("--renderer", default="raw_completion_v1")
     parser.add_argument(
         "--variant",
         choices=("baseline", "motif_prior_v1", "motif_prior_soft_v2"),
@@ -614,6 +616,7 @@ def execute_run_ablation(
     run_name: str,
     variant: str,
     model: str,
+    renderer: str,
     prompts_path: Path,
     reference_records_path: Path,
     output_dir: Path,
@@ -640,6 +643,8 @@ def execute_run_ablation(
         variant,
         "--model",
         model,
+        "--renderer",
+        renderer,
         "--prompts-path",
         str(prompts_path),
         "--reference-records-path",

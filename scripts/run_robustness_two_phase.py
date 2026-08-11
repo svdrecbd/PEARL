@@ -36,6 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--name", required=True)
     parser.add_argument("--init-state-path", required=True)
     parser.add_argument("--model", default="moonshotai/Kimi-K2.6")
+    parser.add_argument("--renderer", default="raw_completion_v1")
     parser.add_argument(
         "--variant",
         choices=("baseline", "motif_prior_v1", "motif_prior_soft_v2"),
@@ -69,6 +70,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--baseline-summary-path")
     parser.add_argument("--skip-existing", action="store_true", default=True)
     parser.add_argument("--no-skip-existing", action="store_false", dest="skip_existing")
+    parser.add_argument("--stockpile-only", action="store_true")
     return parser.parse_args()
 
 
@@ -146,6 +148,7 @@ def main() -> None:
                 seed=int(run["seed"]),
                 variant=args.variant,
                 model=args.model,
+                renderer=args.renderer,
                 reference_records_path=Path(args.reference_records_path),
                 output_dir=Path(args.ablation_output_dir),
                 candidate_sample_count=args.candidate_sample_count,
@@ -161,6 +164,12 @@ def main() -> None:
                 attempt=int(run["attempt"]),
             )
             if launched is None:
+                if args.stockpile_only:
+                    print(
+                        json.dumps({"event": "stockpile_ready", "run_name": run["run_name"]}),
+                        flush=True,
+                    )
+                    continue
                 result = finalize_ablation_dir(
                     ablation_dir=Path(run["run_dir"]),
                     esm2_device=args.esm2_device,
@@ -226,6 +235,9 @@ def main() -> None:
                 ),
                 flush=True,
             )
+            if args.stockpile_only:
+                completed_run_names.append(run_name)
+                continue
             result = finalize_ablation_dir(
                 ablation_dir=Path(active["run"]["run_dir"]),
                 esm2_device=args.esm2_device,
@@ -240,6 +252,13 @@ def main() -> None:
 
         if active_runs and not completed_run_names:
             time.sleep(5)
+
+    if args.stockpile_only:
+        print(
+            json.dumps({"event": "suite_stockpile_complete", "suite_name": suite_name}),
+            flush=True,
+        )
+        return
 
     run_summary_only(
         python_executable=python_executable,
@@ -287,6 +306,7 @@ def launch_stage1_stockpile(
     seed: int,
     variant: str,
     model: str,
+    renderer: str,
     reference_records_path: Path,
     output_dir: Path,
     candidate_sample_count: int,
@@ -328,6 +348,8 @@ def launch_stage1_stockpile(
         variant,
         "--model",
         model,
+        "--renderer",
+        renderer,
         "--prompts-path",
         str(prompts_path),
         "--reference-records-path",
@@ -408,6 +430,8 @@ def run_summary_only(*, python_executable: str, args: argparse.Namespace) -> Non
         args.init_state_path,
         "--model",
         args.model,
+        "--renderer",
+        args.renderer,
         "--variant",
         args.variant,
         "--prompts-path",

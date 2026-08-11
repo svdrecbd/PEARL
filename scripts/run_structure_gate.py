@@ -89,6 +89,21 @@ def load_input(path: Path, *, selected_only: bool = False) -> list[tuple[str, st
     return extract_sequences(json.loads(text), selected_only=selected_only)
 
 
+def write_report(path: Path, summary: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    temporary.replace(path)
+
+
+def existing_results(path: Path | None, *, resume: bool) -> list[dict]:
+    if not resume or path is None or not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    results = payload.get("results", []) if isinstance(payload, dict) else []
+    return [result for result in results if isinstance(result, dict) and result.get("label")]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--sequence", help="Gate a single inline sequence.")
@@ -98,6 +113,7 @@ def main() -> None:
     parser.add_argument("--plddt-gate", type=float, default=STRUCTURE_PLDDT_GATE)
     parser.add_argument("--hbond-max", type=float, default=TRIAD_HBOND_MAX_ANGSTROM)
     parser.add_argument("--max-records", type=int, default=0, help="Cap candidates folded (0 = all).")
+    parser.add_argument("--resume", action="store_true", help="Resume an incrementally written output report.")
     parser.add_argument(
         "--selected-only",
         action="store_true",
@@ -117,9 +133,18 @@ def main() -> None:
     if args.max_records and len(targets) > args.max_records:
         targets = targets[: args.max_records]
 
-    print(f"Folding {len(targets)} candidate(s) with backend={backend.name} ...", flush=True)
-    results = []
+    output_path = Path(args.output) if args.output else None
+    results = existing_results(output_path, resume=args.resume)
+    completed_labels = {str(result["label"]) for result in results}
+    pending = [(label, sequence) for label, sequence in targets if label not in completed_labels]
+    print(
+        f"Folding {len(pending)} candidate(s) with backend={backend.name} "
+        f"({len(results)} already complete) ...",
+        flush=True,
+    )
     for label, sequence in targets:
+        if label in completed_labels:
+            continue
         try:
             gate = fold_and_gate(
                 sequence,
@@ -130,7 +155,22 @@ def main() -> None:
             gate["label"] = label
         except Exception as error:  # folding/network failures should not abort the batch
             gate = {"label": label, "error": f"{type(error).__name__}: {error}", "structural_gate_pass": False}
+        # Keep the report self-contained. Downstream benchmark and repair pipelines must
+        # be able to recover the exact candidate without reconstructing the input panel.
+        gate["sequence"] = sequence
         results.append(gate)
+        summary = {
+            "backend": backend.name,
+            "plddt_gate": args.plddt_gate,
+            "triad_hbond_max": args.hbond_max,
+            "candidate_count": len(results),
+            "target_count": len(targets),
+            "complete": len(results) == len(targets),
+            "structural_gate_passes": sum(1 for result in results if result.get("structural_gate_pass")),
+            "results": results,
+        }
+        if output_path is not None:
+            write_report(output_path, summary)
         triad = gate.get("triad", {})
         print(
             f"  {label:<16} plddt={gate.get('mean_plddt')!s:<7} "
@@ -146,13 +186,13 @@ def main() -> None:
         "plddt_gate": args.plddt_gate,
         "triad_hbond_max": args.hbond_max,
         "candidate_count": len(results),
+        "target_count": len(targets),
+        "complete": len(results) == len(targets),
         "structural_gate_passes": passed,
         "results": results,
     }
-    if args.output:
-        output_path = Path(args.output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    if output_path is not None:
+        write_report(output_path, summary)
         print(f"Wrote {output_path}")
     print(f"Structural gate: {passed}/{len(results)} passed.")
 

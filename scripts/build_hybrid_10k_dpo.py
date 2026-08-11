@@ -67,6 +67,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-positive-exact-repeat", type=int, default=15)
     parser.add_argument("--generated-hard-negative-fraction", type=float, default=0.25)
     parser.add_argument("--include-generated-hard-negatives", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--max-chosen-uses",
+        type=int,
+        help="Optional cap on how many pairs may reuse the same natural chosen sequence.",
+    )
+    parser.add_argument(
+        "--exclude-positive-length",
+        action="append",
+        type=int,
+        default=[],
+        help="Natural-positive length to exclude from training; may be repeated.",
+    )
+    parser.add_argument(
+        "--generated-challenge-output-path",
+        help="Optional output for all real generated fold-failure pairs, kept outside training.",
+    )
     return parser.parse_args()
 
 
@@ -298,10 +314,40 @@ def group_records_by_length(records: list[dict[str, Any]]) -> dict[int, list[dic
     return grouped
 
 
-def build_dataset(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def generated_negative_pair(
+    *,
+    negative: dict[str, Any],
+    chosen_record: dict[str, Any],
+    prompts: list[str],
+    rng: random.Random,
+) -> dict[str, Any]:
+    return {
+        "prompt": positive_prompt(chosen_record, prompts, rng),
+        "chosen": chosen_record["sequence"],
+        "rejected": negative["sequence"],
+        "source_type": "natural_vs_generated_fold_failed_hard_negative",
+        "rejected_source_type": "phase7_generated_local_library_fold_failed",
+        "rejected_source_path": negative["source_path"],
+        "rejected_repeat_length": negative["repeat_length"],
+        "rejected_repeat_first_start": negative["repeat_first_start"],
+        "rejected_repeat_second_start": negative["repeat_second_start"],
+        "rejected_repeat_fragment": negative["repeat_fragment"],
+        "rejected_basis": negative["rejection_basis"],
+        **positive_audit_fields(chosen_record),
+    }
+
+
+def build_dataset(args: argparse.Namespace) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     rng = random.Random(int(args.seed))
-    positive_records = load_positive_records(repo_path(args.positive_records), args)
+    all_positive_records = load_positive_records(repo_path(args.positive_records), args)
+    excluded_positive_lengths = set(args.exclude_positive_length)
+    positive_records = [
+        record for record in all_positive_records if int(record["length"]) not in excluded_positive_lengths
+    ]
+    if not positive_records:
+        raise ValueError("positive-length exclusions removed every natural positive")
     positive_records_by_length = group_records_by_length(positive_records)
+    all_positive_records_by_length = group_records_by_length(all_positive_records)
     generated_negative_paths = [repo_path(path) for path in args.generated_negative_path]
     generated_negatives = load_generated_negative_sequences(
         generated_negative_paths,
@@ -312,7 +358,30 @@ def build_dataset(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[
     prompts = organic_prompts(organic_rows)
 
     rows: list[dict[str, Any]] = []
+    challenge_rows: list[dict[str, Any]] = []
     seen_triples: set[tuple[str, str, str]] = set()
+    chosen_use_counts: Counter[str] = Counter()
+
+    def under_chosen_cap(record: dict[str, Any]) -> bool:
+        if args.max_chosen_uses is None:
+            return True
+        return chosen_use_counts[str(record["sequence"])] < int(args.max_chosen_uses)
+
+    if args.generated_challenge_output_path:
+        challenge_rng = random.Random(int(args.seed) + 1)
+        for negative in generated_negatives:
+            challenge_candidates = all_positive_records_by_length.get(len(negative["sequence"]), [])
+            if not challenge_candidates:
+                continue
+            challenge_rows.append(
+                generated_negative_pair(
+                    negative=negative,
+                    chosen_record=challenge_rng.choice(challenge_candidates),
+                    prompts=prompts,
+                    rng=challenge_rng,
+                )
+            )
+        challenge_rng.shuffle(challenge_rows)
 
     if args.include_generated_hard_negatives:
         target_generated = min(
@@ -321,33 +390,35 @@ def build_dataset(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[
         )
         rng.shuffle(generated_negatives)
         for negative in generated_negatives[:target_generated]:
-            candidates = positive_records_by_length.get(len(negative["sequence"]))
+            candidates = [
+                record
+                for record in positive_records_by_length.get(len(negative["sequence"]), [])
+                if under_chosen_cap(record)
+            ]
             if not candidates:
                 continue
             chosen_record = rng.choice(candidates)
-            row = {
-                "prompt": positive_prompt(chosen_record, prompts, rng),
-                "chosen": chosen_record["sequence"],
-                "rejected": negative["sequence"],
-                "source_type": "natural_vs_generated_fold_failed_hard_negative",
-                "rejected_source_type": "phase7_generated_local_library_fold_failed",
-                "rejected_source_path": negative["source_path"],
-                "rejected_repeat_length": negative["repeat_length"],
-                "rejected_repeat_first_start": negative["repeat_first_start"],
-                "rejected_repeat_second_start": negative["repeat_second_start"],
-                "rejected_repeat_fragment": negative["repeat_fragment"],
-                "rejected_basis": negative["rejection_basis"],
-                **positive_audit_fields(chosen_record),
-            }
+            row = generated_negative_pair(
+                negative=negative,
+                chosen_record=chosen_record,
+                prompts=prompts,
+                rng=rng,
+            )
             triple = (row["prompt"], row["chosen"], row["rejected"])
             if triple in seen_triples:
                 continue
             seen_triples.add(triple)
             rows.append(row)
+            chosen_use_counts[row["chosen"]] += 1
 
     duplicate_attempts = 0
     while len(rows) < int(args.target_total):
-        chosen_record = rng.choice(positive_records)
+        candidates = [record for record in positive_records if under_chosen_cap(record)]
+        if not candidates:
+            raise ValueError(
+                f"max_chosen_uses={args.max_chosen_uses} cannot support target_total={args.target_total}"
+            )
+        chosen_record = rng.choice(candidates)
         chosen = chosen_record["sequence"]
         corruption = artifact_replacement(chosen, rng=rng, margin=int(args.site_margin))
         row = {
@@ -371,6 +442,7 @@ def build_dataset(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[
             continue
         seen_triples.add(triple)
         rows.append(row)
+        chosen_use_counts[row["chosen"]] += 1
 
     rng.shuffle(rows)
     rows = rows[: int(args.target_total)]
@@ -392,10 +464,13 @@ def build_dataset(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[
             "max_positive_exact_repeat": int(args.max_positive_exact_repeat),
             "include_generated_hard_negatives": bool(args.include_generated_hard_negatives),
             "generated_hard_negative_fraction": float(args.generated_hard_negative_fraction),
+            "max_chosen_uses": args.max_chosen_uses,
+            "excluded_positive_lengths": sorted(excluded_positive_lengths),
         },
         "inputs": {
             "positive_records": str(repo_path(args.positive_records)),
             "positive_record_count": len(positive_records),
+            "all_positive_record_count": len(all_positive_records),
             "positive_length_counts": dict(sorted(Counter(record["length"] for record in positive_records).items())),
             "generated_negative_paths": [str(path) for path in generated_negative_paths],
             "generated_negative_count": len(generated_negatives),
@@ -409,22 +484,32 @@ def build_dataset(args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[
             "artifact_class_counts": dict(sorted(artifact_counts.items())),
             "length_delta_counts": {str(key): value for key, value in sorted(length_deltas.items())},
             "duplicate_attempts_skipped": duplicate_attempts,
+            "unique_chosen_sequences": len(chosen_use_counts),
+            "max_observed_chosen_uses": max(chosen_use_counts.values(), default=0),
+            "generated_challenge_row_count": len(challenge_rows),
         },
     }
-    return rows, manifest
+    return rows, challenge_rows, manifest
 
 
 def main() -> None:
     args = parse_args()
     output_path = repo_path(args.output_path)
     manifest_path = repo_path(args.manifest_path)
-    rows, manifest = build_dataset(args)
+    rows, challenge_rows, manifest = build_dataset(args)
     write_jsonl(output_path, rows)
     manifest["outputs"]["output_path"] = str(output_path)
     manifest["outputs"]["sha256"] = sha256_file(output_path)
+    if args.generated_challenge_output_path:
+        challenge_path = repo_path(args.generated_challenge_output_path)
+        write_jsonl(challenge_path, challenge_rows)
+        manifest["outputs"]["generated_challenge_output_path"] = str(challenge_path)
+        manifest["outputs"]["generated_challenge_sha256"] = sha256_file(challenge_path)
     write_json(manifest_path, manifest)
     print(f"Wrote {len(rows)} DPO pairs to {output_path}")
     print(f"Wrote build manifest to {manifest_path}")
+    if args.generated_challenge_output_path:
+        print(f"Wrote {len(challenge_rows)} real-failure challenge pairs to {challenge_path}")
     print(f"SHA256: {manifest['outputs']['sha256']}")
 
 

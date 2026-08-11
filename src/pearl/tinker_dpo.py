@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import math
+import hashlib
+import json
+import random
 from dataclasses import dataclass
 from typing import Any, Callable
 
 import numpy as np
+
+from pearl.model_rendering import RAW_RENDERER, RendererContract, build_cross_entropy_datum, create_model_renderer
 
 
 @dataclass(frozen=True)
@@ -13,6 +18,62 @@ class DpoDatumMetadata:
     role: str
     prompt: str
     sequence: str
+
+
+def pair_rows_fingerprint(pair_rows: list[dict[str, Any]]) -> str:
+    digest = hashlib.sha256()
+    for row in pair_rows:
+        payload = {
+            "prompt": str(row.get("prompt") or ""),
+            "chosen": str(row.get("chosen") or ""),
+            "rejected": str(row.get("rejected") or ""),
+        }
+        digest.update(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def split_pair_rows_grouped(
+    pair_rows: list[dict[str, Any]],
+    *,
+    holdout_fraction: float,
+    seed: int,
+    group_field: str = "chosen_record_id",
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not 0.0 <= holdout_fraction < 1.0:
+        raise ValueError("holdout_fraction must be in [0, 1)")
+    rows = list(pair_rows)
+    rng = random.Random(seed)
+    if holdout_fraction == 0.0 or len(rows) < 2:
+        rng.shuffle(rows)
+        return rows, []
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        group_value = row.get(group_field)
+        if group_value in (None, ""):
+            group_value = row.get("chosen")
+        group_key = str(group_value)
+        grouped.setdefault(group_key, []).append(row)
+
+    target_rows = max(1, round(len(rows) * holdout_fraction))
+    group_keys = sorted(
+        grouped,
+        key=lambda key: hashlib.sha256(f"{seed}\0{key}".encode("utf-8")).hexdigest(),
+    )
+    holdout_keys: set[str] = set()
+    holdout_count = 0
+    for key in group_keys:
+        candidate_count = holdout_count + len(grouped[key])
+        if abs(target_rows - candidate_count) <= abs(target_rows - holdout_count):
+            holdout_keys.add(key)
+            holdout_count = candidate_count
+
+    train_rows = [row for key in group_keys if key not in holdout_keys for row in grouped[key]]
+    holdout_rows = [row for key in group_keys if key in holdout_keys for row in grouped[key]]
+    rng.shuffle(train_rows)
+    rng.shuffle(holdout_rows)
+    return train_rows, holdout_rows
 
 
 def dpo_loss_value(
@@ -40,49 +101,56 @@ def log_sigmoid(value: float) -> float:
     return value - math.log1p(math.exp(value))
 
 
-def build_sequence_cross_entropy_datum(prompt: str, sequence: str, tokenizer: Any) -> Any:
-    from tinker import types
-
-    prompt_tokens = tokenizer.encode(prompt, add_special_tokens=False)
-    sequence_tokens = tokenizer.encode(sequence, add_special_tokens=False)
-    if not prompt_tokens:
-        raise RuntimeError("DPO prompt tokenized to zero input tokens")
-    if not sequence_tokens:
-        raise RuntimeError("DPO sequence tokenized to zero target tokens")
-
-    prompt_input = types.ModelInput.from_ints(prompt_tokens)
-    model_input = (
-        prompt_input
-        if len(sequence_tokens) == 1
-        else prompt_input.append(types.EncodedTextChunk(tokens=sequence_tokens[:-1]))
-    )
-    observed_prompt_length = prompt_input.length - 1
-    target_tokens = np.asarray([0] * observed_prompt_length + sequence_tokens, dtype=np.int64)
-    weights = np.asarray(
-        [0.0] * observed_prompt_length + [1.0] * (model_input.length - observed_prompt_length),
-        dtype=np.float32,
-    )
-    if model_input.length != len(target_tokens) or model_input.length != len(weights):
-        raise RuntimeError("DPO cross-entropy tensors are not aligned")
-    return types.Datum(
-        model_input=model_input,
-        loss_fn_inputs={
-            "target_tokens": target_tokens,
-            "weights": weights,
-        },
+def build_sequence_cross_entropy_datum(
+    prompt: str,
+    sequence: str,
+    tokenizer: Any,
+    *,
+    renderer_contract: RendererContract | None = None,
+    renderer: Any | None = None,
+) -> Any:
+    return build_cross_entropy_datum(
+        prompt,
+        sequence,
+        tokenizer,
+        renderer_contract or RendererContract(name=RAW_RENDERER),
+        renderer=renderer,
     )
 
 
-def build_dpo_datums(pair_rows: list[dict[str, Any]], tokenizer: Any) -> tuple[list[Any], list[DpoDatumMetadata]]:
+def build_dpo_datums(
+    pair_rows: list[dict[str, Any]],
+    tokenizer: Any,
+    *,
+    renderer_contract: RendererContract | None = None,
+) -> tuple[list[Any], list[DpoDatumMetadata]]:
+    contract = renderer_contract or RendererContract(name=RAW_RENDERER)
+    renderer = create_model_renderer(contract)
     datums: list[Any] = []
     metadata: list[DpoDatumMetadata] = []
     for pair_index, row in enumerate(pair_rows):
         prompt = str(row["prompt"])
         chosen = str(row["chosen"])
         rejected = str(row["rejected"])
-        datums.append(build_sequence_cross_entropy_datum(prompt, chosen, tokenizer))
+        datums.append(
+            build_sequence_cross_entropy_datum(
+                prompt,
+                chosen,
+                tokenizer,
+                renderer_contract=contract,
+                renderer=renderer,
+            )
+        )
         metadata.append(DpoDatumMetadata(pair_index=pair_index, role="chosen", prompt=prompt, sequence=chosen))
-        datums.append(build_sequence_cross_entropy_datum(prompt, rejected, tokenizer))
+        datums.append(
+            build_sequence_cross_entropy_datum(
+                prompt,
+                rejected,
+                tokenizer,
+                renderer_contract=contract,
+                renderer=renderer,
+            )
+        )
         metadata.append(DpoDatumMetadata(pair_index=pair_index, role="rejected", prompt=prompt, sequence=rejected))
     return datums, metadata
 
@@ -117,6 +185,33 @@ def reference_margins_from_forward_result(forward_result: Any, datums: list[Any]
     for index in range(0, len(sums), 2):
         margins.append(sums[index] - sums[index + 1])
     return margins
+
+
+def preference_margin_diagnostics(
+    *,
+    policy_margins: list[float],
+    reference_margins: list[float],
+) -> dict[str, float]:
+    if len(policy_margins) != len(reference_margins):
+        raise RuntimeError("Policy and reference margin counts do not match")
+    if not policy_margins:
+        return {
+            "pair_count": 0.0,
+            "raw_preference_accuracy": 0.0,
+            "improved_over_reference_fraction": 0.0,
+            "policy_margin_mean": 0.0,
+            "reference_margin_mean": 0.0,
+            "margin_delta_mean": 0.0,
+        }
+    deltas = [policy - reference for policy, reference in zip(policy_margins, reference_margins, strict=True)]
+    return {
+        "pair_count": float(len(policy_margins)),
+        "raw_preference_accuracy": sum(margin > 0.0 for margin in policy_margins) / len(policy_margins),
+        "improved_over_reference_fraction": sum(delta > 0.0 for delta in deltas) / len(deltas),
+        "policy_margin_mean": sum(policy_margins) / len(policy_margins),
+        "reference_margin_mean": sum(reference_margins) / len(reference_margins),
+        "margin_delta_mean": sum(deltas) / len(deltas),
+    }
 
 
 def build_tinker_dpo_loss_fn(*, reference_margins: list[float], beta: float) -> Callable[[list[Any], list[Any]], tuple[Any, dict[str, float]]]:

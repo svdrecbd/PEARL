@@ -7,7 +7,12 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from src.pearl.paths import REPORTS_DIR
+from pearl.paths import REPORTS_DIR
+
+# Only used for legacy logs that predate the structural_gate block: a bare-pLDDT viability
+# cut. The authoritative path is structural_gate.structural_gate_pass (fold + real 3D triad
+# geometry graded against natural folds), which this fallback is deliberately decoupled from.
+LEGACY_VIABLE_PLDDT_FALLBACK = 85.0
 
 
 @dataclass
@@ -25,6 +30,10 @@ class TelemetrySchema:
     tandem_repeats: dict[str, Any] = field(default_factory=dict)
     esm_logprob: float | None = None
     esm_fold_plddt: float | None = None
+    # Output of pearl.structure_gate.gate_prediction: fold + real 3D triad geometry +
+    # (when calibrated) a natural-percentile grade. This is the authoritative fold-triage
+    # signal; the bare esm_fold_plddt above is retained only for pre-gate logs.
+    structural_gate: dict[str, Any] = field(default_factory=dict)
     constraints_applied: dict[str, Any] = field(default_factory=dict)
     operator_flags: list[str] = field(default_factory=list)
 
@@ -46,6 +55,7 @@ class TelemetrySchema:
             tandem_repeats=dict(data.get("tandem_repeats") or {}),
             esm_logprob=data.get("esm_logprob"),
             esm_fold_plddt=data.get("esm_fold_plddt"),
+            structural_gate=dict(data.get("structural_gate") or {}),
             constraints_applied=dict(data.get("constraints_applied") or {}),
             operator_flags=list(data.get("operator_flags") or []),
         )
@@ -87,6 +97,7 @@ class TelemetryLogger:
         tandem_repeats: dict[str, Any] | None = None,
         esm_logprob: float | None = None,
         esm_fold_plddt: float | None = None,
+        structural_gate: dict[str, Any] | None = None,
         constraints_applied: dict[str, Any] | None = None,
         operator_flags: list[str] | None = None,
     ) -> TelemetrySchema:
@@ -102,6 +113,7 @@ class TelemetryLogger:
             tandem_repeats=tandem_repeats or {},
             esm_logprob=esm_logprob,
             esm_fold_plddt=esm_fold_plddt,
+            structural_gate=structural_gate or {},
             constraints_applied=constraints_applied or {},
             operator_flags=operator_flags or [],
         )
@@ -139,6 +151,7 @@ class TelemetryLogger:
                 "time_to_recovery_steps": None,
                 "total_human_interventions": 0,
                 "viable_candidate_rate": 0.0,
+                "mean_structural_score": None,
             }
 
         total_steps = len(history)
@@ -153,6 +166,7 @@ class TelemetryLogger:
 
         viable_candidates = 0
         total_finished_candidates = 0
+        structural_scores: list[float] = []
 
         # Scan sequence trajectories sequentially
         for i, step in enumerate(history):
@@ -194,14 +208,22 @@ class TelemetryLogger:
                 # Flag recovery or reset state after operator flags to prevent double-counting
                 in_failure_state = False
 
-            # 4. Check for finished viable candidate
-            # Assuming a step with high pLDDT (>85) and passing active site counts as viable
-            # and sequence is complete (e.g., stop_reason is not empty, or marked as complete)
-            if step.esm_fold_plddt is not None:
+            # 4. Check for finished viable candidate. The structural gate (fold + real 3D
+            # triad geometry) is authoritative when present; a repeat-cap violation still
+            # vetoes viability since the gate does not screen tandem repeats. Bare pLDDT is
+            # only a fallback for pre-gate logs.
+            passes_repeat = not step.tandem_repeats.get("violates_repeat_cap", False)
+            if step.structural_gate:
                 total_finished_candidates += 1
-                passes_repeat = not step.tandem_repeats.get("violates_repeat_cap", False)
+                grade = step.structural_gate.get("grade")
+                if isinstance(grade, dict) and grade.get("structural_score") is not None:
+                    structural_scores.append(float(grade["structural_score"]))
+                if step.structural_gate.get("structural_gate_pass") and passes_repeat:
+                    viable_candidates += 1
+            elif step.esm_fold_plddt is not None:
+                total_finished_candidates += 1
                 passes_geom = step.active_site_geometry.get("passes_geometry", True)
-                if step.esm_fold_plddt > 85.0 and passes_repeat and passes_geom:
+                if step.esm_fold_plddt > LEGACY_VIABLE_PLDDT_FALLBACK and passes_repeat and passes_geom:
                     viable_candidates += 1
 
         # Calculate averages safely
@@ -213,6 +235,10 @@ class TelemetryLogger:
             else 0.0
         )
 
+        mean_structural_score = (
+            sum(structural_scores) / len(structural_scores) if structural_scores else None
+        )
+
         return {
             "run_name": self.run_name,
             "total_steps_logged": total_steps,
@@ -220,11 +246,13 @@ class TelemetryLogger:
             "time_to_recovery_steps": avg_tr,
             "total_human_interventions": interventions,
             "viable_candidate_rate": viable_rate,
+            "mean_structural_score": mean_structural_score,
             "metrics_summary": {
                 "failures_encountered": len(failures),
                 "failures_detected_by_operator": len(detections),
                 "failures_recovered_successfully": len(recoveries),
                 "total_finished_candidates": total_finished_candidates,
                 "viable_candidates_generated": viable_candidates,
+                "graded_candidates": len(structural_scores),
             },
         }

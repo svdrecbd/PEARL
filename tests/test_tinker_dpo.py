@@ -16,10 +16,75 @@ SRC_ROOT = ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from pearl.tinker_dpo import dpo_loss_value, log_sigmoid
+from pearl.model_rendering import (
+    DEEPSEEK_RENDERER,
+    GPT_OSS_RENDERER,
+    INKLING_RENDERER,
+    KIMI_RENDERER,
+    NEMOTRON_RENDERER,
+    NEMOTRON_ULTRA_RENDERER,
+    QWEN3_RENDERER,
+    QWEN35_RENDERER,
+    RendererContract,
+    renderer_diagnostics,
+)
+from pearl.tinker_dpo import dpo_loss_value, log_sigmoid, split_pair_rows_grouped
 
 
 class TinkerDpoTests(unittest.TestCase):
+    def test_model_native_renderers_preserve_generation_prefix_and_target_mask(self) -> None:
+        cases = (
+            (
+                INKLING_RENDERER,
+                "thinkingmachines/Inkling",
+            ),
+            (
+                NEMOTRON_ULTRA_RENDERER,
+                "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+            ),
+            (KIMI_RENDERER, "moonshotai/Kimi-K2.6"),
+            (NEMOTRON_RENDERER, "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16"),
+            (DEEPSEEK_RENDERER, "deepseek-ai/DeepSeek-V3.1"),
+            (QWEN3_RENDERER, "Qwen/Qwen3-8B"),
+            (QWEN35_RENDERER, "Qwen/Qwen3.5-9B"),
+            (GPT_OSS_RENDERER, "openai/gpt-oss-20b"),
+        )
+        for renderer_name, model_name in cases:
+            with self.subTest(renderer=renderer_name):
+                contract = RendererContract(name=renderer_name, model_name=model_name)
+                diagnostics = renderer_diagnostics(
+                    "Design a protein. Output only uppercase amino acid letters.",
+                    "ACDEFGHIKLMNPQRSTVWY",
+                    tokenizer=None,
+                    contract=contract,
+                )
+                self.assertTrue(diagnostics["generation_is_supervised_prefix"])
+                self.assertGreater(diagnostics["weighted_target_count"], 0)
+                self.assertGreater(
+                    diagnostics["supervised_token_count"],
+                    diagnostics["generation_token_count"],
+                )
+
+    def test_grouped_holdout_is_deterministic_and_has_no_chosen_leakage(self) -> None:
+        rows = [
+            {
+                "prompt": f"prompt-{index % 3}",
+                "chosen": f"CHOSEN{index // 2}",
+                "rejected": f"REJECTED{index}",
+                "chosen_record_id": f"record-{index // 2}",
+            }
+            for index in range(20)
+        ]
+        train_a, holdout_a = split_pair_rows_grouped(rows, holdout_fraction=0.2, seed=17)
+        train_b, holdout_b = split_pair_rows_grouped(rows, holdout_fraction=0.2, seed=17)
+
+        self.assertEqual(train_a, train_b)
+        self.assertEqual(holdout_a, holdout_b)
+        self.assertEqual(len(holdout_a), 4)
+        train_groups = {row["chosen_record_id"] for row in train_a}
+        holdout_groups = {row["chosen_record_id"] for row in holdout_a}
+        self.assertFalse(train_groups & holdout_groups)
+
     def test_dpo_loss_value_prefers_larger_policy_margin_than_reference(self) -> None:
         lower_loss = dpo_loss_value(
             policy_chosen_logps=[-10.0],
@@ -122,8 +187,14 @@ class TinkerDpoTests(unittest.TestCase):
                 return self._value
 
         class _MetricsResult:
-            def __init__(self, metrics):
+            def __init__(self, metrics, loss_fn_outputs=None):
                 self.metrics = metrics
+                self.loss_fn_outputs = loss_fn_outputs or []
+
+        class _TensorData:
+            def __init__(self, values):
+                self.data = list(values)
+                self.shape = [len(values)]
 
         class _SavedState:
             def __init__(self, name):
@@ -184,6 +255,12 @@ class TinkerDpoTests(unittest.TestCase):
                     "dpo_beta": 0.05,
                 }))
 
+            def forward(self, datums, loss_fn):
+                outputs = []
+                for datum in datums:
+                    outputs.append({"logprobs": _TensorData([-1.0] * datum.model_input.length)})
+                return _Result(_MetricsResult({}, outputs))
+
             def optim_step(self, adam_params):
                 return _Result(_MetricsResult({"fake_optim_step": float(self.step)}))
 
@@ -226,7 +303,6 @@ class TinkerDpoTests(unittest.TestCase):
             run_name = "fake-train"
             run_dir = output_dir / run_name
             run_dir.mkdir(parents=True)
-            (run_dir / "reference_margins.json").write_text("[0.0, 0.0, 0.0]", encoding="utf-8")
             pairs_path.write_text(
                 "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
                 encoding="utf-8",

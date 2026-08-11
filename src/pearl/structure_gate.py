@@ -377,16 +377,38 @@ class EsmAtlasBackend:
 
     name = "esmatlas"
 
-    def __init__(self, *, url: str | None = None, timeout_seconds: int = 180) -> None:
+    def __init__(
+        self,
+        *,
+        url: str | None = None,
+        timeout_seconds: int = 180,
+        max_attempts: int = 3,
+        retry_delay_seconds: float = 2.0,
+    ) -> None:
         self.url = url or os.environ.get("ESMATLAS_FOLD_URL", "https://api.esmatlas.com/foldSequence/v1/pdb/")
         self.timeout_seconds = timeout_seconds
+        self.max_attempts = max_attempts
+        self.retry_delay_seconds = retry_delay_seconds
 
     def fold(self, sequence: str) -> str:
+        import time
+        import urllib.error
         import urllib.request
 
-        request = urllib.request.Request(self.url, data=sequence.encode("utf-8"), method="POST")
-        with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
-            return response.read().decode("utf-8")
+        for attempt in range(1, self.max_attempts + 1):
+            request = urllib.request.Request(self.url, data=sequence.encode("utf-8"), method="POST")
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                    return response.read().decode("utf-8")
+            except urllib.error.HTTPError as error:
+                retryable = error.code == 429 or error.code >= 500
+                if not retryable or attempt == self.max_attempts:
+                    raise
+            except urllib.error.URLError:
+                if attempt == self.max_attempts:
+                    raise
+            time.sleep(self.retry_delay_seconds * attempt)
+        raise RuntimeError("ESMAtlas folding failed without returning a response")
 
 
 class EsmFoldLocalBackend:

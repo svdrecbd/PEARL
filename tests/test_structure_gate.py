@@ -1,6 +1,9 @@
+import json
 import sys
 import unittest
+import urllib.error
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
@@ -116,6 +119,23 @@ class StructureGateTests(unittest.TestCase):
         self.assertTrue(result["structural_gate_pass"])
         self.assertEqual(result["triad"]["method"], "sidechain")
 
+    def test_esmatlas_retries_transient_failures(self) -> None:
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return b"PDB"
+
+        transient = urllib.error.URLError("temporary")
+        backend = sg.EsmAtlasBackend(max_attempts=3, retry_delay_seconds=0)
+        with patch("urllib.request.urlopen", side_effect=[transient, Response()]) as urlopen:
+            self.assertEqual(backend.fold(SEQUENCE), "PDB")
+        self.assertEqual(urlopen.call_count, 2)
+
 
 class StructuralGradeTests(unittest.TestCase):
     CAL = {
@@ -178,6 +198,19 @@ class ShortlistExtractionTests(unittest.TestCase):
         sel_pairs = runner.extract_sequences(audit, selected_only=True)
         self.assertEqual(len(all_pairs), 2)
         self.assertEqual([s for _, s in sel_pairs], ["SEL0"])
+
+    def test_existing_results_only_loads_labeled_rows_for_resume(self) -> None:
+        runner = self._runner()
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "report.json"
+            output.write_text(
+                json.dumps({"results": [{"label": "done", "structural_gate_pass": True}, {"error": "bad"}]}),
+                encoding="utf-8",
+            )
+            self.assertEqual(runner.existing_results(output, resume=True), [{"label": "done", "structural_gate_pass": True}])
+            self.assertEqual(runner.existing_results(output, resume=False), [])
 
 
 if __name__ == "__main__":

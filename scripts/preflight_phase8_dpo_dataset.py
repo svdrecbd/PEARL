@@ -26,6 +26,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--require-synthetic-audit", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--require-positive-audit", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--max-chosen-exact-repeat", type=int, default=15)
+    parser.add_argument("--max-chosen-uses", type=int)
     return parser.parse_args()
 
 
@@ -170,6 +171,7 @@ def preflight(args: argparse.Namespace) -> dict[str, Any]:
     organic_rows = 0
     synthetic_rows = 0
     chosen_repeat_violations = 0
+    chosen_use_counts: Counter[str] = Counter()
 
     for index, row in enumerate(rows, start=1):
         line_number = row.get("_line_number", index)
@@ -212,6 +214,7 @@ def preflight(args: argparse.Namespace) -> dict[str, Any]:
         delta = len(rejected) - len(chosen)
         length_deltas[delta] += 1
         chosen_lengths[len(chosen)] += 1
+        chosen_use_counts[chosen] += 1
         rejected_lengths[len(rejected)] += 1
         source_types[source_type] += 1
         chosen_source_types[chosen_source_type] += 1
@@ -236,6 +239,13 @@ def preflight(args: argparse.Namespace) -> dict[str, Any]:
         failures.append(f"duplicate prompt/chosen/rejected triples found: {duplicate_triples}")
     if synthetic_rows == 0:
         failures.append("no synthetic length-preserving rows found")
+    max_chosen_uses = getattr(args, "max_chosen_uses", None)
+    if max_chosen_uses is not None and chosen_use_counts:
+        observed_max = max(chosen_use_counts.values())
+        if observed_max > int(max_chosen_uses):
+            failures.append(
+                f"chosen sequence reuse {observed_max} exceeds maximum {max_chosen_uses}"
+            )
     if organic_rows == 0:
         warnings.append("no raw organic rows were retained; this is expected for natural-positive Phase 8 builds")
 
@@ -250,6 +260,7 @@ def preflight(args: argparse.Namespace) -> dict[str, Any]:
             "require_synthetic_audit": bool(args.require_synthetic_audit),
             "require_positive_audit": bool(args.require_positive_audit),
             "max_chosen_exact_repeat": int(args.max_chosen_exact_repeat),
+            "max_chosen_uses": max_chosen_uses,
         },
         "counts": {
             "rows": len(rows),
@@ -258,6 +269,8 @@ def preflight(args: argparse.Namespace) -> dict[str, Any]:
             "organic_rows": organic_rows,
             "synthetic_rows": synthetic_rows,
             "chosen_repeat_violations": chosen_repeat_violations,
+            "unique_chosen_sequences": len(chosen_use_counts),
+            "max_observed_chosen_uses": max(chosen_use_counts.values(), default=0),
         },
         "length_delta_counts": {str(key): value for key, value in sorted(length_deltas.items())},
         "chosen_length_counts": {str(key): value for key, value in sorted(chosen_lengths.items())},

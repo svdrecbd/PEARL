@@ -133,6 +133,61 @@ class TelemetryTests(unittest.TestCase):
             self.assertEqual(metrics["metrics_summary"]["total_finished_candidates"], 1)
             self.assertEqual(metrics["metrics_summary"]["viable_candidates_generated"], 1)
 
+    def test_structural_gate_block_is_authoritative_for_viability(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logger = TelemetryLogger(run_name="gate-run", output_dir=Path(tmpdir))
+
+            # Passing gate with a natural-percentile grade -> viable, contributes to mean score.
+            logger.log_sequence_state(
+                sample_id="cand-pass",
+                step_index=0,
+                partial_sequence="MNAST",
+                token_logprobs=[-0.1],
+                model_name="test-model",
+                structural_gate={"structural_gate_pass": True, "grade": {"structural_score": 0.9}},
+            )
+            # Gate fails (e.g. low pLDDT) even though no repeat violation -> not viable.
+            logger.log_sequence_state(
+                sample_id="cand-fail",
+                step_index=1,
+                partial_sequence="MNASTV",
+                token_logprobs=[-0.1, -0.2],
+                model_name="test-model",
+                structural_gate={"structural_gate_pass": False, "grade": {"structural_score": 0.3}},
+            )
+            # Gate passes but a tandem-repeat violation vetoes viability (gate ignores repeats).
+            logger.log_sequence_state(
+                sample_id="cand-repeat",
+                step_index=2,
+                partial_sequence="MNASTVA",
+                token_logprobs=[-0.1, -0.2, -0.3],
+                model_name="test-model",
+                tandem_repeats={"violates_repeat_cap": True},
+                structural_gate={"structural_gate_pass": True, "grade": {"structural_score": 0.8}},
+            )
+
+            metrics = logger.compute_steering_metrics()
+            self.assertEqual(metrics["metrics_summary"]["total_finished_candidates"], 3)
+            self.assertEqual(metrics["metrics_summary"]["viable_candidates_generated"], 1)
+            self.assertEqual(metrics["metrics_summary"]["graded_candidates"], 3)
+            self.assertAlmostEqual(metrics["mean_structural_score"], (0.9 + 0.3 + 0.8) / 3)
+            self.assertEqual(metrics["viable_candidate_rate"], 1 / 3)
+
+    def test_structural_gate_round_trips_through_replay(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logger = TelemetryLogger(run_name="gate-replay", output_dir=Path(tmpdir))
+            gate = {"structural_gate_pass": True, "mean_plddt": 91.2, "grade": {"structural_score": 0.91}}
+            logger.log_sequence_state(
+                sample_id="c0",
+                step_index=0,
+                partial_sequence="MNAST",
+                token_logprobs=[-0.1],
+                model_name="test-model",
+                structural_gate=gate,
+            )
+            history = logger.replay_logs()
+            self.assertEqual(history[0].structural_gate, gate)
+
 
 if __name__ == "__main__":
     unittest.main()
