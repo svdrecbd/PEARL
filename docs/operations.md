@@ -109,7 +109,11 @@ ESMFold confirmation runs as a GiveMeANode H100 batch job built from
 verdict at `$GMN_RESULT_PATH`, pins the ESMFold model revision, and requires no laptop connection after
 submission. The submitted build context must contain the immutable generation report at
 `input/generation_report.json`; the Dockerfile copies it into the image so execution does not depend on
-the submitting workstation or an external runtime mount.
+the submitting workstation or an external runtime mount. Build that context with
+`deploy/scaling_paradox_v1/build_esmf_context.sh GENERATION_REPORT OUTPUT_TAR_ZST [GIT_REF]`. The
+builder starts from `git archive`, so ignored and untracked material cannot cross the PEARL experiment
+boundary, and places a packaged copy of the committed Dockerfile at the context root as required by the
+GiveMeANode builder.
 
 DPO training uses [../scripts/run_tinker_dpo_smoke.py](../scripts/run_tinker_dpo_smoke.py). W&B logging is optional and additive; the local `report.json` remains the authoritative audit artifact and should include per-batch `batches`.
 
