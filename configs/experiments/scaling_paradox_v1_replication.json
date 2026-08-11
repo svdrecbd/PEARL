@@ -37,6 +37,23 @@
         "shuffled": "d10_train_shuffled"
       },
       "max_steps": 2250
+    },
+    "data_exposure": {
+      "description": "Prospective replication of the v1 nested-data diversity versus update-exposure decomposition.",
+      "seeds": [362034, 257621, 520620],
+      "models": ["qwen3p5-4b"],
+      "cells": [
+        {"tag": "d2p5-one-epoch", "dataset": "d2p5_train_true", "max_steps": 563},
+        {"tag": "d2p5-update-matched", "dataset": "d2p5_train_true", "max_steps": 2250}
+      ]
+    },
+    "adapter_rescue": {
+      "description": "Prospective replication of rank-128 rescue after the frozen combined-core gate passes.",
+      "seeds": [362034, 257621, 520620],
+      "models": ["qwen3p5-9b", "qwen3p6-27b"],
+      "dataset": "d10_train_true",
+      "rank": 128,
+      "max_steps": 2250
     }
   },
   "preregistered_endpoints": {
@@ -45,5 +62,5 @@
     "analysis_unit": "independent training seed, with prompts and candidates nested beneath seed and model",
     "cohort_policy": "Report the original and replication cohorts separately before the prespecified six-seed combined analysis."
   },
-  "stage_gate": "The replication may begin only after all 18 original v1 core cells are terminal-valid and the replication workflow passes a no-spend remote validation."
+  "stage_gate": "The replication core begins only after all 18 original v1 core cells are terminal-valid. Replicated data exposure begins after both cores. Replicated adapter rescue begins only after the frozen combined six-seed gate passes."
 }

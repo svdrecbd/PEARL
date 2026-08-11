@@ -166,8 +166,7 @@ def tensor_weights_from_datum(datum: Any, *, torch_module: Any) -> Any:
     return torch_module.tensor(weights, dtype=torch_module.float32)
 
 
-def reference_margins_from_forward_result(forward_result: Any, datums: list[Any]) -> list[float]:
-    margins: list[float] = []
+def sequence_logprob_sums_from_forward_result(forward_result: Any, datums: list[Any]) -> list[float]:
     outputs = list(forward_result.loss_fn_outputs)
     if len(outputs) != len(datums):
         raise RuntimeError(f"Expected {len(datums)} reference outputs, observed {len(outputs)}")
@@ -182,8 +181,38 @@ def reference_margins_from_forward_result(forward_result: Any, datums: list[Any]
         if weights_data.shape is not None:
             weights = weights.reshape(weights_data.shape)
         sums.append(float((logprobs * weights).sum()))
-    for index in range(0, len(sums), 2):
-        margins.append(sums[index] - sums[index + 1])
+    return sums
+
+
+def preference_margins_from_sequence_sums(sequence_sums: list[float]) -> list[float]:
+    if len(sequence_sums) % 2:
+        raise RuntimeError("Preference sequence sums must contain chosen/rejected pairs")
+    margins: list[float] = []
+    for index in range(0, len(sequence_sums), 2):
+        margins.append(sequence_sums[index] - sequence_sums[index + 1])
+    return margins
+
+
+def reference_margins_from_forward_result(forward_result: Any, datums: list[Any]) -> list[float]:
+    return preference_margins_from_sequence_sums(
+        sequence_logprob_sums_from_forward_result(forward_result, datums)
+    )
+
+
+def per_residue_preference_margins(
+    sequence_sums: list[float], pair_rows: list[dict[str, Any]]
+) -> list[float]:
+    if len(sequence_sums) != len(pair_rows) * 2:
+        raise RuntimeError("Sequence sums and preference row counts do not match")
+    margins: list[float] = []
+    for pair_index, row in enumerate(pair_rows):
+        chosen_length = len(str(row.get("chosen") or ""))
+        rejected_length = len(str(row.get("rejected") or ""))
+        if chosen_length <= 0 or rejected_length <= 0:
+            raise RuntimeError(f"Preference row {pair_index} has an empty sequence")
+        chosen_sum = sequence_sums[pair_index * 2]
+        rejected_sum = sequence_sums[(pair_index * 2) + 1]
+        margins.append((chosen_sum / chosen_length) - (rejected_sum / rejected_length))
     return margins
 
 

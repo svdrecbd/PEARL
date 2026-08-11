@@ -1,4 +1,5 @@
 name: Scaling paradox v1 — one immutable run
+run-name: Scaling train original ${{ inputs.run_key }} supervisor-${{ inputs.supervisor_run_id || 'validate' }}
 
 on:
   workflow_dispatch:
@@ -28,6 +29,10 @@ on:
         description: Exact launch-plan contract SHA
         required: true
         type: string
+      supervisor_run_id:
+        description: Required one-time campaign-supervisor Actions run ID for paid execution
+        required: false
+        type: string
       resume_run_id:
         description: Prior Actions run ID whose checkpoint artifact should be resumed
         required: false
@@ -46,9 +51,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 355
     env:
-      TINKER_API_KEY: ${{ secrets.TINKER_API_KEY }}
       WANDB_MODE: disabled
       PYTHONUNBUFFERED: "1"
+      INPUT_STAGE: ${{ inputs.stage }}
+      INPUT_RUN_KEY: ${{ inputs.run_key }}
+      INPUT_PLAN_SHA: ${{ inputs.launch_plan_sha }}
+      INPUT_SUPERVISOR_RUN_ID: ${{ inputs.supervisor_run_id }}
+      INPUT_RESUME_RUN_ID: ${{ inputs.resume_run_id }}
       DATA_RELEASE_TAG: scaling-paradox-v1-data-v2
       DATA_ARCHIVE: pearl-scaling-paradox-v1-data-v2.tar.gz
       DATA_ARCHIVE_SHA256: ffad79ec8e104bf06979882e186290ea4d94b87531e48b111e954b6c09e8e962
@@ -84,54 +93,87 @@ jobs:
         if: inputs.resume_run_id != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "${{ inputs.resume_run_id }}" --name "scaling-paradox-${{ inputs.run_key }}" --dir .
+        run: gh run download "$INPUT_RESUME_RUN_ID" --name "scaling-paradox-$INPUT_RUN_KEY" --dir .
 
       - name: Verify immutable plan identity
         run: |
-          python scripts/launch_scaling_paradox_v1.py --stage "${{ inputs.stage }}" > launch-plan.json
+          [[ "$INPUT_RUN_KEY" =~ ^[a-z0-9][a-z0-9._-]{0,199}$ ]] || { echo "invalid run key"; exit 1; }
+          [[ "$INPUT_PLAN_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "invalid plan SHA"; exit 1; }
+          [[ -z "$INPUT_SUPERVISOR_RUN_ID" || "$INPUT_SUPERVISOR_RUN_ID" =~ ^[0-9]+$ ]] || { echo "invalid supervisor ID"; exit 1; }
+          [[ -z "$INPUT_RESUME_RUN_ID" || "$INPUT_RESUME_RUN_ID" =~ ^[0-9]+$ ]] || { echo "invalid resume ID"; exit 1; }
+          printf 'SAFE_RUN_KEY=%s\n' "$INPUT_RUN_KEY" >> "$GITHUB_ENV"
+          python scripts/launch_scaling_paradox_v1.py --stage "$INPUT_STAGE" > launch-plan.json
           python - <<'PY'
           import json
-          plan = json.load(open("reports/scaling_paradox_v1/${{ inputs.stage }}_launch_plan.json"))
-          if plan["launch_plan_contract_sha"] != "${{ inputs.launch_plan_sha }}":
+          import os
+          plan = json.load(open(f"reports/scaling_paradox_v1/{os.environ['INPUT_STAGE']}_launch_plan.json"))
+          if plan["launch_plan_contract_sha"] != os.environ["INPUT_PLAN_SHA"]:
               raise SystemExit("launch-plan SHA mismatch")
-          matches = [row for row in plan["runs"] if row["run_key"] == "${{ inputs.run_key }}"]
+          matches = [row for row in plan["runs"] if row["run_key"] == os.environ["INPUT_RUN_KEY"]]
           if len(matches) != 1:
               raise SystemExit("run key is absent or non-unique")
           PY
 
+      - name: Verify one-time supervisor authorization
+        if: inputs.mode == 'execute'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -n "$INPUT_SUPERVISOR_RUN_ID" || { echo "paid execution requires supervisor_run_id"; exit 1; }
+          test -z "$INPUT_RESUME_RUN_ID" || { echo "resume requires a separately versioned supervisor authorization"; exit 1; }
+          mkdir -p supervisor
+          auth_name=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$INPUT_SUPERVISOR_RUN_ID/artifacts" \
+            --jq '[.artifacts[] | select(.name | startswith("scaling-paradox-authorization-")) | .name] | if length == 1 then .[0] else error("authorization artifact absent or non-unique") end')
+          gh run download "$INPUT_SUPERVISOR_RUN_ID" \
+            --name "$auth_name" \
+            --dir supervisor
+          python scripts/verify_scaling_paradox_authorization.py \
+            --authorization supervisor/authorization.json \
+            --supervisor-run-id "$INPUT_SUPERVISOR_RUN_ID" \
+            --action dispatch_training_wave \
+            --campaign original \
+            --stage "$INPUT_STAGE" \
+            --run-key "$INPUT_RUN_KEY" \
+            --plan-sha "$INPUT_PLAN_SHA" \
+            --receipt-output "reports/scaling_paradox_v1/runs/$INPUT_RUN_KEY/worker_authorization_receipt.json"
+
       - name: Write a no-spend remote validation receipt
         if: inputs.mode == 'validate'
         run: |
-          mkdir -p "reports/scaling_paradox_v1/runs/${{ inputs.run_key }}"
+          mkdir -p "reports/scaling_paradox_v1/runs/$INPUT_RUN_KEY"
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
           receipt = {
               "mode": "validate",
-              "stage": "${{ inputs.stage }}",
-              "run_key": "${{ inputs.run_key }}",
-              "launch_plan_sha": "${{ inputs.launch_plan_sha }}",
+              "stage": os.environ["INPUT_STAGE"],
+              "run_key": os.environ["INPUT_RUN_KEY"],
+              "launch_plan_sha": os.environ["INPUT_PLAN_SHA"],
               "dataset_archive_sha256": "ffad79ec8e104bf06979882e186290ea4d94b87531e48b111e954b6c09e8e962",
               "dataset_manifest_sha256": "1f410d4346b354b789408729c2c7cfc1f0bdef3b9580716171d86593bd9e9a22",
               "paid_execution": False,
           }
-          path = Path("reports/scaling_paradox_v1/runs/${{ inputs.run_key }}/remote_validation_receipt.json")
+          path = Path("reports/scaling_paradox_v1/runs") / os.environ["INPUT_RUN_KEY"] / "remote_validation_receipt.json"
           path.write_text(json.dumps(receipt, indent=2) + "\n")
           PY
 
       - name: Verify Tinker provider access without spending
         if: inputs.mode == 'validate'
+        env:
+          TINKER_API_KEY: ${{ secrets.TINKER_API_KEY }}
         run: |
           python - <<'PY'
           import importlib.util
           import json
+          import os
           from pathlib import Path
 
-          run_dir = Path("reports/scaling_paradox_v1/runs/${{ inputs.run_key }}")
+          run_dir = Path("reports/scaling_paradox_v1/runs") / os.environ["INPUT_RUN_KEY"]
           path = run_dir / "provider_preflight.json"
           receipt = {
               "contract": "pearl.scaling-paradox-provider-preflight/1",
-              "run_key": "${{ inputs.run_key }}",
+              "run_key": os.environ["INPUT_RUN_KEY"],
               "status": "checking_provider",
               "paid_execution": False,
           }
@@ -160,18 +202,20 @@ jobs:
 
       - name: Run one supervised Tinker cell
         if: inputs.mode == 'execute'
+        env:
+          TINKER_API_KEY: ${{ secrets.TINKER_API_KEY }}
         run: |
           resume=()
-          if [ -n "${{ inputs.resume_run_id }}" ]; then
+          if [ -n "$INPUT_RESUME_RUN_ID" ]; then
             resume=(--resume)
           fi
           timeout --signal=TERM --kill-after=60s 330m \
             python scripts/launch_scaling_paradox_v1.py \
-              --stage "${{ inputs.stage }}" \
+              --stage "$INPUT_STAGE" \
               --execute \
               --wait \
-              --run-key "${{ inputs.run_key }}" \
-              --confirm-contract-sha "${{ inputs.launch_plan_sha }}" \
+              --run-key "$INPUT_RUN_KEY" \
+              --confirm-contract-sha "$INPUT_PLAN_SHA" \
               "${resume[@]}"
 
       - name: Validate terminal report
@@ -179,8 +223,9 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
-          run_dir = Path("reports/scaling_paradox_v1/runs/${{ inputs.run_key }}")
+          run_dir = Path("reports/scaling_paradox_v1/runs") / os.environ["INPUT_RUN_KEY"]
           report = json.load(open(run_dir / "report.json"))
           contract = json.load(open(run_dir / "run_contract.json"))
           if report.get("contract_sha") != contract.get("run_contract_sha"):
@@ -195,8 +240,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: scaling-paradox-${{ inputs.run_key }}
-          path: reports/scaling_paradox_v1/runs/${{ inputs.run_key }}/
+          name: scaling-paradox-${{ env.SAFE_RUN_KEY }}
+          path: reports/scaling_paradox_v1/runs/${{ env.SAFE_RUN_KEY }}/
           if-no-files-found: error
           retention-days: 90
           include-hidden-files: true

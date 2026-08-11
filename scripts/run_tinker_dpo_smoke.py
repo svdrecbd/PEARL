@@ -22,8 +22,11 @@ from pearl.tinker_dpo import (
     build_dpo_datums,
     build_tinker_dpo_loss_fn,
     pair_rows_fingerprint,
+    per_residue_preference_margins,
     preference_margin_diagnostics,
+    preference_margins_from_sequence_sums,
     reference_margins_from_forward_result,
+    sequence_logprob_sums_from_forward_result,
     split_pair_rows_grouped,
 )
 
@@ -40,11 +43,18 @@ def main() -> None:
     if not source_pair_rows:
         raise RuntimeError("No DPO pairs were provided")
     source_shape_summary = validate_pair_rows(source_pair_rows)
-    pair_rows, holdout_rows = split_pair_rows_grouped(
+    pair_rows, split_holdout_rows = split_pair_rows_grouped(
         source_pair_rows,
         holdout_fraction=args.holdout_fraction,
         seed=args.split_seed,
         group_field=args.holdout_group_field,
+    )
+    if args.holdout_pairs_path and split_holdout_rows:
+        raise RuntimeError("--holdout-pairs-path cannot be combined with a nonzero --holdout-fraction")
+    holdout_rows = (
+        load_jsonl(repo_path(args.holdout_pairs_path))
+        if args.holdout_pairs_path
+        else split_holdout_rows
     )
     random.Random(args.training_seed).shuffle(pair_rows)
     if args.max_pairs is not None:
@@ -61,6 +71,8 @@ def main() -> None:
         train_rows=pair_rows,
         holdout_rows=holdout_rows,
     )
+    if args.require_holdout_chosen_disjoint and split_summary["chosen_sequence_overlap_count"]:
+        raise RuntimeError("Holdout chosen sequences overlap the training partition")
     challenge_rows = load_jsonl(repo_path(args.challenge_pairs_path)) if args.challenge_pairs_path else []
     if args.max_challenge_pairs is not None:
         challenge_rows = challenge_rows[: args.max_challenge_pairs]
@@ -187,7 +199,9 @@ def main() -> None:
     reference_margins_path = output_dir / "reference_margins.json"
     reference_margins: list[float] = []
     holdout_reference_margins: list[float] = []
+    holdout_reference_per_residue_margins: list[float] = []
     challenge_reference_margins: list[float] = []
+    challenge_reference_per_residue_margins: list[float] = []
     renderer_fingerprint = renderer_contract.fingerprint()
     train_fingerprint = f"{pair_rows_fingerprint(pair_rows)}:{renderer_fingerprint}"
     holdout_fingerprint = f"{pair_rows_fingerprint(holdout_rows)}:{renderer_fingerprint}"
@@ -205,7 +219,13 @@ def main() -> None:
             ):
                 reference_margins = list(cached_margins.get("train") or [])
                 holdout_reference_margins = list(cached_margins.get("holdout") or [])
+                holdout_reference_per_residue_margins = list(
+                    cached_margins.get("holdout_per_residue") or []
+                )
                 challenge_reference_margins = list(cached_margins.get("challenge") or [])
+                challenge_reference_per_residue_margins = list(
+                    cached_margins.get("challenge_per_residue") or []
+                )
                 print("--- LOADED MATCHED REFERENCE MARGINS ---", flush=True)
             else:
                 print("Ignoring stale reference-margin cache with a different data split.", flush=True)
@@ -214,8 +234,14 @@ def main() -> None:
 
     missing_reference_margins = (
         not reference_margins
-        or (holdout_datums and not holdout_reference_margins)
-        or (challenge_datums and not challenge_reference_margins)
+        or (
+            holdout_datums
+            and (not holdout_reference_margins or not holdout_reference_per_residue_margins)
+        )
+        or (
+            challenge_datums
+            and (not challenge_reference_margins or not challenge_reference_per_residue_margins)
+        )
     )
     if args.eval_only and missing_reference_margins and not args.reference_state_path:
         raise RuntimeError(
@@ -243,17 +269,23 @@ def main() -> None:
             batch_pairs=args.eval_batch_pairs,
         )
         if holdout_datums:
-            holdout_reference_margins = forward_preference_margins(
+            holdout_reference = forward_preference_evaluation(
                 reference_client,
                 holdout_datums,
+                holdout_rows,
                 batch_pairs=args.eval_batch_pairs,
             )
+            holdout_reference_margins = holdout_reference["raw_margins"]
+            holdout_reference_per_residue_margins = holdout_reference["per_residue_margins"]
         if challenge_datums:
-            challenge_reference_margins = forward_preference_margins(
+            challenge_reference = forward_preference_evaluation(
                 reference_client,
                 challenge_datums,
+                challenge_rows,
                 batch_pairs=args.eval_batch_pairs,
             )
+            challenge_reference_margins = challenge_reference["raw_margins"]
+            challenge_reference_per_residue_margins = challenge_reference["per_residue_margins"]
         try:
             with open(reference_margins_path, "w", encoding="utf-8") as f:
                 json.dump(
@@ -263,7 +295,9 @@ def main() -> None:
                         "challenge_fingerprint": challenge_fingerprint,
                         "train": reference_margins,
                         "holdout": holdout_reference_margins,
+                        "holdout_per_residue": holdout_reference_per_residue_margins,
                         "challenge": challenge_reference_margins,
+                        "challenge_per_residue": challenge_reference_per_residue_margins,
                     },
                     f,
                     indent=2,
@@ -415,32 +449,6 @@ def main() -> None:
             checkpoint_lineage_path,
             {"contract_sha": args.contract_sha, "checkpoints": checkpoint_lineage},
         )
-    holdout_diagnostics = None
-    if holdout_datums:
-        holdout_policy_margins = forward_preference_margins(
-            training_client,
-            holdout_datums,
-            batch_pairs=args.eval_batch_pairs,
-        )
-        holdout_diagnostics = preference_margin_diagnostics(
-            policy_margins=holdout_policy_margins,
-            reference_margins=holdout_reference_margins,
-        )
-    challenge_diagnostics = None
-    if challenge_datums:
-        challenge_policy_margins = forward_preference_margins(
-            training_client,
-            challenge_datums,
-            batch_pairs=args.eval_batch_pairs,
-        )
-        challenge_diagnostics = preference_margin_diagnostics(
-            policy_margins=challenge_policy_margins,
-            reference_margins=challenge_reference_margins,
-        )
-    log_evaluation_to_wandb(
-        holdout_diagnostics=holdout_diagnostics,
-        challenge_diagnostics=challenge_diagnostics,
-    )
     report = {
         "name": args.name,
         "base_model": base_model,
@@ -462,13 +470,49 @@ def main() -> None:
         "init_state_path": args.init_state_path,
         "reference_state_path": args.reference_state_path,
         "split": split_summary,
-        "holdout_preference_diagnostics": holdout_diagnostics,
+        "holdout_preference_diagnostics": None,
         "challenge": challenge_summary,
-        "challenge_preference_diagnostics": challenge_diagnostics,
+        "challenge_preference_diagnostics": None,
         "checkpoint_path": checkpoint_path,
         "checkpoint_lineage": checkpoint_lineage,
         "batches": batch_reports,
     }
+    # Preserve a terminal training record before endpoint forwards. If a hosted-job
+    # timeout interrupts evaluation, the checkpoint remains mechanically collectable
+    # and the dedicated immutable evaluator can finish both endpoint partitions.
+    atomic_write_json(report_path, report)
+    holdout_diagnostics = None
+    if holdout_datums:
+        holdout_policy = forward_preference_evaluation(
+            training_client,
+            holdout_datums,
+            holdout_rows,
+            batch_pairs=args.eval_batch_pairs,
+        )
+        holdout_diagnostics = paired_margin_diagnostics(
+            policy=holdout_policy,
+            reference_raw=holdout_reference_margins,
+            reference_per_residue=holdout_reference_per_residue_margins,
+        )
+    challenge_diagnostics = None
+    if challenge_datums:
+        challenge_policy = forward_preference_evaluation(
+            training_client,
+            challenge_datums,
+            challenge_rows,
+            batch_pairs=args.eval_batch_pairs,
+        )
+        challenge_diagnostics = paired_margin_diagnostics(
+            policy=challenge_policy,
+            reference_raw=challenge_reference_margins,
+            reference_per_residue=challenge_reference_per_residue_margins,
+        )
+    log_evaluation_to_wandb(
+        holdout_diagnostics=holdout_diagnostics,
+        challenge_diagnostics=challenge_diagnostics,
+    )
+    report["holdout_preference_diagnostics"] = holdout_diagnostics
+    report["challenge_preference_diagnostics"] = challenge_diagnostics
     atomic_write_json(report_path, report)
     print(json.dumps(report, indent=2, sort_keys=True))
     finish_wandb_run()
@@ -495,10 +539,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--save-every-steps", type=int, default=500, help="Save intermediate state checkpoint every N steps")
     parser.add_argument("--batch-pairs", type=int, default=4)
     parser.add_argument("--max-pairs", type=int)
+    parser.add_argument("--holdout-pairs-path")
     parser.add_argument("--max-holdout-pairs", type=int)
     parser.add_argument("--challenge-pairs-path")
     parser.add_argument("--max-challenge-pairs", type=int)
     parser.add_argument("--require-challenge-chosen-disjoint", action="store_true")
+    parser.add_argument("--require-holdout-chosen-disjoint", action="store_true")
     parser.add_argument("--holdout-fraction", type=float, default=0.0)
     parser.add_argument("--holdout-group-field", default="chosen_record_id")
     parser.add_argument("--split-seed", type=int, default=20260806)
@@ -672,6 +718,7 @@ def build_split_summary(
         return len((train_values & holdout_values) - {""})
 
     return {
+        "holdout_path": str(repo_path(args.holdout_pairs_path)) if args.holdout_pairs_path else None,
         "source_pair_count": len(source_pair_rows),
         "train_pair_count": len(train_rows),
         "holdout_pair_count": len(holdout_rows),
@@ -851,7 +898,16 @@ def log_evaluation_to_wandb(
             ("challenge", challenge_diagnostics),
         ):
             if diagnostics:
-                metrics.update({f"eval/{split_name}/{key}": value for key, value in diagnostics.items()})
+                for key, value in diagnostics.items():
+                    if isinstance(value, dict):
+                        metrics.update(
+                            {
+                                f"eval/{split_name}/{key}/{nested_key}": nested_value
+                                for nested_key, nested_value in value.items()
+                            }
+                        )
+                    else:
+                        metrics[f"eval/{split_name}/{key}"] = value
         wandb.log(metrics)
     except Exception as exc:
         print(f"Warning: W&B evaluation logging failed: {exc}", flush=True)
@@ -882,6 +938,45 @@ def forward_preference_margins(
         result = training_client.forward(batch, "cross_entropy").result()
         margins.extend(reference_margins_from_forward_result(result, batch))
     return margins
+
+
+def forward_preference_evaluation(
+    training_client: Any,
+    datums: list[Any],
+    pair_rows: list[dict[str, Any]],
+    *,
+    batch_pairs: int,
+) -> dict[str, list[float]]:
+    if batch_pairs <= 0:
+        raise ValueError("eval_batch_pairs must be positive")
+    sequence_sums: list[float] = []
+    batch_datums = batch_pairs * 2
+    for start in range(0, len(datums), batch_datums):
+        batch = datums[start : start + batch_datums]
+        result = training_client.forward(batch, "cross_entropy").result()
+        sequence_sums.extend(sequence_logprob_sums_from_forward_result(result, batch))
+    return {
+        "raw_margins": preference_margins_from_sequence_sums(sequence_sums),
+        "per_residue_margins": per_residue_preference_margins(sequence_sums, pair_rows),
+    }
+
+
+def paired_margin_diagnostics(
+    *,
+    policy: dict[str, list[float]],
+    reference_raw: list[float],
+    reference_per_residue: list[float],
+) -> dict[str, dict[str, float]]:
+    return {
+        "raw": preference_margin_diagnostics(
+            policy_margins=policy["raw_margins"],
+            reference_margins=reference_raw,
+        ),
+        "per_residue": preference_margin_diagnostics(
+            policy_margins=policy["per_residue_margins"],
+            reference_margins=reference_per_residue,
+        ),
+    }
 
 
 def repo_path(value: str | Path) -> Path:

@@ -28,7 +28,12 @@ from pearl.model_rendering import (
     RendererContract,
     renderer_diagnostics,
 )
-from pearl.tinker_dpo import dpo_loss_value, log_sigmoid, split_pair_rows_grouped
+from pearl.tinker_dpo import (
+    dpo_loss_value,
+    log_sigmoid,
+    per_residue_preference_margins,
+    split_pair_rows_grouped,
+)
 
 
 class TinkerDpoTests(unittest.TestCase):
@@ -104,6 +109,16 @@ class TinkerDpoTests(unittest.TestCase):
         self.assertTrue(math.isfinite(log_sigmoid(1000.0)))
         self.assertTrue(math.isfinite(log_sigmoid(-1000.0)))
         self.assertAlmostEqual(log_sigmoid(0.0), -math.log(2.0))
+
+    def test_per_residue_margin_normalizes_chosen_and_rejected_separately(self) -> None:
+        margins = per_residue_preference_margins(
+            [-12.0, -10.0, -9.0, -8.0],
+            [
+                {"chosen": "AAAA", "rejected": "AA"},
+                {"chosen": "AAA", "rejected": "AAAAAAAA"},
+            ],
+        )
+        self.assertEqual(margins, [2.0, -2.0])
 
     def test_shape_only_cli_validates_pairs_without_tinker_client(self) -> None:
         rows = [

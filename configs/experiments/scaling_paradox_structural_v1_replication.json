@@ -1,0 +1,45 @@
+{
+  "contract": "pearl.scaling-paradox-structural/1",
+  "campaign_id": "pearl-scaling-paradox-v1-replication",
+  "training_config": "configs/experiments/scaling_paradox_v1_replication.json",
+  "shared_base_config": "configs/experiments/scaling_paradox_structural_v1.json",
+  "dataset_manifest": "data/phase8_dpo/scaling_paradox_v1/dataset_manifest.json",
+  "source_partition": "real_failure_challenge",
+  "prompt_panel": "configs/experiments/scaling_paradox_structural_panel_v1.jsonl",
+  "prompt_count": 24,
+  "prompt_selection_seed": 20260811,
+  "sampling": {
+    "temperature": 0.8,
+    "top_p": 0.95,
+    "top_k": 50,
+    "max_tokens": 420,
+    "sample_seeds": [701, 1701, 2701, 3701],
+    "stop_on_newline": true,
+    "invalid_or_duplicate_candidates_count_as_failures": true
+  },
+  "checkpoints": {
+    "primary": [0, 2250],
+    "secondary_timecourse": []
+  },
+  "structure_gate": {
+    "backend": "esmfold",
+    "model_name": "facebook/esmfold_v1",
+    "model_revision": "75a3841ee059df2bf4d56688166c8fb459ddd97a",
+    "transformers_version": "5.5.4",
+    "torch_version": "2.12.0",
+    "plddt_gate": 70.0,
+    "triad_hbond_max_angstrom": 3.5,
+    "required_triad_method": "sidechain",
+    "calibration": "configs/structure_gate_calibration.esmfold.json"
+  },
+  "analysis": {
+    "experimental_unit": "independent training seed",
+    "candidate_nesting": ["model", "arm", "training_seed", "checkpoint_step", "prompt_id", "sample_seed"],
+    "primary_endpoint": "terminal full structural-gate yield minus matched base-model yield",
+    "invalid_generation_policy": "failure",
+    "duplicate_generation_policy": "failure_for_yield_and_retained_for_diversity_audit",
+    "minimum_complete_fraction": 1.0,
+    "blinded_arm_labels": false,
+    "automated_endpoint_no_manual_selection": true
+  }
+}

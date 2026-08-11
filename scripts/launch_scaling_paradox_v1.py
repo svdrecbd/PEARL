@@ -285,7 +285,7 @@ def resolve_tinker_cli() -> str:
     raise RuntimeError("could not find the tinker CLI on PATH or in the project virtual environment")
 
 
-def provider_contracts() -> tuple[set[str], set[str]]:
+def provider_runs() -> list[dict[str, Any]]:
     cli = resolve_tinker_cli()
     result = subprocess.run(
         [cli, "-f", "json", "run", "list", "--limit=0"],
@@ -295,9 +295,16 @@ def provider_contracts() -> tuple[set[str], set[str]]:
         text=True,
     )
     payload = json.loads(result.stdout)
+    rows = payload.get("runs", [])
+    if not isinstance(rows, list):
+        raise RuntimeError("provider run listing has an invalid shape")
+    return [dict(row) for row in rows if isinstance(row, dict)]
+
+
+def provider_contracts() -> tuple[set[str], set[str]]:
     contract_shas: set[str] = set()
     run_keys: set[str] = set()
-    for row in payload.get("runs", []):
+    for row in provider_runs():
         metadata = row.get("user_metadata") or {}
         if metadata.get("contract_sha"):
             contract_shas.add(str(metadata["contract_sha"]))
@@ -379,9 +386,6 @@ def launch_one(
         str(run["dataset_path"]),
         "--output-dir",
         str(plan_dir / "runs"),
-        "--challenge-pairs-path",
-        str(run["holdout_path"]),
-        "--require-challenge-chosen-disjoint",
         "--training-seed",
         str(run["training_seed"]),
         "--max-steps",
@@ -399,8 +403,6 @@ def launch_one(
     ]
     if run.get("max_pairs"):
         command.extend(["--max-pairs", str(run["max_pairs"])])
-    if run.get("max_challenge_pairs"):
-        command.extend(["--max-challenge-pairs", str(run["max_challenge_pairs"])])
     log_path = run_dir / "trainer.log"
     with log_path.open("a", encoding="utf-8") as log_handle:
         process = subprocess.Popen(command, cwd=ROOT, env=os.environ.copy(), stdout=log_handle, stderr=subprocess.STDOUT)

@@ -1,0 +1,97 @@
+name: Scaling paradox GMN — append one remote ledger anchor
+run-name: Scaling GMN anchor ${{ inputs.event_sha256 }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_sha256:
+        required: true
+        type: string
+      source_commit_sha:
+        required: true
+        type: string
+      event_sha256:
+        required: true
+        type: string
+      previous_event_sha256:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: scaling-paradox-gmn-ledger-anchor
+  cancel-in-progress: false
+
+jobs:
+  anchor:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      INPUT_MANIFEST_SHA: ${{ inputs.manifest_sha256 }}
+      INPUT_SOURCE_COMMIT: ${{ inputs.source_commit_sha }}
+      INPUT_EVENT_SHA: ${{ inputs.event_sha256 }}
+      INPUT_PREVIOUS_SHA: ${{ inputs.previous_event_sha256 }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Verify and append the canonical remote hash chain
+        run: |
+          [[ "$INPUT_MANIFEST_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "invalid manifest SHA"; exit 1; }
+          [[ "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid source commit"; exit 1; }
+          [[ "$INPUT_EVENT_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "invalid event SHA"; exit 1; }
+          [[ "$INPUT_PREVIOUS_SHA" = ROOT || "$INPUT_PREVIOUS_SHA" =~ ^[0-9a-f]{64}$ ]] \
+            || { echo "invalid previous event SHA"; exit 1; }
+          test "$INPUT_SOURCE_COMMIT" = "$GITHUB_SHA" || { echo "anchor source commit mismatch"; exit 1; }
+          duplicate=$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/artifacts" \
+            -f name="scaling-paradox-gmn-event-$INPUT_EVENT_SHA" --jq '.total_count')
+          test "$duplicate" = 0 || { echo "event is already remotely anchored"; exit 1; }
+          prior_run=$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/artifacts" \
+            -f name=scaling-paradox-gmn-anchor-head \
+            --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .workflow_run.id // empty')
+          expected_previous=ROOT
+          if [ -n "$prior_run" ]; then
+            mkdir -p prior
+            gh run download "$prior_run" --name scaling-paradox-gmn-anchor-head --dir prior
+            expected_previous=$(jq -r .event_sha256 prior/anchor.json)
+            test "$(jq -r .manifest_sha256 prior/anchor.json)" = "$INPUT_MANIFEST_SHA" \
+              || { echo "remote anchor belongs to another manifest"; exit 1; }
+            test "$(jq -r .source_commit_sha prior/anchor.json)" = "$INPUT_SOURCE_COMMIT" \
+              || { echo "remote anchor belongs to another source commit"; exit 1; }
+          fi
+          test "$INPUT_PREVIOUS_SHA" = "$expected_previous" \
+            || { echo "remote GMN ledger fork refused"; exit 1; }
+          mkdir -p anchor
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = {
+              "contract": "pearl.scaling-paradox-gmn-remote-anchor/1",
+              "manifest_sha256": os.environ["INPUT_MANIFEST_SHA"],
+              "source_commit_sha": os.environ["INPUT_SOURCE_COMMIT"],
+              "event_sha256": os.environ["INPUT_EVENT_SHA"],
+              "previous_event_sha256": os.environ["INPUT_PREVIOUS_SHA"],
+              "actions_run_id": int(os.environ["GITHUB_RUN_ID"]),
+          }
+          Path("anchor/anchor.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+          PY
+
+      - name: Preserve canonical head
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scaling-paradox-gmn-anchor-head
+          path: anchor/anchor.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Preserve event-specific anchor
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scaling-paradox-gmn-event-${{ inputs.event_sha256 }}
+          path: anchor/anchor.json
+          if-no-files-found: error
+          retention-days: 90
