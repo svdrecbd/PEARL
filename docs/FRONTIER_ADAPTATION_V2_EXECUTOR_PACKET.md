@@ -103,7 +103,7 @@ receipts are terminal-valid. It dispatches at most six exact generation jobs and
 the 96 candidate slots per cell.
 
 After all generation artifacts exist, build the exact GMN manifest from a clean checkout at the
-frozen executor tag:
+frozen `frontier-adaptation-v2-executor-v1.0.1` executor tag:
 
 ```bash
 python scripts/build_frontier_adaptation_gmn_manifest.py \
