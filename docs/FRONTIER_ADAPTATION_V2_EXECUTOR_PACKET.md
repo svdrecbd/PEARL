@@ -22,7 +22,9 @@ The complete order is fixed:
 7. frozen original, replication, and combined structural analyses;
 8. primary-agent interpretation and manuscript writing.
 
-At most six paid cells are active. Tinker pre-structure is capped at $2,049.39; planned total Tinker is
+Frontier optimization follows the machine-enforced 12-to-24-to-47 capacity ramp below. Original and
+replication never overlap. Structural generation and GiveMeANode folding remain capped at six active
+jobs. Tinker pre-structure is capped at $2,049.39; planned total Tinker is
 $2,059.39, with a separately bounded $25 continuation-recovery allowance and a combined $2,084.39
 ceiling inside the $2,300 authorization envelope. GiveMeANode is capped at $481.83. Hash mismatch,
 duplicate ownership, missing lineage, partial artifact, unknown active count, renderer failure,
@@ -77,12 +79,34 @@ validates the exact active-run inventory and fills free slots, in deterministic 
 2. evaluations for terminal-trained cells;
 3. never-submitted training cells in the pre-randomized run order.
 
-The old wave number remains audit metadata; it is not a reason to leave slots idle. At most six paid
-cells may exist across training and evaluation, and original must be entirely complete before
-replication begins. One authorization contains only one action type. If it fills fewer than all free
-slots, an Executor assigned to carry the clean path may invoke `advance` again after that supervisor
-run has succeeded so the controller can authorize the next action type. Stop if the supervisor
-returns a non-dispatch action other than an ordinary capacity wait, or if ownership is ambiguous.
+The old wave number remains audit metadata; it is not a reason to leave slots idle. Original must be
+entirely complete before replication begins. One authorization contains only one action type. If it
+fills fewer than all evidence-authorized free slots, an Executor assigned to carry the clean path may
+invoke `advance` again after that supervisor run has succeeded so the controller can authorize the
+next action type. Stop if the supervisor returns a non-dispatch action other than an ordinary
+capacity or observation-window wait, or if ownership is ambiguous.
+
+After each cohort sentinel is terminal-trained and terminal-evaluated, capacity is mechanical:
+
+1. the supervisor may fill up to 12 active training/evaluation cells;
+2. after the first 12 ordered post-sentinel cells each have either a valid segment receipt or 20
+   minutes of fresh uncorrupted provider progress, it may fill to 24;
+3. after the first 24 satisfy the same gate, it may fill all 47 post-sentinel cohort cells.
+
+The controller—not the Executor—evaluates those gates from sanitized operational state. It requires
+an exact Actions identity and contract, `in_progress` state for a live-progress gate, a 20-minute
+observation window, exactly the expected provider continuation owners, `corrupted=false`, and a
+provider request no more than 15 minutes old. A queued GitHub job counts against authorized exposure
+but does not prove provider health. Scientific endpoint values, losses, rewards, margins, sequences,
+and effect directions are neither collected nor consulted.
+
+When assigned to carry the clean path, invoke `advance` once after the sentinel audit. After that
+supervisor succeeds, wait until at least 20 minutes after the last of the tier's active workers
+started, then invoke `advance` again. Repeat once for the 24-to-47 gate. If some cells finish an
+auditable segment earlier, the controller may accept those receipts without waiting. Do not manually
+declare a tier healthy, change the timestamps, inspect scientific logs, or directly dispatch the
+remainder. GitHub runner queuing or stale provider activity produces an ordinary wait; corruption,
+duplicate ownership, a wrong contract, or cross-cohort activity is an escalation.
 
 The source release includes the scheduling-only v1.0.2 amendment described in the protocol. It
 submits the custom backward and optimizer requests before waiting on either result and records
@@ -105,8 +129,9 @@ scientific wave; only the ordinary continuation audit does.
 
 That prospective comparison is now complete and mechanically valid; it showed about 1.8x observed
 end-to-end throughput for the candidate segment. It grants no Executor authority and requires no
-repeat. Executor contract v4 adds bounded segmentation for all models and the rolling-capacity queue
-without changing any scientific identity or total planned spend.
+repeat. Executor contract v4 added bounded segmentation for all models and the rolling-capacity
+queue. Executor contract v5 adds only the prospective result-blind capacity ramp. Neither changes
+any scientific identity or total planned spend.
 
 For local no-spend reconstruction:
 

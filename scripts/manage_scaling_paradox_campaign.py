@@ -9,6 +9,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +69,69 @@ def build_plans(executor: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any
     return plans
 
 
+def build_provider_snapshot(
+    plans: dict[tuple[str, str], dict[str, Any]],
+) -> dict[str, Any]:
+    launcher = load_launcher()
+    expected = {
+        (str(row["campaign_id"]), str(row["run_key"]), str(row["run_contract_sha"]))
+        for plan in plans.values()
+        for row in plan["runs"]
+    }
+    runs: list[dict[str, Any]] = []
+    for row in launcher.provider_runs():
+        metadata = row.get("user_metadata") or {}
+        if metadata.get("pearl_task") != "physical_to_sequence_dpo":
+            continue
+        campaign_id = str(metadata.get("campaign_id") or "")
+        if not campaign_id.startswith("pearl-frontier-adaptation-v2-"):
+            continue
+        identity = (
+            campaign_id,
+            str(metadata.get("run_key") or ""),
+            str(metadata.get("contract_sha") or ""),
+        )
+        if identity not in expected:
+            raise RuntimeError(
+                "provider frontier DPO record is outside the frozen plans"
+            )
+        provider_id = row.get("id", row.get("run_id", row.get("training_run_id")))
+        if provider_id in (None, ""):
+            raise RuntimeError("provider frontier DPO record has no stable ID")
+        corrupted = row.get("corrupted", row.get("is_corrupted"))
+        if corrupted is not False:
+            raise RuntimeError("provider frontier DPO record is corrupted or ambiguous")
+        last_request_time = str(row.get("last_request_time") or "")
+        parse_utc_timestamp(last_request_time, field="provider last-request time")
+        runs.append(
+            {
+                "provider_training_run_id": str(provider_id),
+                "campaign_id": campaign_id,
+                "run_key": identity[1],
+                "run_contract_sha": identity[2],
+                "corrupted": False,
+                "last_request_time": last_request_time,
+            }
+        )
+    if len({row["provider_training_run_id"] for row in runs}) != len(runs):
+        raise RuntimeError("provider frontier DPO snapshot has duplicate stable IDs")
+    payload = {
+        "contract": "pearl.frontier-provider-operational-snapshot/1",
+        "observed_at_utc": datetime.now(UTC).isoformat(),
+        "scientific_values_omitted": True,
+        "runs": sorted(
+            runs,
+            key=lambda row: (
+                row["campaign_id"],
+                row["run_key"],
+                row["provider_training_run_id"],
+            ),
+        ),
+    }
+    payload["snapshot_sha256"] = sha256_value(payload)
+    return payload
+
+
 def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
     plans = build_plans(executor)
     launcher = load_launcher()
@@ -97,6 +161,33 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
                 raise RuntimeError(
                     f"{phase_name} rolling schedule lacks the endpoint sentinel gate"
                 )
+            ramp = scheduling.get("capacity_ramp")
+            if ramp is not None:
+                if ramp.get("contract") != "pearl.frontier-capacity-ramp/1":
+                    raise RuntimeError(
+                        f"{phase_name} capacity-ramp contract is unknown"
+                    )
+                tiers = ramp.get("tiers")
+                if not isinstance(tiers, list) or not tiers:
+                    raise RuntimeError(f"{phase_name} capacity ramp has no tiers")
+                limits = [int(row.get("max_active_cells", 0)) for row in tiers]
+                if (
+                    limits != sorted(set(limits))
+                    or limits[0] <= 0
+                    or limits[-1] != int(executor["global_max_active_paid_cells"])
+                ):
+                    raise RuntimeError(f"{phase_name} capacity-ramp tiers are invalid")
+                for index, tier in enumerate(tiers):
+                    if int(tier.get("minimum_started_cells", -1)) != (
+                        0 if index == 0 else limits[index - 1]
+                    ):
+                        raise RuntimeError(
+                            f"{phase_name} capacity-ramp started-cell gate is invalid"
+                        )
+                    if int(tier.get("observation_minutes", -1)) < 0:
+                        raise RuntimeError(
+                            f"{phase_name} capacity-ramp observation window is invalid"
+                        )
         by_order = {int(row["execution_order"]): row for row in plan["runs"]}
         waves: list[dict[str, Any]] = []
         for wave_index, orders in enumerate(stage["waves"], start=1):
@@ -894,6 +985,66 @@ def phase_run_entries(phase: dict[str, Any]) -> list[tuple[int, dict[str, Any], 
     return entries
 
 
+def parse_utc_timestamp(value: str, *, field: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"{field} is absent or invalid") from exc
+    if parsed.tzinfo is None:
+        raise RuntimeError(f"{field} lacks a timezone")
+    return parsed.astimezone(UTC)
+
+
+def validate_provider_snapshot(
+    provider_snapshot: dict[str, Any] | None,
+) -> tuple[datetime, dict[str, list[dict[str, Any]]], str] | None:
+    if provider_snapshot is None:
+        return None
+    if (
+        provider_snapshot.get("contract")
+        != "pearl.frontier-provider-operational-snapshot/1"
+    ):
+        raise RuntimeError("provider operational snapshot has the wrong contract")
+    supplied_sha = provider_snapshot.get("snapshot_sha256")
+    unsigned = {
+        key: value
+        for key, value in provider_snapshot.items()
+        if key != "snapshot_sha256"
+    }
+    if supplied_sha != sha256_value(unsigned):
+        raise RuntimeError("provider operational snapshot hash mismatch")
+    if provider_snapshot.get("scientific_values_omitted") is not True:
+        raise RuntimeError("provider operational snapshot is not result-blind")
+    observed_at = parse_utc_timestamp(
+        str(provider_snapshot.get("observed_at_utc") or ""),
+        field="provider snapshot time",
+    )
+    now = datetime.now(UTC)
+    if observed_at > now + timedelta(minutes=2) or observed_at < now - timedelta(
+        minutes=10
+    ):
+        raise RuntimeError("provider operational snapshot is stale or future-dated")
+    indexed: dict[str, list[dict[str, Any]]] = {}
+    provider_ids: set[str] = set()
+    rows = provider_snapshot.get("runs")
+    if not isinstance(rows, list):
+        raise RuntimeError("provider operational snapshot runs are malformed")
+    for row in rows:
+        if not isinstance(row, dict) or row.get("corrupted") is not False:
+            raise RuntimeError("provider operational snapshot contains an invalid run")
+        provider_id = str(row.get("provider_training_run_id") or "")
+        run_key = str(row.get("run_key") or "")
+        if not provider_id or not run_key or provider_id in provider_ids:
+            raise RuntimeError("provider operational snapshot ownership is ambiguous")
+        parse_utc_timestamp(
+            str(row.get("last_request_time") or ""),
+            field="provider last-request time",
+        )
+        provider_ids.add(provider_id)
+        indexed.setdefault(run_key, []).append(row)
+    return observed_at, indexed, str(supplied_sha)
+
+
 def validate_active_runs(
     *,
     manifest: dict[str, Any],
@@ -906,16 +1057,27 @@ def validate_active_runs(
         raise RuntimeError(
             "active run inventory disagrees with the active paid-cell count"
         )
-    known: dict[tuple[str, str], tuple[str, str]] = {}
+    known: dict[tuple[str, str], tuple[str, str, str | None]] = {}
     for phase in manifest["phases"]:
-        for _, _, run_key in phase_run_entries(phase):
+        for _, wave, run_key in phase_run_entries(phase):
+            contract_by_key = dict(
+                zip(
+                    wave["run_keys"],
+                    wave.get("run_contract_shas") or [None] * len(wave["run_keys"]),
+                    strict=True,
+                )
+            )
             for kind in ("training", "evaluation"):
                 identity = (kind, run_key)
                 if identity in known:
                     raise RuntimeError(
                         "campaign manifest contains duplicate active-run identities"
                     )
-                known[identity] = (str(phase["phase"]), str(phase["campaign"]))
+                known[identity] = (
+                    str(phase["phase"]),
+                    str(phase["campaign"]),
+                    contract_by_key[run_key],
+                )
     indexed: dict[tuple[str, str], dict[str, Any]] = {}
     run_ids: set[int] = set()
     for row in active_runs:
@@ -931,11 +1093,13 @@ def validate_active_runs(
             raise RuntimeError(
                 "active paid run inventory has duplicate or invalid ownership"
             )
-        phase_name, campaign = known[identity]
+        phase_name, campaign, contract_sha = known[identity]
         if row.get("phase") not in (None, phase_name):
             raise RuntimeError("active paid run has the wrong phase")
         if row.get("campaign") != campaign:
             raise RuntimeError("active paid run has the wrong campaign")
+        if row.get("run_contract_sha") not in (None, contract_sha):
+            raise RuntimeError("active paid run has the wrong contract SHA")
         if row.get("status") not in {
             "requested",
             "queued",
@@ -949,6 +1113,206 @@ def validate_active_runs(
     return indexed
 
 
+def checkpoint_provider_ids(receipt: dict[str, Any] | None) -> list[str]:
+    if receipt is None:
+        return []
+    result: list[str] = []
+    for checkpoint in receipt.get("checkpoint_lineage") or []:
+        state_path = str(checkpoint.get("state_path") or "")
+        if not state_path.startswith("tinker://") or "/weights/" not in state_path:
+            raise RuntimeError(
+                "capacity gate found an invalid checkpoint provider path"
+            )
+        provider_id = state_path.removeprefix("tinker://").split("/weights/", 1)[0]
+        if provider_id not in result:
+            result.append(provider_id)
+    if not result:
+        raise RuntimeError("capacity gate found empty checkpoint provider lineage")
+    return result
+
+
+def rolling_capacity_limit(
+    *,
+    manifest: dict[str, Any],
+    phase: dict[str, Any],
+    state_dir: Path,
+    entries: list[tuple[int, dict[str, Any], str]],
+    sentinel_complete: bool,
+    active_phase: dict[tuple[str, str], dict[str, Any]],
+    provider_state: tuple[datetime, dict[str, list[dict[str, Any]]], str] | None,
+) -> tuple[int, str, dict[str, Any] | None]:
+    if not sentinel_complete:
+        return 1, "sentinel", None
+    ramp = (phase.get("scheduling") or {}).get("capacity_ramp")
+    if ramp is None:
+        return int(manifest["global_max_active_paid_cells"]), "full", None
+    if provider_state is None:
+        raise RuntimeError(
+            "capacity ramp requires a fresh provider operational snapshot"
+        )
+    observed_at, provider_by_key, provider_snapshot_sha = provider_state
+    sentinel_orders = {
+        int(value)
+        for value in phase["scheduling"].get("sentinel_execution_orders", [1])
+    }
+    ordered_keys = [
+        run_key for order, _, run_key in entries if order not in sentinel_orders
+    ]
+    started_keys: set[str] = set()
+    for run_key in ordered_keys:
+        if (
+            ("training", run_key) in active_phase
+            or continuation_path(state_dir, run_key).is_file()
+            or receipt_path(state_dir, "training", run_key).is_file()
+            or submission_path(state_dir, "training", run_key).is_file()
+        ):
+            started_keys.add(run_key)
+    expected_prefix = set(ordered_keys[: len(started_keys)])
+    if started_keys != expected_prefix:
+        raise RuntimeError(
+            "capacity ramp observed training outside the frozen ordered prefix"
+        )
+
+    tiers = ramp["tiers"]
+    current_limit = int(tiers[0]["max_active_cells"])
+    current_name = str(tiers[0]["name"])
+    current_gate: dict[str, Any] | None = None
+    for tier in tiers[1:]:
+        required = int(tier["minimum_started_cells"])
+        if len(started_keys) < required:
+            break
+        if len(started_keys) > required:
+            gate = {
+                "contract": "pearl.frontier-capacity-gate/1",
+                "campaign": phase["campaign"],
+                "phase": phase["phase"],
+                "minimum_started_cells": required,
+                "authorized_max_active_cells": int(tier["max_active_cells"]),
+                "provider_snapshot_sha256": provider_snapshot_sha,
+                "scientific_values_omitted": True,
+                "operational_evidence": [
+                    {
+                        "evidence": "previously_consumed_ordered_capacity_tier",
+                        "started_ordered_prefix_count": len(started_keys),
+                        "first_key_beyond_gate": ordered_keys[required],
+                    }
+                ],
+            }
+            gate["gate_sha256"] = sha256_value(gate)
+            current_gate = gate
+            current_limit = int(tier["max_active_cells"])
+            current_name = str(tier["name"])
+            continue
+        observation_minutes = int(tier["observation_minutes"])
+        staleness_minutes = int(tier["max_provider_staleness_minutes"])
+        gate_rows: list[dict[str, Any]] = []
+        healthy = True
+        for run_key in ordered_keys[:required]:
+            terminal = load_valid_receipt(
+                receipt_path(state_dir, "training", run_key),
+                run_key=run_key,
+                field="training_terminal_valid",
+            )
+            continuation = load_valid_receipt(
+                continuation_path(state_dir, run_key),
+                run_key=run_key,
+                field="training_continuation_valid",
+            )
+            progress_receipt = terminal or continuation
+            active = active_phase.get(("training", run_key))
+            if active is None and progress_receipt is not None:
+                supplied_receipt_sha = progress_receipt.get("receipt_sha256")
+                unsigned_receipt = {
+                    key: value
+                    for key, value in progress_receipt.items()
+                    if key != "receipt_sha256"
+                }
+                if supplied_receipt_sha != sha256_value(unsigned_receipt):
+                    raise RuntimeError(
+                        "capacity gate found a malformed progress receipt"
+                    )
+                gate_rows.append(
+                    {
+                        "run_key": run_key,
+                        "evidence": "audited_training_progress",
+                        "receipt_sha256": supplied_receipt_sha,
+                    }
+                )
+                continue
+            if active is None or active.get("status") != "in_progress":
+                healthy = False
+                break
+            started_at = parse_utc_timestamp(
+                str(active.get("started_at") or ""), field="active Actions start time"
+            )
+            if observed_at - started_at < timedelta(minutes=observation_minutes):
+                healthy = False
+                break
+            provider_rows = provider_by_key.get(run_key, [])
+            expected_contract = str(active.get("run_contract_sha") or "")
+            if not expected_contract:
+                raise RuntimeError(
+                    "active capacity-ramp row lacks its run contract SHA"
+                )
+            if any(
+                row.get("campaign_id") != phase["campaign_id"]
+                or row.get("run_contract_sha") != expected_contract
+                for row in provider_rows
+            ):
+                raise RuntimeError(
+                    "capacity-ramp provider ownership differs from the active plan"
+                )
+            prior_ids = checkpoint_provider_ids(continuation) if continuation else []
+            provider_ids = {
+                str(row["provider_training_run_id"]) for row in provider_rows
+            }
+            if not set(prior_ids).issubset(provider_ids):
+                raise RuntimeError("capacity-ramp provider lineage lost a prior owner")
+            if len(provider_ids) > len(prior_ids) + 1:
+                raise RuntimeError(
+                    "capacity ramp detected duplicate provider DPO ownership"
+                )
+            if len(provider_ids) != len(prior_ids) + 1:
+                healthy = False
+                break
+            latest_request = max(
+                parse_utc_timestamp(
+                    str(row["last_request_time"]), field="provider last-request time"
+                )
+                for row in provider_rows
+                if str(row["provider_training_run_id"]) not in prior_ids
+            )
+            if observed_at - latest_request > timedelta(minutes=staleness_minutes):
+                healthy = False
+                break
+            gate_rows.append(
+                {
+                    "run_key": run_key,
+                    "evidence": "sustained_uncorrupted_provider_progress",
+                    "actions_run_id": int(active["actions_run_id"]),
+                    "provider_training_run_ids": sorted(provider_ids),
+                    "observed_minutes": observation_minutes,
+                }
+            )
+        if not healthy:
+            break
+        gate = {
+            "contract": "pearl.frontier-capacity-gate/1",
+            "campaign": phase["campaign"],
+            "phase": phase["phase"],
+            "minimum_started_cells": required,
+            "authorized_max_active_cells": int(tier["max_active_cells"]),
+            "provider_snapshot_sha256": provider_snapshot_sha,
+            "scientific_values_omitted": True,
+            "operational_evidence": gate_rows,
+        }
+        gate["gate_sha256"] = sha256_value(gate)
+        current_gate = gate
+        current_limit = int(tier["max_active_cells"])
+        current_name = str(tier["name"])
+    return current_limit, current_name, current_gate
+
+
 def rolling_authorization(
     *,
     manifest: dict[str, Any],
@@ -956,12 +1320,11 @@ def rolling_authorization(
     state_dir: Path,
     active_paid_cells: int,
     active_index: dict[tuple[str, str], dict[str, Any]] | None,
+    provider_state: tuple[datetime, dict[str, list[dict[str, Any]]], str] | None,
 ) -> dict[str, Any] | None:
     if active_index is None and active_paid_cells:
         raise RuntimeError("rolling scheduling requires the exact active-run inventory")
     active_index = active_index or {}
-    maximum = int(manifest["global_max_active_paid_cells"])
-    slots = maximum - active_paid_cells
     entries = phase_run_entries(phase)
     entry_by_key = {run_key: (order, wave) for order, wave, run_key in entries}
     phase_keys = set(entry_by_key)
@@ -1016,6 +1379,20 @@ def rolling_authorization(
         )
     sentinel_complete = all(training[key] and evaluation[key] for key in sentinel_keys)
     eligible_keys = phase_keys if sentinel_complete else sentinel_keys
+    maximum, capacity_tier, capacity_gate = rolling_capacity_limit(
+        manifest=manifest,
+        phase=phase,
+        state_dir=state_dir,
+        entries=entries,
+        sentinel_complete=sentinel_complete,
+        active_phase=active_phase,
+        provider_state=provider_state,
+    )
+    if active_paid_cells > maximum:
+        raise RuntimeError(
+            "active paid cells exceed the evidence-authorized capacity tier"
+        )
+    slots = maximum - active_paid_cells
     forbidden_active = [
         f"{kind}:{run_key}"
         for kind, run_key in active_phase
@@ -1110,6 +1487,12 @@ def rolling_authorization(
             "authorized_run_keys": selected,
             "max_active_after_dispatch": active_paid_cells + len(selected),
             "scheduling_mode": "rolling_ordered",
+            "capacity_tier": capacity_tier,
+            "capacity_limit": maximum,
+            "capacity_gate": capacity_gate,
+            "capacity_gate_sha256": (
+                capacity_gate["gate_sha256"] if capacity_gate is not None else None
+            ),
         }
         return authorization
 
@@ -1241,6 +1624,7 @@ def next_authorization(
     state_dir: Path,
     active_paid_cells: int,
     active_runs: list[dict[str, Any]] | None = None,
+    provider_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     maximum = int(manifest["global_max_active_paid_cells"])
     if active_paid_cells < 0 or active_paid_cells > maximum:
@@ -1252,6 +1636,7 @@ def next_authorization(
         active_paid_cells=active_paid_cells,
         active_runs=active_runs,
     )
+    provider_state = validate_provider_snapshot(provider_snapshot)
     gate_path = state_dir / "analysis" / "adapter_rescue_gate.json"
     rescue_gate = read_json(gate_path) if gate_path.is_file() else None
     if rescue_gate is not None:
@@ -1275,6 +1660,7 @@ def next_authorization(
                 state_dir=state_dir,
                 active_paid_cells=active_paid_cells,
                 active_index=active_index,
+                provider_state=provider_state,
             )
             if authorization is not None:
                 return authorization
@@ -1510,6 +1896,9 @@ def main() -> None:
     manifest_parser = subparsers.add_parser("write-manifest")
     manifest_parser.add_argument("--output", required=True)
 
+    provider_parser = subparsers.add_parser("provider-snapshot")
+    provider_parser.add_argument("--output", required=True)
+
     audit_training_parser = subparsers.add_parser("audit-training")
     audit_training_parser.add_argument(
         "--campaign", choices=("original", "replication"), required=True
@@ -1535,6 +1924,7 @@ def main() -> None:
     next_parser.add_argument("--state-dir", required=True)
     next_parser.add_argument("--active-paid-cells", type=int, required=True)
     next_parser.add_argument("--active-runs-json")
+    next_parser.add_argument("--provider-snapshot")
     next_parser.add_argument("--output", required=True)
 
     for kind in ("training", "evaluation"):
@@ -1550,6 +1940,8 @@ def main() -> None:
     manifest = build_manifest(executor)
     if args.command == "write-manifest":
         write_json(repo_path(args.output), manifest)
+    elif args.command == "provider-snapshot":
+        write_json(repo_path(args.output), build_provider_snapshot(plans))
     elif args.command == "audit-training":
         entry = plan_entry(plans, args.campaign, args.stage, args.run_key)
         receipt = audit_training_artifact(
@@ -1576,6 +1968,11 @@ def main() -> None:
             active_runs=(
                 read_json(repo_path(args.active_runs_json))
                 if args.active_runs_json
+                else None
+            ),
+            provider_snapshot=(
+                read_json(repo_path(args.provider_snapshot))
+                if args.provider_snapshot
                 else None
             ),
         )

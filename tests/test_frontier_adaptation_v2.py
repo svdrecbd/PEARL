@@ -4,6 +4,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
@@ -80,6 +81,8 @@ def test_frontier_manifest_budget_and_smoke_transition_are_fail_closed(
     )
     manifest = manager.build_manifest(executor)
     assert len(manifest["phases"]) == 3
+    assert manifest["executor_contract"] == "pearl.frontier-adaptation-executor/5"
+    assert manifest["global_max_active_paid_cells"] == 47
     smoke = manifest["phases"][0]
     assert smoke["evaluation_required"] is False
     assert (
@@ -240,6 +243,7 @@ def rolling_manifest() -> dict:
                 "wave_index": wave_index,
                 "execution_orders": [keys.index(key) + 1 for key in selected],
                 "run_keys": selected,
+                "run_contract_shas": [f"contract-{key}" for key in selected],
                 "run_model_tags": {key: "test-model" for key in selected},
                 "run_max_steps": {key: 100 for key in selected},
                 "estimated_training_cost_by_run_key": {key: 1.0 for key in selected},
@@ -293,6 +297,94 @@ def active_row(run_key: str, run_id: int, *, kind: str = "training") -> dict:
     }
 
 
+def ramped_manifest() -> dict:
+    manifest = rolling_manifest()
+    keys = ["sentinel", *[f"cell-{index:02d}" for index in range(1, 48)]]
+    phase = manifest["phases"][0]
+    phase["campaign_id"] = "pearl-frontier-adaptation-v2-original"
+    phase["waves"] = []
+    for wave_index, selected in enumerate((keys[:1], keys[1:]), start=1):
+        phase["waves"].append(
+            {
+                "wave_index": wave_index,
+                "execution_orders": [keys.index(key) + 1 for key in selected],
+                "run_keys": selected,
+                "run_contract_shas": [f"contract-{key}" for key in selected],
+                "run_model_tags": {key: "test-model" for key in selected},
+                "run_max_steps": {key: 100 for key in selected},
+                "estimated_training_cost_by_run_key": {key: 1.0 for key in selected},
+                "estimated_checkpoint_evaluation_cost_by_run_key": {
+                    key: 0.1 for key in selected
+                },
+                "estimated_training_cost_usd": float(len(selected)),
+                "estimated_checkpoint_evaluation_cost_usd": 0.1 * len(selected),
+            }
+        )
+    phase["scheduling"]["capacity_ramp"] = {
+        "contract": "pearl.frontier-capacity-ramp/1",
+        "tiers": [
+            {
+                "name": "twelve",
+                "max_active_cells": 12,
+                "minimum_started_cells": 0,
+                "observation_minutes": 0,
+                "max_provider_staleness_minutes": 15,
+            },
+            {
+                "name": "twenty_four",
+                "max_active_cells": 24,
+                "minimum_started_cells": 12,
+                "observation_minutes": 20,
+                "max_provider_staleness_minutes": 15,
+            },
+            {
+                "name": "full_original_or_replication_cohort",
+                "max_active_cells": 47,
+                "minimum_started_cells": 24,
+                "observation_minutes": 20,
+                "max_provider_staleness_minutes": 15,
+            },
+        ],
+    }
+    manifest["global_max_active_paid_cells"] = 47
+    return manifest
+
+
+def ramp_active_row(run_key: str, run_id: int, *, minutes_old: int = 21) -> dict:
+    row = active_row(run_key, run_id)
+    row.update(
+        {
+            "run_contract_sha": f"contract-{run_key}",
+            "started_at": (
+                datetime.now(UTC) - timedelta(minutes=minutes_old)
+            ).isoformat(),
+        }
+    )
+    return row
+
+
+def provider_snapshot(run_keys: list[str]) -> dict:
+    now = datetime.now(UTC).isoformat()
+    payload = {
+        "contract": "pearl.frontier-provider-operational-snapshot/1",
+        "observed_at_utc": now,
+        "scientific_values_omitted": True,
+        "runs": [
+            {
+                "provider_training_run_id": f"provider-{run_key}",
+                "campaign_id": "pearl-frontier-adaptation-v2-original",
+                "run_key": run_key,
+                "run_contract_sha": f"contract-{run_key}",
+                "corrupted": False,
+                "last_request_time": now,
+            }
+            for run_key in run_keys
+        ],
+    }
+    payload["snapshot_sha256"] = sha256_value(payload)
+    return payload
+
+
 def write_terminal_pair(state_dir: Path, run_key: str, run_id: int = 1) -> None:
     write_json(
         state_dir / "receipts/training" / f"{run_key}.json",
@@ -320,7 +412,7 @@ def test_frontier_rolling_queue_opens_only_after_sentinel_and_fills_free_slots(
         active_runs=[active_row("sentinel", 10)],
     )
     assert waiting["action"] == "wait"
-    assert waiting["reason"] == "eligible_rolling_cells_are_active"
+    assert waiting["reason"] == "global_paid_cell_cap_is_full"
 
     write_terminal_pair(tmp_path, "sentinel", 10)
     authorization = manager.next_authorization(
@@ -461,7 +553,128 @@ def test_frontier_rolling_queue_allows_active_replication_after_original_complet
         active_runs=[active],
     )
     assert waiting["action"] == "wait"
-    assert waiting["reason"] == "eligible_rolling_cells_are_active"
+    assert waiting["reason"] == "global_paid_cell_cap_is_full"
+
+
+def test_frontier_capacity_ramp_is_twelve_then_twenty_four_then_remaining_cohort(
+    tmp_path: Path,
+) -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    manifest = ramped_manifest()
+    write_terminal_pair(tmp_path, "sentinel")
+
+    first = manager.next_authorization(
+        manifest=manifest,
+        state_dir=tmp_path,
+        active_paid_cells=0,
+        active_runs=[],
+        provider_snapshot=provider_snapshot([]),
+    )
+    assert first["action"] == "dispatch_training_wave"
+    assert first["authorized_run_keys"] == [
+        f"cell-{index:02d}" for index in range(1, 13)
+    ]
+    assert first["capacity_tier"] == "twelve"
+    assert first["capacity_limit"] == 12
+
+    first_keys = first["authorized_run_keys"]
+    first_active = [
+        ramp_active_row(key, 100 + index) for index, key in enumerate(first_keys)
+    ]
+    second = manager.next_authorization(
+        manifest=manifest,
+        state_dir=tmp_path,
+        active_paid_cells=12,
+        active_runs=first_active,
+        provider_snapshot=provider_snapshot(first_keys),
+    )
+    assert second["action"] == "dispatch_training_wave"
+    assert second["authorized_run_keys"] == [
+        f"cell-{index:02d}" for index in range(13, 25)
+    ]
+    assert second["capacity_tier"] == "twenty_four"
+    assert second["capacity_limit"] == 24
+    assert second["capacity_gate_sha256"]
+
+    first_twenty_four = [f"cell-{index:02d}" for index in range(1, 25)]
+    all_active = [
+        ramp_active_row(key, 200 + index) for index, key in enumerate(first_twenty_four)
+    ]
+    final = manager.next_authorization(
+        manifest=manifest,
+        state_dir=tmp_path,
+        active_paid_cells=24,
+        active_runs=all_active,
+        provider_snapshot=provider_snapshot(first_twenty_four),
+    )
+    assert final["action"] == "dispatch_training_wave"
+    assert final["authorized_run_keys"] == [
+        f"cell-{index:02d}" for index in range(25, 48)
+    ]
+    assert final["capacity_tier"] == "full_original_or_replication_cohort"
+    assert final["capacity_limit"] == 47
+    assert final["max_active_after_dispatch"] == 47
+
+    all_keys = [f"cell-{index:02d}" for index in range(1, 48)]
+    full_active = [
+        ramp_active_row(key, 500 + index, minutes_old=1)
+        for index, key in enumerate(all_keys)
+    ]
+    full_wait = manager.next_authorization(
+        manifest=manifest,
+        state_dir=tmp_path,
+        active_paid_cells=47,
+        active_runs=full_active,
+        provider_snapshot=provider_snapshot(all_keys),
+    )
+    assert full_wait["action"] == "wait"
+    assert full_wait["reason"] == "global_paid_cell_cap_is_full"
+
+
+def test_frontier_capacity_ramp_waits_for_observation_and_rejects_duplicate_provider_owner(
+    tmp_path: Path,
+) -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    manifest = ramped_manifest()
+    write_terminal_pair(tmp_path, "sentinel")
+    keys = [f"cell-{index:02d}" for index in range(1, 13)]
+    young = [
+        ramp_active_row(key, 300 + index, minutes_old=5)
+        for index, key in enumerate(keys)
+    ]
+    waiting = manager.next_authorization(
+        manifest=manifest,
+        state_dir=tmp_path,
+        active_paid_cells=12,
+        active_runs=young,
+        provider_snapshot=provider_snapshot(keys),
+    )
+    assert waiting["action"] == "wait"
+    assert waiting["reason"] == "global_paid_cell_cap_is_full"
+
+    duplicated = provider_snapshot(keys)
+    duplicated["runs"].append(
+        {
+            **duplicated["runs"][0],
+            "provider_training_run_id": "unexpected-second-owner",
+        }
+    )
+    duplicated["snapshot_sha256"] = sha256_value(
+        {key: value for key, value in duplicated.items() if key != "snapshot_sha256"}
+    )
+    mature = [ramp_active_row(key, 400 + index) for index, key in enumerate(keys)]
+    try:
+        manager.next_authorization(
+            manifest=manifest,
+            state_dir=tmp_path,
+            active_paid_cells=12,
+            active_runs=mature,
+            provider_snapshot=duplicated,
+        )
+    except RuntimeError as exc:
+        assert "duplicate provider DPO ownership" in str(exc)
+    else:
+        raise AssertionError("capacity ramp accepted duplicate provider ownership")
 
 
 def test_frontier_executor_segments_every_frozen_model_without_changing_plan_hashes() -> (
@@ -487,6 +700,10 @@ def test_frontier_executor_segments_every_frozen_model_without_changing_plan_has
             continue
         assert phase["scheduling"]["mode"] == "rolling_ordered"
         assert phase["scheduling"]["sentinel_execution_orders"] == [1]
+        assert [
+            row["max_active_cells"]
+            for row in phase["scheduling"]["capacity_ramp"]["tiers"]
+        ] == [12, 24, 47]
         for wave in phase["waves"]:
             for run_key in wave["run_keys"]:
                 assert (
@@ -526,6 +743,70 @@ def test_frontier_resume_worker_restores_inside_the_immutable_run_directory() ->
     )
     assert "create_training_client_from_state_with_optimizer" in trainer
     assert '--checkpoint-lineage "$lineage"' in evaluator
+    assert "provider-snapshot" in supervisor
+    assert "secrets.TINKER_API_KEY" in supervisor
+    assert (
+        '"createdAt,databaseId,displayTitle,startedAt,status,updatedAt"' in supervisor
+    )
+    assert '--provider-snapshot "$STATE_DIR/provider_snapshot.json"' in supervisor
+
+
+def test_frontier_provider_snapshot_is_result_blind_and_rejects_unknown_contracts() -> (
+    None
+):
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    plan_row = {
+        "campaign_id": "pearl-frontier-adaptation-v2-original",
+        "run_key": "run-a",
+        "run_contract_sha": "contract-a",
+    }
+    provider_rows = [
+        {
+            "training_run_id": "provider-a",
+            "corrupted": False,
+            "last_request_time": datetime.now(UTC).isoformat(),
+            "user_metadata": {
+                "pearl_task": "physical_to_sequence_dpo",
+                "campaign_id": plan_row["campaign_id"],
+                "run_key": plan_row["run_key"],
+                "contract_sha": plan_row["run_contract_sha"],
+            },
+            "scientific_loss_that_must_not_escape": 123.0,
+        }
+    ]
+    manager.load_launcher = lambda: type(
+        "Launcher", (), {"provider_runs": staticmethod(lambda: provider_rows)}
+    )
+    snapshot = manager.build_provider_snapshot(
+        {("original", "core"): {"runs": [plan_row]}}
+    )
+    serialized = json.dumps(snapshot)
+    assert snapshot["scientific_values_omitted"] is True
+    assert "scientific_loss" not in serialized
+    assert snapshot["runs"][0]["provider_training_run_id"] == "provider-a"
+    assert snapshot["snapshot_sha256"] == sha256_value(
+        {key: value for key, value in snapshot.items() if key != "snapshot_sha256"}
+    )
+
+    provider_rows[:] = [
+        {
+            "training_run_id": "provider-b",
+            "corrupted": False,
+            "last_request_time": datetime.now(UTC).isoformat(),
+            "user_metadata": {
+                "pearl_task": "physical_to_sequence_dpo",
+                "campaign_id": "pearl-frontier-adaptation-v2-original",
+                "run_key": "unknown",
+                "contract_sha": "unknown",
+            },
+        }
+    ]
+    try:
+        manager.build_provider_snapshot({("original", "core"): {"runs": [plan_row]}})
+    except RuntimeError as exc:
+        assert "outside the frozen plans" in str(exc)
+    else:
+        raise AssertionError("unknown provider contract was accepted")
 
 
 def test_frontier_structural_manifest_is_terminal_only_104_cells(

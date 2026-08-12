@@ -1,8 +1,8 @@
 {
-  "contract": "pearl.frontier-adaptation-executor/4",
+  "contract": "pearl.frontier-adaptation-executor/5",
   "created_before_any_v2_outcome_review": true,
   "scientific_role": "contemporary frontier-scale confirmatory extension of the frozen Qwen scaling-paradox study",
-  "global_max_active_paid_cells": 6,
+  "global_max_active_paid_cells": 47,
   "max_authorized_tinker_usd": 2300.0,
   "observed_tinker_credit_at_freeze_usd": 3200.42,
   "max_authorized_givemeanode_usd": 481.83,
@@ -105,7 +105,33 @@
             "mode": "rolling_ordered",
             "sentinel_execution_orders": [1],
             "open_after_sentinel_evaluation": true,
-            "preserve_execution_order": true
+            "preserve_execution_order": true,
+            "capacity_ramp": {
+              "contract": "pearl.frontier-capacity-ramp/1",
+              "tiers": [
+                {
+                  "name": "twelve",
+                  "max_active_cells": 12,
+                  "minimum_started_cells": 0,
+                  "observation_minutes": 0,
+                  "max_provider_staleness_minutes": 15
+                },
+                {
+                  "name": "twenty_four",
+                  "max_active_cells": 24,
+                  "minimum_started_cells": 12,
+                  "observation_minutes": 20,
+                  "max_provider_staleness_minutes": 15
+                },
+                {
+                  "name": "full_original_or_replication_cohort",
+                  "max_active_cells": 47,
+                  "minimum_started_cells": 24,
+                  "observation_minutes": 20,
+                  "max_provider_staleness_minutes": 15
+                }
+              ]
+            }
           },
           "waves": [[1], [2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [13, 14, 15, 16, 17, 18], [19, 20, 21, 22, 23, 24], [25, 26, 27, 28, 29, 30], [31, 32, 33, 34, 35, 36], [37, 38, 39, 40, 41, 42], [43, 44, 45, 46, 47, 48]]
         }
@@ -132,7 +158,33 @@
             "mode": "rolling_ordered",
             "sentinel_execution_orders": [1],
             "open_after_sentinel_evaluation": true,
-            "preserve_execution_order": true
+            "preserve_execution_order": true,
+            "capacity_ramp": {
+              "contract": "pearl.frontier-capacity-ramp/1",
+              "tiers": [
+                {
+                  "name": "twelve",
+                  "max_active_cells": 12,
+                  "minimum_started_cells": 0,
+                  "observation_minutes": 0,
+                  "max_provider_staleness_minutes": 15
+                },
+                {
+                  "name": "twenty_four",
+                  "max_active_cells": 24,
+                  "minimum_started_cells": 12,
+                  "observation_minutes": 20,
+                  "max_provider_staleness_minutes": 15
+                },
+                {
+                  "name": "full_original_or_replication_cohort",
+                  "max_active_cells": 47,
+                  "minimum_started_cells": 24,
+                  "observation_minutes": 20,
+                  "max_provider_staleness_minutes": 15
+                }
+              ]
+            }
           },
           "waves": [[1], [2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [13, 14, 15, 16, 17, 18], [19, 20, 21, 22, 23, 24], [25, 26, 27, 28, 29, 30], [31, 32, 33, 34, 35, 36], [37, 38, 39, 40, 41, 42], [43, 44, 45, 46, 47, 48]]
         }
@@ -177,7 +229,7 @@
     "missing or ambiguous artifact ownership",
     "provider trainers do not exactly match the supervisor-authorized checkpoint continuation chain, or more than one evaluator owns one contract",
     "provider corrupted is not explicitly false",
-    "active paid cell count is unknown or would exceed six",
+    "active paid cell count is unknown or would exceed the evidence-authorized 12, 24, or 47-cell capacity tier",
     "estimated authorized spend would exceed the frozen envelope",
     "cohort sentinel or prior cohort lacks every required training and evaluation audit receipt",
     "checkpoint lineage is missing, unordered, or belongs to another contract",
