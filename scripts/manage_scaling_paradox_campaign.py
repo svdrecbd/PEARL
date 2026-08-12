@@ -20,6 +20,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from pearl.scaling_campaign import (  # noqa: E402
     audit_evaluation_artifact,
+    audit_training_continuation_artifact,
     audit_training_artifact,
     read_json,
     sha256_file,
@@ -102,6 +103,12 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
                     "execution_orders": orders,
                     "run_keys": [row["run_key"] for row in rows],
                     "run_contract_shas": [row["run_contract_sha"] for row in rows],
+                    "run_model_tags": {row["run_key"]: row["model_tag"] for row in rows},
+                    "run_max_steps": {row["run_key"]: int(row["max_steps"]) for row in rows},
+                    "estimated_training_cost_by_run_key": {
+                        row["run_key"]: float(row["cost_estimate"]["estimated_training_cost_usd"])
+                        for row in rows
+                    },
                     "estimated_training_cost_usd": training_cost,
                     "estimated_checkpoint_evaluation_cost_usd": endpoint_cost,
                     "estimated_cost_usd": round(training_cost + endpoint_cost, 4),
@@ -135,6 +142,13 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
                 "waves": waves,
             }
         )
+    observed_recovery_overhead = round(
+        sum(
+            float(row.get("estimated_recovery_overhead_usd", 0.0))
+            for row in executor.get("legacy_training_continuation_actions_runs", {}).values()
+        ),
+        4,
+    )
     payload = {
         "contract": "pearl.scaling-paradox-campaign-manifest/1",
         "executor_contract": executor["contract"],
@@ -147,6 +161,37 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
         "planned_pre_structural_tinker_ceiling_usd": executor[
             "planned_pre_structural_tinker_ceiling_usd"
         ],
+        "training_slicing": executor.get(
+            "training_slicing",
+            {
+                "contract": "pearl.frontier-training-slicing/1",
+                "scientific_contract_unchanged": True,
+                "default": "terminal_in_one_worker",
+                "model_overrides": {},
+            },
+        ),
+        "max_continuation_recovery_overhead_usd": float(
+            executor.get("max_continuation_recovery_overhead_usd", 0.0)
+        ),
+        "observed_continuation_recovery_overhead_usd": observed_recovery_overhead,
+        "planned_total_tinker_ceiling_usd": float(
+            executor.get(
+                "planned_total_tinker_ceiling_usd",
+                executor["planned_pre_structural_tinker_ceiling_usd"],
+            )
+        ),
+        "planned_total_with_recovery_ceiling_usd": float(
+            executor.get(
+                "planned_total_with_recovery_ceiling_usd",
+                float(
+                    executor.get(
+                        "planned_total_tinker_ceiling_usd",
+                        executor["planned_pre_structural_tinker_ceiling_usd"],
+                    )
+                )
+                + float(executor.get("max_continuation_recovery_overhead_usd", 0.0)),
+            )
+        ),
         "supervisor_workflow_name": executor.get(
             "supervisor_workflow_name",
             "Scaling paradox campaign — validate and dispatch one exact wave",
@@ -176,6 +221,19 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
         executor["max_authorized_tinker_usd"]
     ):
         raise RuntimeError("frozen pre-structural ceiling exceeds the authorized Tinker envelope")
+    if float(payload["planned_total_with_recovery_ceiling_usd"]) > float(
+        executor["max_authorized_tinker_usd"]
+    ):
+        raise RuntimeError("continuation recovery ceiling exceeds the authorized Tinker envelope")
+    expected_recovery_total = round(
+        float(payload["planned_total_tinker_ceiling_usd"])
+        + float(payload["max_continuation_recovery_overhead_usd"]),
+        2,
+    )
+    if expected_recovery_total != float(payload["planned_total_with_recovery_ceiling_usd"]):
+        raise RuntimeError("continuation recovery total is inconsistent with the frozen ceilings")
+    if observed_recovery_overhead > float(payload["max_continuation_recovery_overhead_usd"]):
+        raise RuntimeError("observed continuation recovery overhead exceeds its frozen allowance")
     payload["manifest_sha256"] = sha256_value(payload)
     return payload
 
@@ -292,6 +350,16 @@ def collect_actions_artifact(
             run_key = str((observed.get("contract") or {}).get("source_run_key") or "")
             campaign, stage, entry = identify_plan_entry(plans, run_key)
             artifact_root = reports[0].parent
+        legacy_continuation_claim = executor.get(
+            "legacy_training_continuation_actions_runs", {}
+        ).get(str(actions_run_id))
+        if legacy_continuation_claim is not None:
+            if kind != "training":
+                raise RuntimeError("legacy continuation allowlist was used outside training")
+            if run["headSha"] != legacy_continuation_claim["head_sha"]:
+                raise RuntimeError("legacy continuation has the wrong approved source commit")
+            if run_key != legacy_continuation_claim["run_key"]:
+                raise RuntimeError("legacy continuation has the wrong approved run key")
         write_json(
             submission_path(state_dir, kind, run_key),
             {
@@ -305,6 +373,7 @@ def collect_actions_artifact(
                 "source_commit_sha": run["headSha"],
             },
         )
+        worker_auth: dict[str, Any] | None = None
         legacy = executor.get("legacy_original_core_actions_runs", {})
         if str(actions_run_id) in legacy:
             legacy_claim = legacy[str(actions_run_id)]
@@ -324,7 +393,15 @@ def collect_actions_artifact(
                 {key: value for key, value in worker_auth.items() if key != "receipt_sha256"}
             ):
                 raise RuntimeError("worker authorization receipt hash mismatch")
-            expected_action = "dispatch_training_wave" if kind == "training" else "dispatch_evaluation_wave"
+            if kind == "training":
+                expected_action = str(worker_auth.get("action") or "")
+                if expected_action not in {
+                    "dispatch_training_wave",
+                    "dispatch_training_resume",
+                }:
+                    raise RuntimeError("training worker has an unauthorized action")
+            else:
+                expected_action = "dispatch_evaluation_wave"
             expected_auth = {
                 "action": expected_action,
                 "campaign": campaign,
@@ -341,6 +418,18 @@ def collect_actions_artifact(
                     "source_actions_run_id"
                 ):
                     raise RuntimeError("evaluation worker used the wrong training Actions source")
+            if kind == "training" and expected_action == "dispatch_training_resume":
+                prior_continuation = load_valid_receipt(
+                    continuation_path(state_dir, run_key),
+                    run_key=run_key,
+                    field="training_continuation_valid",
+                )
+                if prior_continuation is None:
+                    raise RuntimeError("training resume lacks a collected predecessor continuation")
+                if worker_auth.get("source_training_actions_run_id") != prior_continuation.get(
+                    "source_actions_run_id"
+                ):
+                    raise RuntimeError("training resume used the wrong predecessor Actions run")
             supervisor_id = int(worker_auth.get("supervisor_run_id", -1))
             supervisor = gh_json(
                 [
@@ -360,11 +449,23 @@ def collect_actions_artifact(
             ):
                 raise RuntimeError("worker is not bound to a successful matching supervisor")
         if kind == "training":
-            receipt = audit_training_artifact(
-                plan_entry=entry,
-                run_dir=artifact_root,
-                source_actions_run_id=actions_run_id,
-            )
+            if (artifact_root / "report.json").is_file():
+                receipt = audit_training_artifact(
+                    plan_entry=entry,
+                    run_dir=artifact_root,
+                    source_actions_run_id=actions_run_id,
+                )
+            else:
+                receipt = audit_training_continuation_artifact(
+                    plan_entry=entry,
+                    run_dir=artifact_root,
+                    source_actions_run_id=actions_run_id,
+                    allow_legacy_missing_report=legacy_continuation_claim is not None,
+                )
+                if legacy_continuation_claim is not None and int(
+                    receipt["completed_steps"]
+                ) != int(legacy_continuation_claim["expected_completed_steps"]):
+                    raise RuntimeError("legacy continuation has the wrong completed-step count")
         else:
             receipt = audit_evaluation_artifact(
                 plan_entry=entry,
@@ -373,6 +474,14 @@ def collect_actions_artifact(
                 partition_contracts=partition_contracts(entry),
                 source_actions_run_id=actions_run_id,
             )
+        if kind == "training" and worker_auth is not None and worker_auth.get(
+            "segment_end_step"
+        ) is not None:
+            observed_step = int(
+                receipt.get("completed_steps", receipt.get("terminal_step", -1))
+            )
+            if observed_step != int(worker_auth["segment_end_step"]):
+                raise RuntimeError("training artifact ended at the wrong authorized segment step")
     campaign_contract = executor["campaigns"][campaign]
     fallback_training_names = {
         "original": "Scaling paradox v1 — one immutable run",
@@ -400,11 +509,19 @@ def collect_actions_artifact(
     receipt["source_commit_sha"] = run["headSha"]
     receipt["source_actions_conclusion"] = run.get("conclusion")
     receipt["receipt_sha256"] = sha256_value({k: v for k, v in receipt.items() if k != "receipt_sha256"})
-    existing_owner = receipt_path(state_dir, kind, run_key)
+    is_continuation = bool(receipt.get("training_continuation_valid"))
+    existing_owner = (
+        continuation_path(state_dir, run_key)
+        if is_continuation
+        else receipt_path(state_dir, kind, run_key)
+    )
     if existing_owner.is_file():
         prior = read_json(existing_owner)
-        if int(prior.get("source_actions_run_id", -1)) != actions_run_id:
-            raise RuntimeError("run key already has a different Actions owner")
+        if is_continuation:
+            if int(receipt["completed_steps"]) <= int(prior.get("completed_steps", -1)):
+                raise RuntimeError("training continuation did not advance monotonically")
+        elif int(prior.get("source_actions_run_id", -1)) != actions_run_id:
+            raise RuntimeError("run key already has a different terminal Actions owner")
     write_json(existing_owner, receipt)
     write_json(
         state_dir / "actions_runs" / kind / f"{actions_run_id}.json",
@@ -443,7 +560,7 @@ def sync_github_state(
                 if kind == "evaluation" and "not found" in result.stderr.lower():
                     continue
                 raise RuntimeError(f"could not enumerate {workflow}: {result.stderr.strip()}")
-            for row in json.loads(result.stdout):
+            for row in sorted(json.loads(result.stdout), key=lambda item: int(item["databaseId"])):
                 run_id = int(row["databaseId"])
                 if row.get("status") != "completed":
                     continue
@@ -478,6 +595,38 @@ def submission_path(state_dir: Path, kind: str, run_key: str) -> Path:
 
 def authorization_claim_path(state_dir: Path, kind: str, run_key: str) -> Path:
     return state_dir / "authorization_claims" / kind / f"{run_key}.json"
+
+
+def continuation_path(state_dir: Path, run_key: str) -> Path:
+    return state_dir / "continuations" / "training" / f"{run_key}.json"
+
+
+def training_segment_end(
+    *, manifest: dict[str, Any], wave: dict[str, Any], run_key: str, completed_steps: int
+) -> int:
+    maximum = int(wave["run_max_steps"][run_key])
+    if completed_steps < 0 or completed_steps >= maximum:
+        raise RuntimeError("invalid completed-step count for a training segment")
+    model_tag = str(wave["run_model_tags"][run_key])
+    slicing = manifest.get("training_slicing") or {}
+    override = (slicing.get("model_overrides") or {}).get(model_tag)
+    if not override:
+        return maximum
+    width_key = "initial_segment_steps" if completed_steps == 0 else "continuation_segment_steps"
+    width = int(override.get(width_key, 0))
+    if width <= 0:
+        raise RuntimeError("training slicing policy has a nonpositive segment width")
+    return min(maximum, completed_steps + width)
+
+
+def estimated_segment_cost(
+    *, wave: dict[str, Any], run_key: str, start_step: int, end_step: int
+) -> float:
+    maximum = int(wave["run_max_steps"][run_key])
+    full_cost = float(wave["estimated_training_cost_by_run_key"][run_key])
+    if not (0 <= start_step < end_step <= maximum):
+        raise RuntimeError("invalid training segment cost interval")
+    return round(full_cost * (end_step - start_step) / maximum, 4)
 
 
 def load_valid_receipt(path: Path, *, run_key: str, field: str) -> dict[str, Any] | None:
@@ -583,6 +732,73 @@ def next_authorization(
                         "active_paid_cells": active_paid_cells,
                         "authorized_run_keys": [],
                     }
+                continuations = {
+                    key: load_valid_receipt(
+                        continuation_path(state_dir, key),
+                        run_key=key,
+                        field="training_continuation_valid",
+                    )
+                    for key in missing_training
+                }
+                resumable = [key for key, value in continuations.items() if value is not None]
+                if resumable:
+                    unresolved = [key for key in missing_training if continuations[key] is None]
+                    if unresolved:
+                        raise RuntimeError(
+                            "training wave mixes resumable and unowned missing cells: "
+                            + ", ".join(unresolved)
+                        )
+                    if len(resumable) > maximum:
+                        raise RuntimeError("training continuation wave exceeds the global cap")
+                    source_ids = {
+                        key: int(continuations[key]["source_actions_run_id"])
+                        for key in resumable
+                    }
+                    completed = {
+                        key: int(continuations[key]["completed_steps"])
+                        for key in resumable
+                    }
+                    segment_ends = {
+                        key: training_segment_end(
+                            manifest=manifest,
+                            wave=wave,
+                            run_key=key,
+                            completed_steps=completed[key],
+                        )
+                        for key in resumable
+                    }
+                    authorization = {
+                        "contract": "pearl.scaling-paradox-authorization/1",
+                        "action": "dispatch_training_resume",
+                        "phase": phase["phase"],
+                        "wave_index": wave["wave_index"],
+                        "campaign": phase["campaign"],
+                        "stage": phase["stage"],
+                        "workflow": phase["workflow"],
+                        "config": phase["config"],
+                        "plan_dir": phase["plan_dir"],
+                        "plan_sha": phase["plan_sha"],
+                        "authorized_run_keys": resumable,
+                        "source_actions_run_ids": source_ids,
+                        "source_artifact_prefix": phase["artifact_prefix"],
+                        "completed_steps": completed,
+                        "segment_end_steps": segment_ends,
+                        "estimated_cost_usd": round(
+                            sum(
+                                estimated_segment_cost(
+                                    wave=wave,
+                                    run_key=key,
+                                    start_step=completed[key],
+                                    end_step=segment_ends[key],
+                                )
+                                for key in resumable
+                            ),
+                            4,
+                        ),
+                        "max_active_after_dispatch": len(resumable),
+                    }
+                    authorization["authorization_sha256"] = sha256_value(authorization)
+                    return authorization
                 already_submitted = [
                     key
                     for key in missing_training
@@ -611,6 +827,16 @@ def next_authorization(
                     "estimated_cost_usd": wave["estimated_training_cost_usd"],
                     "max_active_after_dispatch": len(missing_training),
                 }
+                if (manifest.get("training_slicing") or {}).get("model_overrides"):
+                    authorization["segment_end_steps"] = {
+                        key: training_segment_end(
+                            manifest=manifest,
+                            wave=wave,
+                            run_key=key,
+                            completed_steps=0,
+                        )
+                        for key in missing_training
+                    }
                 authorization["authorization_sha256"] = sha256_value(authorization)
                 return authorization
             evaluation = {
@@ -761,8 +987,12 @@ def main() -> None:
             active_paid_cells=args.active_paid_cells,
         )
         write_json(repo_path(args.output), authorization)
-        if authorization["action"] in {"dispatch_training_wave", "dispatch_evaluation_wave"}:
-            kind = "training" if authorization["action"] == "dispatch_training_wave" else "evaluation"
+        if authorization["action"] in {
+            "dispatch_training_wave",
+            "dispatch_training_resume",
+            "dispatch_evaluation_wave",
+        }:
+            kind = "evaluation" if authorization["action"] == "dispatch_evaluation_wave" else "training"
             for run_key in authorization["authorized_run_keys"]:
                 write_json(
                     authorization_claim_path(repo_path(args.state_dir), kind, run_key),

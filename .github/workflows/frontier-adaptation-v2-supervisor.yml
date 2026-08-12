@@ -129,7 +129,7 @@ jobs:
           records = []
           receipt_path = Path("supervisor/dispatch_receipt.json")
           for run_key in authorization["authorized_run_keys"]:
-              if action == "dispatch_training_wave":
+              if action in {"dispatch_training_wave", "dispatch_training_resume"}:
                   workflow = authorization["workflow"]
                   title = f"Frontier train {authorization['campaign']} {run_key} supervisor-{os.environ['SUPERVISOR_RUN_ID']}"
                   command = [
@@ -139,7 +139,13 @@ jobs:
                       "-f", f"run_key={run_key}",
                       "-f", f"launch_plan_sha={authorization['plan_sha']}",
                       "-f", f"supervisor_run_id={os.environ['SUPERVISOR_RUN_ID']}",
+                      "-f", f"authorization_action={action}",
+                      "-f", f"segment_end_step={authorization['segment_end_steps'][run_key]}",
                   ]
+                  if action == "dispatch_training_resume":
+                      command.extend([
+                          "-f", f"resume_run_id={authorization['source_actions_run_ids'][run_key]}",
+                      ])
               else:
                   workflow = authorization["workflow"]
                   title = f"Frontier eval {authorization['campaign']} {run_key} supervisor-{os.environ['SUPERVISOR_RUN_ID']}"

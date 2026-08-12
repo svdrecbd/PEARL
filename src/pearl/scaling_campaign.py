@@ -45,6 +45,135 @@ def validate_checkpoint_lineage(
         raise RuntimeError("terminal checkpoint differs between report and lineage")
 
 
+def audit_training_continuation_artifact(
+    *,
+    plan_entry: dict[str, Any],
+    run_dir: Path,
+    source_actions_run_id: int | None = None,
+    allow_legacy_missing_report: bool = False,
+) -> dict[str, Any]:
+    """Validate a nonterminal, exactly resumable training artifact without endpoint reads."""
+
+    contract_path = run_dir / "run_contract.json"
+    metadata_path = run_dir / "checkpoint_meta.json"
+    lineage_path = run_dir / "checkpoint_lineage.json"
+    batches_path = run_dir / "batch_reports_checkpoint.json"
+    reference_path = run_dir / "reference_margins.json"
+    continuation_path = run_dir / "continuation_report.json"
+    required = (contract_path, metadata_path, lineage_path, batches_path, reference_path)
+    for path in required:
+        if not path.is_file():
+            raise RuntimeError(f"training continuation is missing {path.name}")
+    if not continuation_path.is_file() and not allow_legacy_missing_report:
+        raise RuntimeError("training continuation is missing continuation_report.json")
+
+    contract = read_json(contract_path)
+    metadata = read_json(metadata_path)
+    lineage = read_json(lineage_path)
+    batches = json.loads(batches_path.read_text(encoding="utf-8"))
+    if contract != plan_entry:
+        raise RuntimeError("continuation run contract differs from the frozen plan entry")
+    if not isinstance(batches, list):
+        raise RuntimeError("continuation batch history is not a list")
+    contract_sha = str(plan_entry["run_contract_sha"])
+    completed_steps = int(metadata.get("completed_steps", -1))
+    terminal_step = int(plan_entry["max_steps"])
+    if completed_steps <= 0 or completed_steps >= terminal_step:
+        raise RuntimeError("continuation completed-step count is not strictly nonterminal")
+    if len(batches) != completed_steps:
+        raise RuntimeError("continuation batch history length differs from checkpoint metadata")
+
+    batch_pairs = int(plan_entry["batch_pairs"])
+    max_pairs = int(
+        plan_entry.get("max_pairs")
+        or (plan_entry.get("cost_estimate") or {}).get("pair_count")
+        or 0
+    )
+    if batch_pairs <= 0 or max_pairs <= 0:
+        raise RuntimeError("continuation plan lacks a valid batch geometry")
+    batches_per_epoch = (max_pairs + batch_pairs - 1) // batch_pairs
+    for index, row in enumerate(batches):
+        expected_epoch, expected_batch = divmod(index, batches_per_epoch)
+        if (
+            not isinstance(row, dict)
+            or int(row.get("epoch", -1)) != expected_epoch
+            or int(row.get("batch_index", -1)) != expected_batch
+        ):
+            raise RuntimeError("continuation batch history is not the exact ordered trajectory")
+    expected_epoch, expected_batch = divmod(completed_steps, batches_per_epoch)
+    if (
+        int(metadata.get("epoch", -1)) != expected_epoch
+        or int(metadata.get("batch_index", -1)) != expected_batch
+    ):
+        raise RuntimeError("continuation cursor does not follow the recorded trajectory")
+
+    if lineage.get("contract_sha") != contract_sha:
+        raise RuntimeError("continuation checkpoint lineage has the wrong contract SHA")
+    rows = lineage.get("checkpoints")
+    if not isinstance(rows, list) or not rows:
+        raise RuntimeError("continuation checkpoint lineage is empty")
+    steps = [int(row.get("step", -1)) for row in rows]
+    if steps != sorted(steps) or len(set(steps)) != len(steps):
+        raise RuntimeError("continuation checkpoint lineage is not strictly ordered")
+    last = rows[-1]
+    checkpoint_path = str(metadata.get("state_path") or "")
+    if (
+        int(last.get("step", -1)) != completed_steps
+        or bool(last.get("terminal"))
+        or str(last.get("state_path") or "") != checkpoint_path
+        or str(last.get("checkpoint_name") or "") != str(metadata.get("checkpoint_name") or "")
+        or not checkpoint_path
+    ):
+        raise RuntimeError("continuation metadata and checkpoint lineage disagree")
+
+    if continuation_path.is_file():
+        continuation = read_json(continuation_path)
+        expected = {
+            "contract": "pearl.tinker-training-continuation/1",
+            "campaign_id": plan_entry["campaign_id"],
+            "run_key": plan_entry["run_key"],
+            "run_contract_sha": contract_sha,
+            "completed_steps": completed_steps,
+            "target_steps": terminal_step,
+            "checkpoint_path": checkpoint_path,
+            "checkpoint_name": metadata["checkpoint_name"],
+            "terminal": False,
+        }
+        if any(continuation.get(key) != value for key, value in expected.items()):
+            raise RuntimeError("continuation report differs from checkpoint evidence")
+
+    receipt = {
+        "contract": "pearl.scaling-paradox-training-continuation-audit/1",
+        "campaign_id": plan_entry["campaign_id"],
+        "run_key": plan_entry["run_key"],
+        "run_contract_sha": contract_sha,
+        "source_actions_run_id": source_actions_run_id,
+        "run_contract_file_sha256": sha256_file(contract_path),
+        "checkpoint_metadata_file_sha256": sha256_file(metadata_path),
+        "checkpoint_lineage_file_sha256": sha256_file(lineage_path),
+        "batch_history_file_sha256": sha256_file(batches_path),
+        "reference_margins_file_sha256": sha256_file(reference_path),
+        "continuation_report_file_sha256": (
+            sha256_file(continuation_path) if continuation_path.is_file() else None
+        ),
+        "completed_steps": completed_steps,
+        "target_steps": terminal_step,
+        "checkpoint_path": checkpoint_path,
+        "checkpoint_lineage": [
+            {
+                "step": int(row["step"]),
+                "state_path": str(row["state_path"]),
+                "terminal": bool(row.get("terminal")),
+            }
+            for row in rows
+        ],
+        "training_continuation_valid": True,
+        "scientific_values_omitted": True,
+    }
+    receipt["receipt_sha256"] = sha256_value(receipt)
+    return receipt
+
+
 def audit_training_artifact(
     *, plan_entry: dict[str, Any], run_dir: Path, source_actions_run_id: int | None = None
 ) -> dict[str, Any]:
@@ -180,8 +309,9 @@ def audit_evaluation_artifact(
         provider.get("run_key") != plan_entry["run_key"]
         or provider.get("run_contract_sha") != plan_entry["run_contract_sha"]
         or not provider.get("provider_identity_valid")
+        or not provider.get("provider_continuation_chain_valid")
         or provider.get("provider_corrupted") is not False
-        or int(provider.get("provider_dpo_trainer_count", -1)) != 1
+        or int(provider.get("provider_dpo_trainer_count", -1)) < 1
     ):
         raise RuntimeError("provider identity receipt is invalid")
     receipt = {
@@ -237,7 +367,10 @@ def build_wave_gate(
 
 
 def audit_provider_identity(
-    *, plan_entry: dict[str, Any], provider_rows: list[dict[str, Any]]
+    *,
+    plan_entry: dict[str, Any],
+    provider_rows: list[dict[str, Any]],
+    checkpoint_lineage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     matches: list[dict[str, Any]] = []
     for row in provider_rows:
@@ -249,25 +382,50 @@ def audit_provider_identity(
             and metadata.get("contract_sha") == plan_entry["run_contract_sha"]
         ):
             matches.append(row)
-    if len(matches) != 1:
-        raise RuntimeError(
-            f"expected exactly one provider DPO trainer, observed {len(matches)}"
-        )
-    match = matches[0]
-    corrupted = match.get("corrupted", match.get("is_corrupted"))
-    if corrupted is not False:
-        raise RuntimeError("provider corrupted state is absent, unknown, or true")
-    provider_id = match.get("id", match.get("run_id", match.get("training_run_id")))
-    if provider_id in (None, ""):
-        raise RuntimeError("provider DPO trainer has no stable ID")
+    provider_ids: list[str] = []
+    for match in matches:
+        corrupted = match.get("corrupted", match.get("is_corrupted"))
+        if corrupted is not False:
+            raise RuntimeError("provider corrupted state is absent, unknown, or true")
+        provider_id = match.get("id", match.get("run_id", match.get("training_run_id")))
+        if provider_id in (None, ""):
+            raise RuntimeError("provider DPO trainer has no stable ID")
+        provider_ids.append(str(provider_id))
+    if not provider_ids or len(provider_ids) != len(set(provider_ids)):
+        raise RuntimeError("provider DPO trainer identities are absent or duplicated")
+
+    if checkpoint_lineage is None:
+        if len(provider_ids) != 1:
+            raise RuntimeError(
+                f"expected exactly one provider DPO trainer, observed {len(provider_ids)}"
+            )
+        lineage_provider_ids = list(provider_ids)
+    else:
+        if checkpoint_lineage.get("contract_sha") != plan_entry["run_contract_sha"]:
+            raise RuntimeError("provider audit checkpoint lineage has the wrong contract")
+        checkpoints = checkpoint_lineage.get("checkpoints")
+        if not isinstance(checkpoints, list) or not checkpoints:
+            raise RuntimeError("provider audit checkpoint lineage is empty")
+        lineage_provider_ids: list[str] = []
+        for checkpoint in checkpoints:
+            state_path = str(checkpoint.get("state_path") or "")
+            if not state_path.startswith("tinker://") or "/weights/" not in state_path:
+                raise RuntimeError("checkpoint lineage has an invalid Tinker state path")
+            provider_id = state_path.removeprefix("tinker://").split("/weights/", 1)[0]
+            if provider_id not in lineage_provider_ids:
+                lineage_provider_ids.append(provider_id)
+        if set(lineage_provider_ids) != set(provider_ids):
+            raise RuntimeError("provider DPO trainers differ from the checkpoint continuation chain")
     receipt = {
         "contract": "pearl.scaling-paradox-provider-audit/1",
         "campaign_id": plan_entry["campaign_id"],
         "run_key": plan_entry["run_key"],
         "run_contract_sha": plan_entry["run_contract_sha"],
-        "provider_dpo_trainer_id": str(provider_id),
-        "provider_dpo_trainer_count": 1,
+        "provider_dpo_trainer_id": lineage_provider_ids[-1],
+        "provider_dpo_trainer_ids": lineage_provider_ids,
+        "provider_dpo_trainer_count": len(lineage_provider_ids),
         "provider_corrupted": False,
+        "provider_continuation_chain_valid": True,
         "provider_identity_valid": True,
         "scientific_values_omitted": True,
     }

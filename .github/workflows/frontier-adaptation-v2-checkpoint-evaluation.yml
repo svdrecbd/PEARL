@@ -134,12 +134,14 @@ jobs:
               matches.extend(row for row in plan["runs"] if row["run_key"] == os.environ["INPUT_RUN_KEY"])
           contracts = list(Path("source").rglob("run_contract.json"))
           reports = list(Path("source").rglob("report.json"))
-          if len(matches) != 1 or len(contracts) != 1 or len(reports) != 1:
+          lineages = list(Path("source").rglob("checkpoint_lineage.json"))
+          if len(matches) != 1 or len(contracts) != 1 or len(reports) != 1 or len(lineages) != 1:
               raise SystemExit("source artifact or frozen plan is absent/non-unique")
           if json.loads(contracts[0].read_text()) != matches[0]:
               raise SystemExit("source run contract differs from frozen plan")
           Path("source_paths.json").write_text(json.dumps({
-              "contract": str(contracts[0]), "report": str(reports[0])
+              "contract": str(contracts[0]), "report": str(reports[0]),
+              "lineage": str(lineages[0])
           }))
           PY
 
@@ -149,8 +151,10 @@ jobs:
         run: |
           contract=$(python -c 'import json; print(json.load(open("source_paths.json"))["contract"])')
           report=$(python -c 'import json; print(json.load(open("source_paths.json"))["report"])')
+          lineage=$(python -c 'import json; print(json.load(open("source_paths.json"))["lineage"])')
           python scripts/audit_scaling_paradox_provider.py \
-            --run-contract "$contract" --output evaluation/provider_identity_receipt.json
+            --run-contract "$contract" --checkpoint-lineage "$lineage" \
+            --output evaluation/provider_identity_receipt.json
           python scripts/evaluate_scaling_paradox_checkpoint.py \
             --run-contract "$contract" --training-report "$report" --output-dir evaluation
 

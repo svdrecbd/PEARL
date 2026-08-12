@@ -84,6 +84,9 @@ def test_frontier_manifest_budget_and_smoke_transition_are_fail_closed(tmp_path:
     )
     assert observed_training == 1910.2628
     assert observed_training <= executor["planned_training_ceiling_usd"]
+    assert manifest["observed_continuation_recovery_overhead_usd"] == 3.3477
+    assert manifest["planned_total_with_recovery_ceiling_usd"] == 2084.39
+    assert manifest["planned_total_with_recovery_ceiling_usd"] < executor["max_authorized_tinker_usd"]
     assert round(
         sum(
             wave["estimated_checkpoint_evaluation_cost_usd"]
@@ -130,6 +133,94 @@ def test_frontier_manifest_budget_and_smoke_transition_are_fail_closed(tmp_path:
     waiting = manager.next_authorization(manifest=tiny, state_dir=tmp_path, active_paid_cells=1)
     assert waiting["action"] == "wait"
     assert waiting["reason"] == "paid_cells_are_active"
+
+
+def test_frontier_ultra_continuation_authorizes_only_the_next_exact_segment(tmp_path: Path) -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    manifest = {
+        "global_max_active_paid_cells": 6,
+        "training_slicing": {
+            "model_overrides": {
+                "nemotron3-ultra": {
+                    "initial_segment_steps": 100,
+                    "continuation_segment_steps": 150,
+                }
+            }
+        },
+        "phases": [
+            {
+                "phase": "original:core",
+                "campaign": "original",
+                "stage": "core",
+                "workflow": "frontier-adaptation-v2.yml",
+                "config": "config.json",
+                "plan_dir": "reports",
+                "plan_sha": "plan",
+                "artifact_prefix": "frontier-adaptation-v2-original-",
+                "evaluation_workflow": "frontier-adaptation-v2-checkpoint-evaluation.yml",
+                "evaluation_required": True,
+                "waves": [
+                    {
+                        "wave_index": 1,
+                        "run_keys": ["ultra-a"],
+                        "run_model_tags": {"ultra-a": "nemotron3-ultra"},
+                        "run_max_steps": {"ultra-a": 2250},
+                        "estimated_training_cost_by_run_key": {"ultra-a": 57.4983},
+                        "estimated_training_cost_usd": 57.4983,
+                        "estimated_checkpoint_evaluation_cost_usd": 1.0,
+                    }
+                ],
+            }
+        ],
+    }
+    write_json(
+        tmp_path / "continuations/training/ultra-a.json",
+        {
+            "run_key": "ultra-a",
+            "training_continuation_valid": True,
+            "completed_steps": 1,
+            "source_actions_run_id": 31554744343,
+        },
+    )
+    write_json(
+        tmp_path / "submissions/training/ultra-a.json",
+        {"run_key": "ultra-a", "source_actions_run_id": 31554744343},
+    )
+    authorization = manager.next_authorization(
+        manifest=manifest,
+        state_dir=tmp_path,
+        active_paid_cells=0,
+    )
+    assert authorization["action"] == "dispatch_training_resume"
+    assert authorization["authorized_run_keys"] == ["ultra-a"]
+    assert authorization["source_actions_run_ids"] == {"ultra-a": 31554744343}
+    assert authorization["completed_steps"] == {"ultra-a": 1}
+    assert authorization["segment_end_steps"] == {"ultra-a": 151}
+    assert 0 < authorization["estimated_cost_usd"] < 57.4983
+
+    waiting = manager.next_authorization(
+        manifest=manifest,
+        state_dir=tmp_path,
+        active_paid_cells=1,
+    )
+    assert waiting["action"] == "wait"
+
+
+def test_frontier_resume_worker_restores_inside_the_immutable_run_directory() -> None:
+    worker = (ROOT / ".github/workflows/frontier-adaptation-v2.yml").read_text()
+    supervisor = (ROOT / ".github/workflows/frontier-adaptation-v2-supervisor.yml").read_text()
+    evaluator = (
+        ROOT / ".github/workflows/frontier-adaptation-v2-checkpoint-evaluation.yml"
+    ).read_text()
+    trainer = (ROOT / "scripts/run_tinker_dpo_smoke.py").read_text()
+    assert '--dir "$restore_dir"' in worker
+    assert 'restore_dir="reports/frontier_adaptation_v2_original/runs/$INPUT_RUN_KEY"' in worker
+    assert 'restore_dir="reports/frontier_adaptation_v2_replication/runs/$INPUT_RUN_KEY"' in worker
+    assert "--dir ." not in worker
+    assert 'authorization_action={action}' in supervisor
+    assert 'resume_run_id={authorization[\'source_actions_run_ids\'][run_key]}' in supervisor
+    assert "create_training_client_from_state_with_optimizer" in trainer
+    assert '--checkpoint-lineage "$lineage"' in evaluator
 
 
 def test_frontier_structural_manifest_is_terminal_only_104_cells(tmp_path: Path) -> None:

@@ -128,7 +128,7 @@ def main() -> None:
             print(f"Warning: Failed to load checkpoint metadata. Error: {exc}", flush=True)
 
     training_client = (
-        service_client.create_training_client_from_state(
+        service_client.create_training_client_from_state_with_optimizer(
             path=current_state_path,
             user_metadata=training_user_metadata(args, task="physical_to_sequence_dpo"),
         )
@@ -330,6 +330,13 @@ def main() -> None:
     if args.max_steps and not args.eval_only:
         needed_epochs = (args.max_steps + batches_per_epoch - 1) // batches_per_epoch
         training_epochs = max(training_epochs, needed_epochs)
+    if args.segment_end_step is not None:
+        if args.eval_only or not args.max_steps:
+            raise RuntimeError("--segment-end-step requires bounded training")
+        if not (0 < args.segment_end_step <= args.max_steps):
+            raise RuntimeError("--segment-end-step must be within the frozen training trajectory")
+        if args.segment_end_step <= len(batch_reports):
+            raise RuntimeError("--segment-end-step must advance beyond the restored checkpoint")
 
     for epoch in range(start_epoch, training_epochs):
         current_start_batch = start_batch_index if epoch == start_epoch else 0
@@ -386,7 +393,14 @@ def main() -> None:
                 print(f"Reached max_steps ({args.max_steps}), stopping training.", flush=True)
                 break
 
-            if args.save_every_steps and (total_steps % args.save_every_steps == 0 or total_steps == 1):
+            segment_boundary = (
+                args.segment_end_step is not None and total_steps >= args.segment_end_step
+            )
+            scheduled_checkpoint = bool(
+                args.save_every_steps
+                and (total_steps % args.save_every_steps == 0 or total_steps == 1)
+            )
+            if scheduled_checkpoint or segment_boundary:
                 print(f"--- AUTO-CHECKPOINTING (Step {total_steps}) ---", flush=True)
                 checkpoint_name = f"{sanitize_name(args.name)}-chkpt-step{total_steps}"
                 try:
@@ -420,7 +434,32 @@ def main() -> None:
                     atomic_write_json(output_dir / "batch_reports_checkpoint.json", batch_reports)
                     print(f"Checkpoint saved at step {total_steps}: {chkpt_result.path}", flush=True)
                 except Exception as exc:
+                    if segment_boundary:
+                        raise RuntimeError(
+                            f"required segment-boundary checkpoint failed at step {total_steps}"
+                        ) from exc
                     print(f"Warning: Failed to save intermediate checkpoint: {exc}", flush=True)
+            if segment_boundary:
+                atomic_write_json(
+                    output_dir / "continuation_report.json",
+                    {
+                        "contract": "pearl.tinker-training-continuation/1",
+                        "campaign_id": args.campaign_id,
+                        "run_key": args.run_key or args.name,
+                        "run_contract_sha": args.contract_sha,
+                        "completed_steps": total_steps,
+                        "target_steps": args.max_steps,
+                        "checkpoint_path": chkpt_result.path,
+                        "checkpoint_name": checkpoint_name,
+                        "terminal": False,
+                    },
+                )
+                print(
+                    f"Completed supervised segment at step {total_steps}; continuation is required.",
+                    flush=True,
+                )
+                finish_wandb_run()
+                return
         if args.max_steps and len(batch_reports) >= args.max_steps:
             break
 
@@ -433,6 +472,9 @@ def main() -> None:
                 reports_file.unlink()
         except Exception:
             pass
+    continuation_path = output_dir / "continuation_report.json"
+    if continuation_path.exists():
+        continuation_path.unlink()
 
     checkpoint_path = args.init_state_path
     if not args.eval_only:
@@ -536,6 +578,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rank", type=int, default=8)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--max-steps", type=int, help="Optional max optimizer steps limit (overrides epochs when reached)")
+    parser.add_argument(
+        "--segment-end-step",
+        type=int,
+        help="Operational absolute step at which to checkpoint and exit without changing max_steps",
+    )
     parser.add_argument("--save-every-steps", type=int, default=500, help="Save intermediate state checkpoint every N steps")
     parser.add_argument("--batch-pairs", type=int, default=4)
     parser.add_argument("--max-pairs", type=int)

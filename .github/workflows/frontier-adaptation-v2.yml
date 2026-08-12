@@ -42,6 +42,18 @@ on:
         description: Prior Actions run ID whose checkpoint artifact should be resumed
         required: false
         type: string
+      authorization_action:
+        description: Exact supervisor action
+        required: true
+        default: dispatch_training_wave
+        type: choice
+        options:
+          - dispatch_training_wave
+          - dispatch_training_resume
+      segment_end_step:
+        description: Supervisor-authorized absolute operational checkpoint boundary
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -59,11 +71,14 @@ jobs:
       WANDB_MODE: disabled
       PYTHONUNBUFFERED: "1"
       INPUT_CAMPAIGN: ${{ inputs.campaign }}
+      INPUT_MODE: ${{ inputs.mode }}
       INPUT_STAGE: ${{ inputs.stage }}
       INPUT_RUN_KEY: ${{ inputs.run_key }}
       INPUT_PLAN_SHA: ${{ inputs.launch_plan_sha }}
       INPUT_SUPERVISOR_RUN_ID: ${{ inputs.supervisor_run_id }}
       INPUT_RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+      INPUT_AUTHORIZATION_ACTION: ${{ inputs.authorization_action }}
+      INPUT_SEGMENT_END_STEP: ${{ inputs.segment_end_step }}
       DATA_RELEASE_TAG: scaling-paradox-v1-data-v2
       DATA_ARCHIVE: pearl-scaling-paradox-v1-data-v2.tar.gz
       DATA_ARCHIVE_SHA256: ffad79ec8e104bf06979882e186290ea4d94b87531e48b111e954b6c09e8e962
@@ -100,8 +115,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "$INPUT_CAMPAIGN" = original ]; then prefix=frontier-adaptation-v2-original-; else prefix=frontier-adaptation-v2-replication-; fi
-          gh run download "$INPUT_RESUME_RUN_ID" --name "${prefix}${INPUT_RUN_KEY}" --dir .
+          if [ "$INPUT_CAMPAIGN" = original ]; then
+            prefix=frontier-adaptation-v2-original-
+            restore_dir="reports/frontier_adaptation_v2_original/runs/$INPUT_RUN_KEY"
+          else
+            prefix=frontier-adaptation-v2-replication-
+            restore_dir="reports/frontier_adaptation_v2_replication/runs/$INPUT_RUN_KEY"
+          fi
+          mkdir -p "$restore_dir"
+          gh run download "$INPUT_RESUME_RUN_ID" \
+            --name "${prefix}${INPUT_RUN_KEY}" \
+            --dir "$restore_dir"
 
       - name: Verify immutable plan identity
         run: |
@@ -109,6 +133,7 @@ jobs:
           [[ "$INPUT_PLAN_SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "invalid plan SHA"; exit 1; }
           [[ -z "$INPUT_SUPERVISOR_RUN_ID" || "$INPUT_SUPERVISOR_RUN_ID" =~ ^[0-9]+$ ]] || { echo "invalid supervisor ID"; exit 1; }
           [[ -z "$INPUT_RESUME_RUN_ID" || "$INPUT_RESUME_RUN_ID" =~ ^[0-9]+$ ]] || { echo "invalid resume ID"; exit 1; }
+          [[ -z "$INPUT_SEGMENT_END_STEP" || "$INPUT_SEGMENT_END_STEP" =~ ^[1-9][0-9]*$ ]] || { echo "invalid segment end"; exit 1; }
           if [ "$INPUT_CAMPAIGN" = original ]; then
             config="configs/experiments/frontier_adaptation_v2_original.json"
             plan_dir="reports/frontier_adaptation_v2_original"
@@ -132,6 +157,10 @@ jobs:
           matches = [row for row in plan["runs"] if row["run_key"] == os.environ["INPUT_RUN_KEY"]]
           if len(matches) != 1:
               raise SystemExit("run key is absent or non-unique")
+          if os.environ.get("INPUT_MODE", "execute") == "execute":
+              segment = int(os.environ.get("INPUT_SEGMENT_END_STEP") or 0)
+              if not (0 < segment <= int(matches[0]["max_steps"])):
+                  raise SystemExit("segment end is outside the frozen optimizer trajectory")
           PY
 
       - name: Verify one-time supervisor authorization
@@ -140,21 +169,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           test -n "$INPUT_SUPERVISOR_RUN_ID" || { echo "paid execution requires supervisor_run_id"; exit 1; }
-          test -z "$INPUT_RESUME_RUN_ID" || { echo "resume requires a separately versioned supervisor authorization"; exit 1; }
+          if [ "$INPUT_AUTHORIZATION_ACTION" = dispatch_training_resume ]; then
+            test -n "$INPUT_RESUME_RUN_ID" || { echo "resume authorization requires a source run ID"; exit 1; }
+          else
+            test -z "$INPUT_RESUME_RUN_ID" || { echo "initial authorization cannot restore a prior run"; exit 1; }
+          fi
           mkdir -p supervisor
           auth_name=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$INPUT_SUPERVISOR_RUN_ID/artifacts" \
             --jq '[.artifacts[] | select(.name | startswith("frontier-adaptation-v2-authorization-")) | .name] | if length == 1 then .[0] else error("authorization artifact absent or non-unique") end')
           gh run download "$INPUT_SUPERVISOR_RUN_ID" \
             --name "$auth_name" \
             --dir supervisor
+          source_args=()
+          if [ -n "$INPUT_RESUME_RUN_ID" ]; then source_args=(--source-run-id "$INPUT_RESUME_RUN_ID"); fi
           python scripts/verify_scaling_paradox_authorization.py \
             --authorization supervisor/authorization.json \
             --supervisor-run-id "$INPUT_SUPERVISOR_RUN_ID" \
-            --action dispatch_training_wave \
+            --action "$INPUT_AUTHORIZATION_ACTION" \
             --campaign "$INPUT_CAMPAIGN" \
             --stage "$INPUT_STAGE" \
             --run-key "$INPUT_RUN_KEY" \
             --plan-sha "$INPUT_PLAN_SHA" \
+            --segment-end-step "$INPUT_SEGMENT_END_STEP" \
+            "${source_args[@]}" \
             --supervisor-workflow-name "Frontier adaptation v2 — validate and dispatch one exact wave" \
             --receipt-output "$SAFE_PLAN_DIR/runs/$INPUT_RUN_KEY/worker_authorization_receipt.json"
 
@@ -239,9 +276,10 @@ jobs:
               --wait \
               --run-key "$INPUT_RUN_KEY" \
               --confirm-contract-sha "$INPUT_PLAN_SHA" \
+              --segment-end-step "$INPUT_SEGMENT_END_STEP" \
               "${resume[@]}"
 
-      - name: Validate terminal report
+      - name: Validate terminal or resumable segment report
         if: success() && inputs.mode == 'execute'
         run: |
           python - <<'PY'
@@ -249,14 +287,29 @@ jobs:
           import os
           from pathlib import Path
           run_dir = Path(os.environ["SAFE_PLAN_DIR"]) / "runs" / os.environ["INPUT_RUN_KEY"]
-          report = json.load(open(run_dir / "report.json"))
           contract = json.load(open(run_dir / "run_contract.json"))
-          if report.get("contract_sha") != contract.get("run_contract_sha"):
-              raise SystemExit("terminal report/contract mismatch")
-          if len(report.get("batches", [])) != int(contract["max_steps"]):
-              raise SystemExit("terminal report has an incomplete optimizer trajectory")
-          if not report.get("checkpoint_path"):
-              raise SystemExit("terminal report is missing its final checkpoint")
+          segment_end = int(os.environ["INPUT_SEGMENT_END_STEP"])
+          report_path = run_dir / "report.json"
+          if report_path.is_file():
+              report = json.load(open(report_path))
+              if report.get("contract_sha") != contract.get("run_contract_sha"):
+                  raise SystemExit("terminal report/contract mismatch")
+              if len(report.get("batches", [])) != int(contract["max_steps"]):
+                  raise SystemExit("terminal report has an incomplete optimizer trajectory")
+              if not report.get("checkpoint_path") or segment_end != int(contract["max_steps"]):
+                  raise SystemExit("terminal report is missing its authorized final checkpoint")
+          else:
+              continuation = json.load(open(run_dir / "continuation_report.json"))
+              metadata = json.load(open(run_dir / "checkpoint_meta.json"))
+              batches = json.load(open(run_dir / "batch_reports_checkpoint.json"))
+              if (
+                  continuation.get("run_contract_sha") != contract.get("run_contract_sha")
+                  or int(continuation.get("completed_steps", -1)) != segment_end
+                  or int(metadata.get("completed_steps", -1)) != segment_end
+                  or len(batches) != segment_end
+                  or continuation.get("terminal") is not False
+              ):
+                  raise SystemExit("resumable segment evidence is incomplete or mismatched")
           PY
 
       - name: Preserve reports and resumable checkpoint lineage

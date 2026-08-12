@@ -81,12 +81,42 @@ Clopper–Pearson intervals. Family contrasts again operate on seed-level true-m
 At freeze, the user reported $3,200.42 Tinker credit and $481.83 GiveMeANode credit. The immutable
 plan contains $1,910.27 training and $139.12 endpoint evaluation, a $2,049.39 pre-structural ceiling.
 Structural sampling is capped at $10.00 (estimated $8.97), for a $2,059.39 Tinker ceiling. The hard
-authorization envelope is $2,300.00. GiveMeANode is capped at $481.83 and six active H100 jobs.
+plan plus the $25.00 continuation-recovery allowance is capped at $2,084.39. The hard authorization
+envelope remains $2,300.00. GiveMeANode is capped at $481.83 and six active H100 jobs.
 
 All paid execution is remote and supervisor-owned. At most six cells may be active across a campaign.
 Closing or disconnecting the laptop does not stop a dispatched GitHub/Tinker worker or remote H100
 job. The laptop is required only to invoke the next transition or perform the mechanically specified
 manual GiveMeANode submission boundary.
+
+### Operational continuation amendment
+
+Nemotron 3 Ultra's first core cell demonstrated before endpoint review that a complete 2,250-update
+trajectory cannot fit inside the 330-minute supervised-worker boundary: the worker reached 132
+updates and retained its last scheduled checkpoint at step 1. This is an execution-duration finding,
+not a scientific outcome. The model, seed, data order, optimizer, rank, update budget, endpoints, and
+analysis remain frozen.
+
+Ultra training therefore uses supervisor-authorized operational segments: 100 updates in an initial
+worker and 150 additional updates per continuation, capped at the original absolute step 2,250. Each
+segment ends by saving the exact Tinker optimizer/model state, full ordered batch history, cached
+reference margins, and hash-bound nonterminal lineage. The ordinary scientific checkpoints at steps
+500, 1,000, 1,500, 2,000, and terminal 2,250 remain present; extra segment-boundary checkpoints are
+recovery infrastructure and are not additional observations. All other models retain the one-worker
+path unless a separately versioned operational amendment is reviewed.
+
+Only the remote supervisor may authorize a continuation. It binds the predecessor Actions run and
+artifact, requires monotonic completed steps and the same immutable run contract/provider lineage, and
+authorizes one exact next absolute segment boundary. A timeout without a complete auditable segment,
+a non-advancing checkpoint, or any lineage disagreement remains a stop condition. The 330-minute
+circuit breaker is retained to preserve artifact-upload time; it is not extended toward the hosted-job
+ceiling. The recovery-overhead allowance is $25, yielding a maximum Tinker ceiling of $2,084.39,
+still inside the unchanged $2,300 authorization envelope.
+
+Tinker represents each restored segment as a new provider training record. This is valid only when
+the complete set of DPO records exactly equals the ordered provider IDs encoded by the audited
+checkpoint lineage and every record is explicitly uncorrupted. An extra provider record outside that
+chain is still a duplicate owner and stops the campaign.
 
 ## Prospective interpretation tree (primary-only, never operational)
 

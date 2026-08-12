@@ -29,6 +29,7 @@ def main() -> None:
     parser.add_argument("--run-key", required=True)
     parser.add_argument("--plan-sha", required=True)
     parser.add_argument("--source-run-id", type=int)
+    parser.add_argument("--segment-end-step", type=int)
     parser.add_argument(
         "--supervisor-workflow-name",
         default="Scaling paradox campaign — validate and dispatch one exact wave",
@@ -59,6 +60,12 @@ def main() -> None:
         raise SystemExit(f"worker invocation differs from supervisor authorization: {mismatches}")
     if args.run_key not in payload.get("authorized_run_keys", []):
         raise SystemExit("run key is absent from supervisor authorization")
+    segment_ends = payload.get("segment_end_steps") or {}
+    if args.segment_end_step is not None:
+        if segment_ends.get(args.run_key) != args.segment_end_step:
+            raise SystemExit("segment end differs from supervisor authorization")
+    elif segment_ends:
+        raise SystemExit("training authorization requires a segment end")
     if args.source_run_id is not None:
         source_ids = payload.get("source_actions_run_ids") or {}
         if source_ids.get(args.run_key) != args.source_run_id:
@@ -98,6 +105,8 @@ def main() -> None:
     }
     if args.source_run_id is not None:
         receipt["source_training_actions_run_id"] = args.source_run_id
+    if args.segment_end_step is not None:
+        receipt["segment_end_step"] = args.segment_end_step
     receipt["receipt_sha256"] = sha256_value(receipt)
     if args.receipt_output:
         path = Path(args.receipt_output)

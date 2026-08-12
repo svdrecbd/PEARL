@@ -43,6 +43,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-key", help="Required with --execute; launches exactly one planned run")
     parser.add_argument("--confirm-contract-sha", help="Required with --execute")
     parser.add_argument("--resume", action="store_true", help="Resume the same immutable local run directory")
+    parser.add_argument(
+        "--segment-end-step",
+        type=int,
+        help="Operational absolute checkpoint boundary; does not alter the frozen max_steps contract",
+    )
     parser.add_argument("--wait", action="store_true", help="Supervise the trainer and return only after it exits")
     return parser.parse_args()
 
@@ -325,7 +330,13 @@ def provider_contracts() -> tuple[set[str], set[str]]:
 
 
 def launch_one(
-    run: dict[str, Any], plan: dict[str, Any], plan_dir: Path, *, resume: bool, wait: bool
+    run: dict[str, Any],
+    plan: dict[str, Any],
+    plan_dir: Path,
+    *,
+    resume: bool,
+    wait: bool,
+    segment_end_step: int | None = None,
 ) -> tuple[int, int | None]:
     run_dir = plan_dir / "runs" / str(run["run_key"])
     contract_path = run_dir / "run_contract.json"
@@ -377,6 +388,8 @@ def launch_one(
     preflight_path.write_text(json.dumps(preflight, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if not contract_path.exists():
         contract_path.write_text(json.dumps(run, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if segment_end_step is not None and not (0 < segment_end_step <= int(run["max_steps"])):
+        raise RuntimeError("segment end is outside the frozen optimizer trajectory")
     command = [
         sys.executable,
         "-u",
@@ -414,6 +427,8 @@ def launch_one(
     ]
     if run.get("max_pairs"):
         command.extend(["--max-pairs", str(run["max_pairs"])])
+    if segment_end_step is not None:
+        command.extend(["--segment-end-step", str(segment_end_step)])
     log_path = run_dir / "trainer.log"
     with log_path.open("a", encoding="utf-8") as log_handle:
         process = subprocess.Popen(command, cwd=ROOT, env=os.environ.copy(), stdout=log_handle, stderr=subprocess.STDOUT)
@@ -453,7 +468,14 @@ def main() -> None:
         raise SystemExit(f"run key {args.run_key!r} is not unique in {plan_path}")
     if not os.environ.get("TINKER_API_KEY"):
         raise SystemExit("TINKER_API_KEY is required for paid execution")
-    pid, returncode = launch_one(matches[0], plan, plan_dir, resume=args.resume, wait=args.wait)
+    pid, returncode = launch_one(
+        matches[0],
+        plan,
+        plan_dir,
+        resume=args.resume,
+        wait=args.wait,
+        segment_end_step=args.segment_end_step,
+    )
     print(
         json.dumps(
             {"launched": args.run_key, "pid": pid, "returncode": returncode, "plan": str(plan_path)},
