@@ -5,6 +5,7 @@ import argparse
 import json
 import random
 import sys
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -350,8 +351,12 @@ def main() -> None:
             batch_datums = datums[datum_start:datum_end]
             batch_reference_margins = reference_margins[batch_start : batch_start + batch_pair_count]
             dpo_loss_fn = build_tinker_dpo_loss_fn(reference_margins=batch_reference_margins, beta=args.beta)
-            forward_backward_result = forward_backward_custom_logprobs(training_client, batch_datums, dpo_loss_fn)
-            optim_step_result = training_client.optim_step(adam_params).result()
+            forward_backward_result, optim_step_result, performance = run_dpo_optimizer_step(
+                training_client,
+                batch_datums,
+                dpo_loss_fn,
+                adam_params,
+            )
 
             batch_report = {
                 "epoch": epoch,
@@ -359,6 +364,7 @@ def main() -> None:
                 "batch_pair_count": batch_pair_count,
                 "forward_backward_metrics": forward_backward_result.metrics,
                 "optim_step_metrics": optim_step_result.metrics,
+                "performance": performance,
             }
             batch_reports.append(batch_report)
             print(json.dumps(batch_report), flush=True)
@@ -864,18 +870,62 @@ def length_stats(values: list[str]) -> dict[str, float]:
     }
 
 
-def forward_backward_custom_logprobs(training_client: Any, batch_datums: list[Any], dpo_loss_fn: Any) -> Any:
+def submit_forward_backward_custom_logprobs(
+    training_client: Any,
+    batch_datums: list[Any],
+    dpo_loss_fn: Any,
+) -> Any:
     try:
         return training_client.forward_backward_custom(
             batch_datums,
             dpo_loss_fn,
             loss_type_input="logprobs",
-        ).result()
+        )
     except TypeError as exc:
         message = str(exc)
         if "loss_type_input" not in message:
             raise
-        return training_client.forward_backward_custom(batch_datums, dpo_loss_fn).result()
+        return training_client.forward_backward_custom(batch_datums, dpo_loss_fn)
+
+
+def run_dpo_optimizer_step(
+    training_client: Any,
+    batch_datums: list[Any],
+    dpo_loss_fn: Any,
+    adam_params: Any,
+) -> tuple[Any, Any, dict[str, Any]]:
+    """Submit backward and optimizer requests before consuming either result.
+
+    ``forward_backward_custom`` performs the policy-logprob forward and local custom-loss
+    calculation before it returns the queued backward future. Submitting ``optim_step``
+    immediately afterward preserves the server-side dependency while avoiding an idle clock-cycle
+    bubble caused by waiting for the backward result before the optimizer request is visible.
+    Requests from different optimizer steps are never overlapped.
+    """
+
+    step_started = time.perf_counter()
+    forward_backward_future = submit_forward_backward_custom_logprobs(
+        training_client,
+        batch_datums,
+        dpo_loss_fn,
+    )
+    optim_step_future = training_client.optim_step(adam_params)
+    requests_submitted = time.perf_counter()
+
+    forward_backward_result = forward_backward_future.result()
+    optim_step_result = optim_step_future.result()
+    step_finished = time.perf_counter()
+    return (
+        forward_backward_result,
+        optim_step_result,
+        {
+            "contract": "pearl.dpo-step-performance/1",
+            "request_schedule": "custom_backward_then_optimizer_before_result",
+            "client_step_wall_seconds": step_finished - step_started,
+            "client_submission_wall_seconds": requests_submitted - step_started,
+            "client_result_wait_wall_seconds": step_finished - requests_submitted,
+        },
+    )
 
 
 def init_wandb_run(
