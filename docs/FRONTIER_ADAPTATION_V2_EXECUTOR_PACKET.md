@@ -36,7 +36,8 @@ Status is result-blind and no-spend:
 gh workflow run frontier-adaptation-v2-supervisor.yml --ref main -f mode=status
 ```
 
-When explicitly assigned one transition:
+When explicitly assigned a transition, or assigned to carry the frozen clean path until a stop
+condition:
 
 ```bash
 gh workflow run frontier-adaptation-v2-supervisor.yml --ref main -f mode=advance
@@ -45,30 +46,45 @@ gh workflow run frontier-adaptation-v2-supervisor.yml --ref main -f mode=advance
 Do not call `frontier-adaptation-v2.yml` or
 `frontier-adaptation-v2-checkpoint-evaluation.yml` directly. The supervisor reconstructs state from
 Actions artifacts, validates predecessors, counts active workers, publishes a one-time authorization,
-and dispatches only the next frozen wave. Workers are GitHub/Tinker-owned; laptop disconnect does not
+and dispatches only the next frozen transition batch. Workers are GitHub/Tinker-owned; laptop disconnect does not
 stop them. A training worker has a 330-minute supervised window. Invoke the next supervisor
-transition only after the prior wave is terminal and auditable.
+transition only after at least one prior child is terminal and auditable or capacity is otherwise
+known to be available. Do not tight-poll: use Actions completion state or a bounded status check.
 
-Nemotron 3 Ultra is deliberately segmented because its measured throughput cannot complete 2,250
-updates inside that window. The supervisor dispatches the initial 100-update segment and then exact
-150-update continuations of the same experimental unit. A continuation is not a relaunch: it restores
-the predecessor artifact and exact optimizer/model state, retains the run key, contract, seed, data
-order, cached reference margins, provider owner, and ordered batch history, and advances to one
-absolute step authorized in the receipt. The pre-segmentation Actions run `31554744343` is an exact
-allowlisted step-1 bootstrap; the manager validates it mechanically and does not count the unpersisted
-steps 2--132.
+Every frontier model is deliberately segmented because the frozen smoke timings provide inadequate
+headroom to promise a 2,250-update core inside that window. Segment sizes are frozen by model in the
+protocol and controller; the Executor never selects them. A continuation is not a relaunch: it
+restores the predecessor artifact and exact optimizer/model state, retains the run key, contract,
+seed, data order, cached reference margins, provider owner, and ordered batch history, and advances
+to one absolute step authorized in the receipt. The pre-segmentation Ultra Actions run `31554744343`
+is an exact allowlisted step-1 bootstrap; the manager validates it mechanically and does not count
+the unpersisted steps 2--132.
 
-For an Executor this introduces no discretionary command. After any Ultra segment is terminal and
-its artifact exists, invoke the same supervisor `status` or explicitly assigned single `advance`
-transition shown above. The supervisor will return or dispatch `dispatch_training_resume` when and
-only when the continuation is valid. Never call the worker directly, enter a source run ID, choose a
-segment size, extend the timeout, or treat an intermediate segment as terminal training evidence.
-An unexpected timeout or incomplete segment artifact is an escalation, not permission to retry.
-Multiple Tinker DPO records are expected only for these restored segments; the terminal provider
-audit must prove that their IDs exactly equal the checkpoint lineage. Any additional or missing ID is
-a duplicate/ownership failure.
+For an Executor this introduces no discretionary command. After any segment is terminal and its
+artifact exists, invoke the same supervisor `status` or assigned `advance` transition shown above.
+The supervisor will return or dispatch `dispatch_training_resume` when and only when the continuation
+is valid. Never call the worker directly, enter a source run ID, choose a segment size, extend the
+timeout, or treat an intermediate segment as terminal training evidence. An unexpected timeout or
+incomplete segment artifact is an escalation, not permission to retry. Multiple Tinker DPO records
+are expected only for restored segments; the terminal provider audit must prove that their IDs
+exactly equal the checkpoint lineage. Any additional or missing ID is a duplicate/ownership failure.
 
-The source release may include the scheduling-only v1.0.2 amendment described in the protocol. It
+Core scheduling is rolling after a hard sentinel. Execution order 1 in each cohort must complete
+training and both endpoint evaluations before later keys become eligible. The controller then
+validates the exact active-run inventory and fills free slots, in deterministic priority order:
+
+1. valid resumable segments in the pre-randomized run order;
+2. evaluations for terminal-trained cells;
+3. never-submitted training cells in the pre-randomized run order.
+
+The old wave number remains audit metadata; it is not a reason to leave slots idle. At most six paid
+cells may exist across training and evaluation, and original must be entirely complete before
+replication begins. One authorization contains only one action type. If it fills fewer than all free
+slots, an Executor assigned to carry the clean path may invoke `advance` again after that supervisor
+run has succeeded so the controller can authorize the next action type. Stop if the supervisor
+returns a non-dispatch action other than an ordinary capacity wait, or if ownership is ambiguous.
+
+The source release includes the scheduling-only v1.0.2 amendment described in the protocol. It
 submits the custom backward and optimizer requests before waiting on either result and records
 operational timing evidence. This changes no scientific contract and grants no new Executor choice.
 Do not hand-edit performance rows or choose comparison windows. After the first v1.0.2 continuation
@@ -86,6 +102,11 @@ python scripts/analyze_tinker_dpo_performance.py \
 If the predecessor ends at a different supervisor-authorized boundary, stop for a primary to version
 the comparison rather than inventing new ranges. Performance evidence never advances or blocks a
 scientific wave; only the ordinary continuation audit does.
+
+That prospective comparison is now complete and mechanically valid; it showed about 1.8x observed
+end-to-end throughput for the candidate segment. It grants no Executor authority and requires no
+repeat. Executor contract v4 adds bounded segmentation for all models and the rolling-capacity queue
+without changing any scientific identity or total planned spend.
 
 For local no-spend reconstruction:
 
