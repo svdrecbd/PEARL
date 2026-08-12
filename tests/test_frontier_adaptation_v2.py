@@ -276,7 +276,7 @@ def test_frontier_gmn_contract_requires_104_unique_jobs() -> None:
         "contract": "pearl.frontier-adaptation-gmn-manifest/2",
         "max_active_jobs": 6,
         "source_commit_sha": "a" * 40,
-        "anchor_ref": "frontier-adaptation-v2-executor-v1.0.0",
+        "anchor_ref": "frontier-adaptation-v2-executor-v1.0.1",
         "jobs": [{"job_key": f"job-{index}"} for index in range(104)],
     }
     manifest["gmn_manifest_sha"] = sha256_value(manifest)

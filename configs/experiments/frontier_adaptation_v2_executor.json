@@ -10,7 +10,7 @@
   "givemeanode_max_active_jobs": 6,
   "givemeanode_hardware": "NVIDIA H100",
   "givemeanode_entrypoint": "deploy/scaling_paradox_v1/run_esmf_job.sh",
-  "givemeanode_anchor_ref": "frontier-adaptation-v2-executor-v1.0.0",
+  "givemeanode_anchor_ref": "frontier-adaptation-v2-executor-v1.0.1",
   "supervisor_workflow_name": "Frontier adaptation v2 — validate and dispatch one exact wave",
   "planned_training_ceiling_usd": 1910.27,
   "planned_checkpoint_evaluation_ceiling_usd": 139.12,
