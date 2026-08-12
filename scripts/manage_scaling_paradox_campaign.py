@@ -60,7 +60,9 @@ def build_plans(executor: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any
                 raise RuntimeError(f"{campaign_name}:{stage_name} plan SHA mismatch")
             if int(plan["run_count"]) != int(stage["run_count"]):
                 raise RuntimeError(f"{campaign_name}:{stage_name} run count mismatch")
-            if float(plan["estimated_stage_cost_usd"]) != float(stage["estimated_cost_usd"]):
+            if float(plan["estimated_stage_cost_usd"]) != float(
+                stage["estimated_cost_usd"]
+            ):
                 raise RuntimeError(f"{campaign_name}:{stage_name} cost mismatch")
             plans[(campaign_name, stage_name)] = plan
     return plans
@@ -75,20 +77,45 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
         campaign = executor["campaigns"][campaign_name]
         stage = campaign["stages"][stage_name]
         plan = plans[(campaign_name, stage_name)]
+        scheduling = stage.get(
+            "scheduling",
+            {
+                "contract": "pearl.scaling-paradox-scheduling/1",
+                "mode": "strict_waves",
+            },
+        )
+        if scheduling.get("contract") != "pearl.scaling-paradox-scheduling/1":
+            raise RuntimeError(f"{phase_name} scheduling contract is unknown")
+        if scheduling.get("mode") not in {"strict_waves", "rolling_ordered"}:
+            raise RuntimeError(f"{phase_name} scheduling mode is unknown")
+        if scheduling.get("mode") == "rolling_ordered":
+            if not scheduling.get("preserve_execution_order"):
+                raise RuntimeError(
+                    f"{phase_name} rolling schedule does not preserve run order"
+                )
+            if scheduling.get("open_after_sentinel_evaluation") is not True:
+                raise RuntimeError(
+                    f"{phase_name} rolling schedule lacks the endpoint sentinel gate"
+                )
         by_order = {int(row["execution_order"]): row for row in plan["runs"]}
         waves: list[dict[str, Any]] = []
         for wave_index, orders in enumerate(stage["waves"], start=1):
             rows = [by_order[int(order)] for order in orders]
             training_cost = round(
-                sum(float(row["cost_estimate"]["estimated_training_cost_usd"]) for row in rows), 4
+                sum(
+                    float(row["cost_estimate"]["estimated_training_cost_usd"])
+                    for row in rows
+                ),
+                4,
             )
-            endpoint_cost = 0.0
+            endpoint_cost_by_run_key: dict[str, float] = {}
             if stage.get("evaluation_required", True):
                 for row in rows:
+                    run_endpoint_cost = 0.0
                     prices = launcher.TINKER_MODEL_PRICES[str(row["model"])]
                     for path_key in ("holdout_path", "challenge_path"):
                         partition_rows = launcher.load_jsonl(repo_path(row[path_key]))
-                        endpoint_cost += float(
+                        run_endpoint_cost += float(
                             launcher.estimate_preference_evaluation_cost(
                                 pair_rows=partition_rows,
                                 prices=prices,
@@ -96,19 +123,31 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
                                 policy_count=2,
                             )["estimated_cost_usd"]
                         )
-            endpoint_cost = round(endpoint_cost, 4)
+                    endpoint_cost_by_run_key[str(row["run_key"])] = round(
+                        run_endpoint_cost, 4
+                    )
+            else:
+                endpoint_cost_by_run_key = {str(row["run_key"]): 0.0 for row in rows}
+            endpoint_cost = round(sum(endpoint_cost_by_run_key.values()), 4)
             waves.append(
                 {
                     "wave_index": wave_index,
                     "execution_orders": orders,
                     "run_keys": [row["run_key"] for row in rows],
                     "run_contract_shas": [row["run_contract_sha"] for row in rows],
-                    "run_model_tags": {row["run_key"]: row["model_tag"] for row in rows},
-                    "run_max_steps": {row["run_key"]: int(row["max_steps"]) for row in rows},
+                    "run_model_tags": {
+                        row["run_key"]: row["model_tag"] for row in rows
+                    },
+                    "run_max_steps": {
+                        row["run_key"]: int(row["max_steps"]) for row in rows
+                    },
                     "estimated_training_cost_by_run_key": {
-                        row["run_key"]: float(row["cost_estimate"]["estimated_training_cost_usd"])
+                        row["run_key"]: float(
+                            row["cost_estimate"]["estimated_training_cost_usd"]
+                        )
                         for row in rows
                     },
+                    "estimated_checkpoint_evaluation_cost_by_run_key": endpoint_cost_by_run_key,
                     "estimated_training_cost_usd": training_cost,
                     "estimated_checkpoint_evaluation_cost_usd": endpoint_cost,
                     "estimated_cost_usd": round(training_cost + endpoint_cost, 4),
@@ -139,13 +178,16 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
                 "plan_sha": stage["plan_sha"],
                 "conditional_gate": stage.get("conditional_gate"),
                 "evaluation_required": stage.get("evaluation_required", True),
+                "scheduling": scheduling,
                 "waves": waves,
             }
         )
     observed_recovery_overhead = round(
         sum(
             float(row.get("estimated_recovery_overhead_usd", 0.0))
-            for row in executor.get("legacy_training_continuation_actions_runs", {}).values()
+            for row in executor.get(
+                "legacy_training_continuation_actions_runs", {}
+            ).values()
         ),
         4,
     )
@@ -199,7 +241,12 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
         "phases": phases,
     }
     observed_training = round(
-        sum(wave["estimated_training_cost_usd"] for phase in phases for wave in phase["waves"]), 2
+        sum(
+            wave["estimated_training_cost_usd"]
+            for phase in phases
+            for wave in phase["waves"]
+        ),
+        2,
     )
     observed_evaluation = round(
         sum(
@@ -211,7 +258,9 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
     )
     if observed_training > float(executor["planned_training_ceiling_usd"]):
         raise RuntimeError("training plan exceeds the frozen training ceiling")
-    if observed_evaluation > float(executor["planned_checkpoint_evaluation_ceiling_usd"]):
+    if observed_evaluation > float(
+        executor["planned_checkpoint_evaluation_ceiling_usd"]
+    ):
         raise RuntimeError("evaluation plan exceeds the frozen evaluation ceiling")
     if round(observed_training + observed_evaluation, 2) > float(
         executor["planned_pre_structural_tinker_ceiling_usd"]
@@ -220,28 +269,45 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
     if float(executor["planned_pre_structural_tinker_ceiling_usd"]) > float(
         executor["max_authorized_tinker_usd"]
     ):
-        raise RuntimeError("frozen pre-structural ceiling exceeds the authorized Tinker envelope")
+        raise RuntimeError(
+            "frozen pre-structural ceiling exceeds the authorized Tinker envelope"
+        )
     if float(payload["planned_total_with_recovery_ceiling_usd"]) > float(
         executor["max_authorized_tinker_usd"]
     ):
-        raise RuntimeError("continuation recovery ceiling exceeds the authorized Tinker envelope")
+        raise RuntimeError(
+            "continuation recovery ceiling exceeds the authorized Tinker envelope"
+        )
     expected_recovery_total = round(
         float(payload["planned_total_tinker_ceiling_usd"])
         + float(payload["max_continuation_recovery_overhead_usd"]),
         2,
     )
-    if expected_recovery_total != float(payload["planned_total_with_recovery_ceiling_usd"]):
-        raise RuntimeError("continuation recovery total is inconsistent with the frozen ceilings")
-    if observed_recovery_overhead > float(payload["max_continuation_recovery_overhead_usd"]):
-        raise RuntimeError("observed continuation recovery overhead exceeds its frozen allowance")
+    if expected_recovery_total != float(
+        payload["planned_total_with_recovery_ceiling_usd"]
+    ):
+        raise RuntimeError(
+            "continuation recovery total is inconsistent with the frozen ceilings"
+        )
+    if observed_recovery_overhead > float(
+        payload["max_continuation_recovery_overhead_usd"]
+    ):
+        raise RuntimeError(
+            "observed continuation recovery overhead exceeds its frozen allowance"
+        )
     payload["manifest_sha256"] = sha256_value(payload)
     return payload
 
 
 def plan_entry(
-    plans: dict[tuple[str, str], dict[str, Any]], campaign: str, stage: str, run_key: str
+    plans: dict[tuple[str, str], dict[str, Any]],
+    campaign: str,
+    stage: str,
+    run_key: str,
 ) -> dict[str, Any]:
-    rows = [row for row in plans[(campaign, stage)]["runs"] if row["run_key"] == run_key]
+    rows = [
+        row for row in plans[(campaign, stage)]["runs"] if row["run_key"] == run_key
+    ]
     if len(rows) != 1:
         raise RuntimeError("run key is absent or non-unique in the frozen plan")
     return rows[0]
@@ -250,7 +316,10 @@ def plan_entry(
 def partition_contracts(entry: dict[str, Any]) -> dict[str, dict[str, Any]]:
     launcher = load_launcher()
     result: dict[str, dict[str, Any]] = {}
-    for name, path_key in (("holdout", "holdout_path"), ("challenge", "challenge_path")):
+    for name, path_key in (
+        ("holdout", "holdout_path"),
+        ("challenge", "challenge_path"),
+    ):
         rows = launcher.load_jsonl(repo_path(entry[path_key]))
         result[name] = {
             "pair_count": len(rows),
@@ -274,7 +343,9 @@ def identify_plan_entry(
 
 
 def gh_json(command: list[str]) -> Any:
-    result = subprocess.run(command, check=True, capture_output=True, text=True, cwd=ROOT)
+    result = subprocess.run(
+        command, check=True, capture_output=True, text=True, cwd=ROOT
+    )
     return json.loads(result.stdout)
 
 
@@ -288,15 +359,21 @@ def collect_actions_artifact(
 ) -> dict[str, Any] | None:
     run = gh_json(
         [
-            "gh", "run", "view", str(actions_run_id),
-            "--json", "status,conclusion,workflowName,headSha",
+            "gh",
+            "run",
+            "view",
+            str(actions_run_id),
+            "--json",
+            "status,conclusion,workflowName,headSha",
         ]
     )
     if run.get("status") != "completed":
         raise RuntimeError("Actions run is not terminal")
     if kind == "evaluation" and run.get("conclusion") != "success":
         raise RuntimeError("checkpoint-evaluation Actions run is not terminal-success")
-    repository = gh_json(["gh", "repo", "view", "--json", "nameWithOwner"])["nameWithOwner"]
+    repository = gh_json(["gh", "repo", "view", "--json", "nameWithOwner"])[
+        "nameWithOwner"
+    ]
     artifacts = gh_json(
         ["gh", "api", f"repos/{repository}/actions/runs/{actions_run_id}/artifacts"]
     ).get("artifacts", [])
@@ -309,13 +386,16 @@ def collect_actions_artifact(
     )
     if kind == "training":
         candidates = [
-            row for row in artifacts
+            row
+            for row in artifacts
             if row.get("name", "").startswith(training_prefixes)
             and not row.get("name", "").startswith(evaluation_prefixes)
         ]
     else:
         candidates = [
-            row for row in artifacts if row.get("name", "").startswith(evaluation_prefixes)
+            row
+            for row in artifacts
+            if row.get("name", "").startswith(evaluation_prefixes)
         ]
     if len(candidates) != 1 or candidates[0].get("expired"):
         raise RuntimeError("Actions run has no unique unexpired campaign artifact")
@@ -324,8 +404,14 @@ def collect_actions_artifact(
         destination = Path(temporary)
         subprocess.run(
             [
-                "gh", "run", "download", str(actions_run_id),
-                "--name", str(artifact["name"]), "--dir", str(destination),
+                "gh",
+                "run",
+                "download",
+                str(actions_run_id),
+                "--name",
+                str(artifact["name"]),
+                "--dir",
+                str(destination),
             ],
             check=True,
             cwd=ROOT,
@@ -345,7 +431,9 @@ def collect_actions_artifact(
             if not reports:
                 return None
             if len(reports) != 1:
-                raise RuntimeError("evaluation artifact has a non-unique evaluation report")
+                raise RuntimeError(
+                    "evaluation artifact has a non-unique evaluation report"
+                )
             observed = read_json(reports[0])
             run_key = str((observed.get("contract") or {}).get("source_run_key") or "")
             campaign, stage, entry = identify_plan_entry(plans, run_key)
@@ -355,9 +443,13 @@ def collect_actions_artifact(
         ).get(str(actions_run_id))
         if legacy_continuation_claim is not None:
             if kind != "training":
-                raise RuntimeError("legacy continuation allowlist was used outside training")
+                raise RuntimeError(
+                    "legacy continuation allowlist was used outside training"
+                )
             if run["headSha"] != legacy_continuation_claim["head_sha"]:
-                raise RuntimeError("legacy continuation has the wrong approved source commit")
+                raise RuntimeError(
+                    "legacy continuation has the wrong approved source commit"
+                )
             if run_key != legacy_continuation_claim["run_key"]:
                 raise RuntimeError("legacy continuation has the wrong approved run key")
         write_json(
@@ -378,19 +470,29 @@ def collect_actions_artifact(
         if str(actions_run_id) in legacy:
             legacy_claim = legacy[str(actions_run_id)]
             if kind != "training" or campaign != "original" or stage != "core":
-                raise RuntimeError("legacy Actions allowlist was used outside original core training")
+                raise RuntimeError(
+                    "legacy Actions allowlist was used outside original core training"
+                )
             if run["headSha"] != legacy_claim["head_sha"]:
-                raise RuntimeError("legacy Actions run has the wrong approved source commit")
+                raise RuntimeError(
+                    "legacy Actions run has the wrong approved source commit"
+                )
             if run_key != legacy_claim["run_key"]:
                 raise RuntimeError("legacy Actions run has the wrong approved run key")
         else:
             auth_path = artifact_root / "worker_authorization_receipt.json"
             if not auth_path.is_file():
-                raise RuntimeError("future worker artifact lacks its supervisor authorization receipt")
+                raise RuntimeError(
+                    "future worker artifact lacks its supervisor authorization receipt"
+                )
             worker_auth = read_json(auth_path)
             supplied = worker_auth.get("receipt_sha256")
             if supplied != sha256_value(
-                {key: value for key, value in worker_auth.items() if key != "receipt_sha256"}
+                {
+                    key: value
+                    for key, value in worker_auth.items()
+                    if key != "receipt_sha256"
+                }
             ):
                 raise RuntimeError("worker authorization receipt hash mismatch")
             if kind == "training":
@@ -410,14 +512,22 @@ def collect_actions_artifact(
                 "plan_sha": plans[(campaign, stage)]["launch_plan_contract_sha"],
                 "source_commit_sha": run["headSha"],
             }
-            if any(worker_auth.get(key) != value for key, value in expected_auth.items()):
-                raise RuntimeError("worker authorization receipt differs from the collected cell")
+            if any(
+                worker_auth.get(key) != value for key, value in expected_auth.items()
+            ):
+                raise RuntimeError(
+                    "worker authorization receipt differs from the collected cell"
+                )
             if kind == "evaluation":
-                training_evidence = read_json(receipt_path(state_dir, "training", run_key))
-                if worker_auth.get("source_training_actions_run_id") != training_evidence.get(
-                    "source_actions_run_id"
-                ):
-                    raise RuntimeError("evaluation worker used the wrong training Actions source")
+                training_evidence = read_json(
+                    receipt_path(state_dir, "training", run_key)
+                )
+                if worker_auth.get(
+                    "source_training_actions_run_id"
+                ) != training_evidence.get("source_actions_run_id"):
+                    raise RuntimeError(
+                        "evaluation worker used the wrong training Actions source"
+                    )
             if kind == "training" and expected_action == "dispatch_training_resume":
                 prior_continuation = load_valid_receipt(
                     continuation_path(state_dir, run_key),
@@ -425,16 +535,24 @@ def collect_actions_artifact(
                     field="training_continuation_valid",
                 )
                 if prior_continuation is None:
-                    raise RuntimeError("training resume lacks a collected predecessor continuation")
-                if worker_auth.get("source_training_actions_run_id") != prior_continuation.get(
-                    "source_actions_run_id"
-                ):
-                    raise RuntimeError("training resume used the wrong predecessor Actions run")
+                    raise RuntimeError(
+                        "training resume lacks a collected predecessor continuation"
+                    )
+                if worker_auth.get(
+                    "source_training_actions_run_id"
+                ) != prior_continuation.get("source_actions_run_id"):
+                    raise RuntimeError(
+                        "training resume used the wrong predecessor Actions run"
+                    )
             supervisor_id = int(worker_auth.get("supervisor_run_id", -1))
             supervisor = gh_json(
                 [
-                    "gh", "run", "view", str(supervisor_id),
-                    "--json", "status,conclusion,workflowName,headSha",
+                    "gh",
+                    "run",
+                    "view",
+                    str(supervisor_id),
+                    "--json",
+                    "status,conclusion,workflowName,headSha",
                 ]
             )
             if (
@@ -447,7 +565,9 @@ def collect_actions_artifact(
                 or supervisor.get("status") != "completed"
                 or supervisor.get("conclusion") != "success"
             ):
-                raise RuntimeError("worker is not bound to a successful matching supervisor")
+                raise RuntimeError(
+                    "worker is not bound to a successful matching supervisor"
+                )
         if kind == "training":
             if (artifact_root / "report.json").is_file():
                 receipt = audit_training_artifact(
@@ -465,23 +585,31 @@ def collect_actions_artifact(
                 if legacy_continuation_claim is not None and int(
                     receipt["completed_steps"]
                 ) != int(legacy_continuation_claim["expected_completed_steps"]):
-                    raise RuntimeError("legacy continuation has the wrong completed-step count")
+                    raise RuntimeError(
+                        "legacy continuation has the wrong completed-step count"
+                    )
         else:
             receipt = audit_evaluation_artifact(
                 plan_entry=entry,
                 evaluation_dir=artifact_root,
-                training_receipt=read_json(receipt_path(state_dir, "training", run_key)),
+                training_receipt=read_json(
+                    receipt_path(state_dir, "training", run_key)
+                ),
                 partition_contracts=partition_contracts(entry),
                 source_actions_run_id=actions_run_id,
             )
-        if kind == "training" and worker_auth is not None and worker_auth.get(
-            "segment_end_step"
-        ) is not None:
+        if (
+            kind == "training"
+            and worker_auth is not None
+            and worker_auth.get("segment_end_step") is not None
+        ):
             observed_step = int(
                 receipt.get("completed_steps", receipt.get("terminal_step", -1))
             )
             if observed_step != int(worker_auth["segment_end_step"]):
-                raise RuntimeError("training artifact ended at the wrong authorized segment step")
+                raise RuntimeError(
+                    "training artifact ended at the wrong authorized segment step"
+                )
     campaign_contract = executor["campaigns"][campaign]
     fallback_training_names = {
         "original": "Scaling paradox v1 — one immutable run",
@@ -500,7 +628,9 @@ def collect_actions_artifact(
     expected_prefix = (
         campaign_contract["artifact_prefix"]
         if kind == "training"
-        else campaign_contract.get("evaluation_artifact_prefix", "scaling-paradox-evaluation-")
+        else campaign_contract.get(
+            "evaluation_artifact_prefix", "scaling-paradox-evaluation-"
+        )
     )
     if artifact["name"] != f"{expected_prefix}{run_key}":
         raise RuntimeError("Actions artifact name differs from the frozen campaign")
@@ -508,7 +638,9 @@ def collect_actions_artifact(
     receipt["source_artifact_name"] = artifact["name"]
     receipt["source_commit_sha"] = run["headSha"]
     receipt["source_actions_conclusion"] = run.get("conclusion")
-    receipt["receipt_sha256"] = sha256_value({k: v for k, v in receipt.items() if k != "receipt_sha256"})
+    receipt["receipt_sha256"] = sha256_value(
+        {k: v for k, v in receipt.items() if k != "receipt_sha256"}
+    )
     is_continuation = bool(receipt.get("training_continuation_valid"))
     existing_owner = (
         continuation_path(state_dir, run_key)
@@ -519,37 +651,64 @@ def collect_actions_artifact(
         prior = read_json(existing_owner)
         if is_continuation:
             if int(receipt["completed_steps"]) <= int(prior.get("completed_steps", -1)):
-                raise RuntimeError("training continuation did not advance monotonically")
+                raise RuntimeError(
+                    "training continuation did not advance monotonically"
+                )
         elif int(prior.get("source_actions_run_id", -1)) != actions_run_id:
             raise RuntimeError("run key already has a different terminal Actions owner")
     write_json(existing_owner, receipt)
     write_json(
         state_dir / "actions_runs" / kind / f"{actions_run_id}.json",
-        {"actions_run_id": actions_run_id, "run_key": run_key, "receipt_sha256": receipt["receipt_sha256"]},
+        {
+            "actions_run_id": actions_run_id,
+            "run_key": run_key,
+            "receipt_sha256": receipt["receipt_sha256"],
+        },
     )
     return receipt
 
 
 def sync_github_state(
-    *, executor: dict[str, Any], plans: dict[tuple[str, str], dict[str, Any]], state_dir: Path
+    *,
+    executor: dict[str, Any],
+    plans: dict[tuple[str, str], dict[str, Any]],
+    state_dir: Path,
 ) -> dict[str, int]:
     workflows = {
-        "training": tuple(dict.fromkeys(
-            str(campaign["workflow"]) for campaign in executor["campaigns"].values()
-        )),
-        "evaluation": tuple(dict.fromkeys(
-            str(campaign.get("evaluation_workflow", "scaling-paradox-checkpoint-evaluation.yml"))
-            for campaign in executor["campaigns"].values()
-        )),
+        "training": tuple(
+            dict.fromkeys(
+                str(campaign["workflow"]) for campaign in executor["campaigns"].values()
+            )
+        ),
+        "evaluation": tuple(
+            dict.fromkeys(
+                str(
+                    campaign.get(
+                        "evaluation_workflow",
+                        "scaling-paradox-checkpoint-evaluation.yml",
+                    )
+                )
+                for campaign in executor["campaigns"].values()
+            )
+        ),
     }
     counts = {"training": 0, "evaluation": 0}
-    legacy = {int(value) for value in executor.get("legacy_original_core_actions_runs", {})}
+    legacy = {
+        int(value) for value in executor.get("legacy_original_core_actions_runs", {})
+    }
     for kind, names in workflows.items():
         for workflow in names:
             result = subprocess.run(
                 [
-                    "gh", "run", "list", "--workflow", workflow, "--limit", "500",
-                    "--json", "databaseId,status,displayTitle",
+                    "gh",
+                    "run",
+                    "list",
+                    "--workflow",
+                    workflow,
+                    "--limit",
+                    "500",
+                    "--json",
+                    "databaseId,status,displayTitle",
                 ],
                 check=False,
                 capture_output=True,
@@ -559,8 +718,12 @@ def sync_github_state(
             if result.returncode != 0:
                 if kind == "evaluation" and "not found" in result.stderr.lower():
                     continue
-                raise RuntimeError(f"could not enumerate {workflow}: {result.stderr.strip()}")
-            for row in sorted(json.loads(result.stdout), key=lambda item: int(item["databaseId"])):
+                raise RuntimeError(
+                    f"could not enumerate {workflow}: {result.stderr.strip()}"
+                )
+            for row in sorted(
+                json.loads(result.stdout), key=lambda item: int(item["databaseId"])
+            ):
                 run_id = int(row["databaseId"])
                 if row.get("status") != "completed":
                     continue
@@ -580,7 +743,9 @@ def sync_github_state(
                     kind=kind,
                 )
                 if receipt is None:
-                    raise RuntimeError(f"paid {kind} run {run_id} has no auditable campaign artifact")
+                    raise RuntimeError(
+                        f"paid {kind} run {run_id} has no auditable campaign artifact"
+                    )
                 counts[kind] += 1
     return counts
 
@@ -602,7 +767,11 @@ def continuation_path(state_dir: Path, run_key: str) -> Path:
 
 
 def training_segment_end(
-    *, manifest: dict[str, Any], wave: dict[str, Any], run_key: str, completed_steps: int
+    *,
+    manifest: dict[str, Any],
+    wave: dict[str, Any],
+    run_key: str,
+    completed_steps: int,
 ) -> int:
     maximum = int(wave["run_max_steps"][run_key])
     if completed_steps < 0 or completed_steps >= maximum:
@@ -612,7 +781,11 @@ def training_segment_end(
     override = (slicing.get("model_overrides") or {}).get(model_tag)
     if not override:
         return maximum
-    width_key = "initial_segment_steps" if completed_steps == 0 else "continuation_segment_steps"
+    width_key = (
+        "initial_segment_steps"
+        if completed_steps == 0
+        else "continuation_segment_steps"
+    )
     width = int(override.get(width_key, 0))
     if width <= 0:
         raise RuntimeError("training slicing policy has a nonpositive segment width")
@@ -629,7 +802,9 @@ def estimated_segment_cost(
     return round(full_cost * (end_step - start_step) / maximum, 4)
 
 
-def load_valid_receipt(path: Path, *, run_key: str, field: str) -> dict[str, Any] | None:
+def load_valid_receipt(
+    path: Path, *, run_key: str, field: str
+) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     receipt = read_json(path)
@@ -644,7 +819,9 @@ def validate_rescue_gate(
     if rescue_gate.get("contract") != "pearl.scaling-paradox-adapter-rescue-gate/1":
         raise RuntimeError("conditional gate receipt has the wrong contract")
     supplied_sha = rescue_gate.get("gate_sha256")
-    unsigned = {key: value for key, value in rescue_gate.items() if key != "gate_sha256"}
+    unsigned = {
+        key: value for key, value in rescue_gate.items() if key != "gate_sha256"
+    }
     if supplied_sha != sha256_value(unsigned):
         raise RuntimeError("conditional gate receipt hash mismatch")
     if int(rescue_gate.get("complete_matrix_cell_count", -1)) != 36:
@@ -664,7 +841,10 @@ def validate_rescue_gate(
     }
     if rescue_gate.get("original_core_plan_sha") != core_phases["original"]["plan_sha"]:
         raise RuntimeError("conditional gate has the wrong original core plan SHA")
-    if rescue_gate.get("replication_core_plan_sha") != core_phases["replication"]["plan_sha"]:
+    if (
+        rescue_gate.get("replication_core_plan_sha")
+        != core_phases["replication"]["plan_sha"]
+    ):
         raise RuntimeError("conditional gate has the wrong replication core plan SHA")
     expected_hashes: list[str] = []
     for phase in core_phases.values():
@@ -676,10 +856,14 @@ def validate_rescue_gate(
                     field="evaluation_terminal_valid",
                 )
                 if receipt is None:
-                    raise RuntimeError("conditional gate precedes a core evaluation receipt")
+                    raise RuntimeError(
+                        "conditional gate precedes a core evaluation receipt"
+                    )
                 expected_hashes.append(str(receipt["evaluation_report_file_sha256"]))
     if sorted(rescue_gate["evaluation_report_sha256s"]) != sorted(expected_hashes):
-        raise RuntimeError("conditional gate evidence differs from collected core evaluations")
+        raise RuntimeError(
+            "conditional gate evidence differs from collected core evaluations"
+        )
 
 
 def phase_is_skipped(phase: dict[str, Any], rescue_gate: dict[str, Any] | None) -> bool:
@@ -692,16 +876,388 @@ def phase_is_skipped(phase: dict[str, Any], rescue_gate: dict[str, Any] | None) 
     return not bool(rescue_gate.get("pass"))
 
 
+def phase_run_entries(phase: dict[str, Any]) -> list[tuple[int, dict[str, Any], str]]:
+    entries: list[tuple[int, dict[str, Any], str]] = []
+    for wave in phase["waves"]:
+        orders = wave.get("execution_orders") or range(1, len(wave["run_keys"]) + 1)
+        if len(orders) != len(wave["run_keys"]):
+            raise RuntimeError("wave execution-order and run-key counts differ")
+        entries.extend(
+            (int(order), wave, str(run_key))
+            for order, run_key in zip(orders, wave["run_keys"], strict=True)
+        )
+    entries.sort(key=lambda row: row[0])
+    if len({order for order, _, _ in entries}) != len(entries):
+        raise RuntimeError("phase execution orders are not unique")
+    if len({run_key for _, _, run_key in entries}) != len(entries):
+        raise RuntimeError("phase run keys are not unique")
+    return entries
+
+
+def validate_active_runs(
+    *,
+    manifest: dict[str, Any],
+    active_paid_cells: int,
+    active_runs: list[dict[str, Any]] | None,
+) -> dict[tuple[str, str], dict[str, Any]] | None:
+    if active_runs is None:
+        return None
+    if len(active_runs) != active_paid_cells:
+        raise RuntimeError(
+            "active run inventory disagrees with the active paid-cell count"
+        )
+    known: dict[tuple[str, str], tuple[str, str]] = {}
+    for phase in manifest["phases"]:
+        for _, _, run_key in phase_run_entries(phase):
+            for kind in ("training", "evaluation"):
+                identity = (kind, run_key)
+                if identity in known:
+                    raise RuntimeError(
+                        "campaign manifest contains duplicate active-run identities"
+                    )
+                known[identity] = (str(phase["phase"]), str(phase["campaign"]))
+    indexed: dict[tuple[str, str], dict[str, Any]] = {}
+    run_ids: set[int] = set()
+    for row in active_runs:
+        kind = str(row.get("kind", ""))
+        run_key = str(row.get("run_key", ""))
+        identity = (kind, run_key)
+        run_id = int(row.get("actions_run_id", 0))
+        if identity not in known:
+            raise RuntimeError(
+                f"active paid run is outside the frozen manifest: {kind}:{run_key}"
+            )
+        if identity in indexed or run_id in run_ids or run_id <= 0:
+            raise RuntimeError(
+                "active paid run inventory has duplicate or invalid ownership"
+            )
+        phase_name, campaign = known[identity]
+        if row.get("phase") not in (None, phase_name):
+            raise RuntimeError("active paid run has the wrong phase")
+        if row.get("campaign") != campaign:
+            raise RuntimeError("active paid run has the wrong campaign")
+        if row.get("status") not in {
+            "requested",
+            "queued",
+            "in_progress",
+            "waiting",
+            "pending",
+        }:
+            raise RuntimeError("active paid run inventory includes a non-active status")
+        indexed[identity] = row
+        run_ids.add(run_id)
+    return indexed
+
+
+def rolling_authorization(
+    *,
+    manifest: dict[str, Any],
+    phase: dict[str, Any],
+    state_dir: Path,
+    active_paid_cells: int,
+    active_index: dict[tuple[str, str], dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    if active_index is None and active_paid_cells:
+        raise RuntimeError("rolling scheduling requires the exact active-run inventory")
+    active_index = active_index or {}
+    maximum = int(manifest["global_max_active_paid_cells"])
+    slots = maximum - active_paid_cells
+    entries = phase_run_entries(phase)
+    entry_by_key = {run_key: (order, wave) for order, wave, run_key in entries}
+    phase_keys = set(entry_by_key)
+    active_phase = {
+        identity: row
+        for identity, row in active_index.items()
+        if identity[1] in phase_keys
+    }
+    active_elsewhere = set(active_index) - set(active_phase)
+
+    training = {
+        run_key: load_valid_receipt(
+            receipt_path(state_dir, "training", run_key),
+            run_key=run_key,
+            field="training_terminal_valid",
+        )
+        for _, _, run_key in entries
+    }
+    evaluation = {
+        run_key: (
+            load_valid_receipt(
+                receipt_path(state_dir, "evaluation", run_key),
+                run_key=run_key,
+                field="evaluation_terminal_valid",
+            )
+            if phase.get("evaluation_required", True)
+            else True
+        )
+        for _, _, run_key in entries
+    }
+    if all(training.values()) and all(evaluation.values()):
+        if active_phase:
+            raise RuntimeError(
+                "terminal-valid rolling phase still has active paid ownership"
+            )
+        return None
+    if active_elsewhere:
+        raise RuntimeError(
+            "an incomplete rolling phase overlaps active work from another phase"
+        )
+
+    scheduling = phase["scheduling"]
+    sentinel_orders = {
+        int(value) for value in scheduling.get("sentinel_execution_orders", [1])
+    }
+    sentinel_keys = {
+        run_key for order, _, run_key in entries if order in sentinel_orders
+    }
+    if len(sentinel_keys) != len(sentinel_orders):
+        raise RuntimeError(
+            "rolling schedule references an unknown sentinel execution order"
+        )
+    sentinel_complete = all(training[key] and evaluation[key] for key in sentinel_keys)
+    eligible_keys = phase_keys if sentinel_complete else sentinel_keys
+    forbidden_active = [
+        f"{kind}:{run_key}"
+        for kind, run_key in active_phase
+        if run_key not in eligible_keys
+    ]
+    if forbidden_active:
+        raise RuntimeError(
+            "pre-sentinel rolling work is active outside the frozen sentinel: "
+            + ", ".join(sorted(forbidden_active))
+        )
+
+    for kind, run_key in active_phase:
+        if kind == "training" and training[run_key]:
+            raise RuntimeError(
+                "terminal training receipt conflicts with an active training owner"
+            )
+        if kind == "evaluation" and (not training[run_key] or evaluation[run_key]):
+            raise RuntimeError(
+                "active evaluation owner conflicts with frozen receipt state"
+            )
+
+    if slots == 0:
+        return {
+            "contract": "pearl.scaling-paradox-authorization/1",
+            "action": "wait",
+            "reason": "global_paid_cell_cap_is_full",
+            "active_paid_cells": active_paid_cells,
+            "authorized_run_keys": [],
+        }
+
+    ordered_eligible = [
+        run_key for _, _, run_key in entries if run_key in eligible_keys
+    ]
+    continuations = {
+        run_key: load_valid_receipt(
+            continuation_path(state_dir, run_key),
+            run_key=run_key,
+            field="training_continuation_valid",
+        )
+        for run_key in ordered_eligible
+        if training[run_key] is None and ("training", run_key) not in active_phase
+    }
+    resumable = [run_key for run_key in ordered_eligible if continuations.get(run_key)]
+    evaluation_ready = [
+        run_key
+        for run_key in ordered_eligible
+        if training[run_key]
+        and not evaluation[run_key]
+        and ("evaluation", run_key) not in active_phase
+    ]
+    new_training = [
+        run_key
+        for run_key in ordered_eligible
+        if not training[run_key]
+        and not continuations.get(run_key)
+        and ("training", run_key) not in active_phase
+    ]
+
+    for run_key in new_training:
+        if (
+            submission_path(state_dir, "training", run_key).is_file()
+            or authorization_claim_path(state_dir, "training", run_key).is_file()
+        ):
+            raise RuntimeError(
+                "submitted training cell lacks an active owner or continuation receipt: "
+                + run_key
+            )
+    for run_key in evaluation_ready:
+        if (
+            submission_path(state_dir, "evaluation", run_key).is_file()
+            or authorization_claim_path(state_dir, "evaluation", run_key).is_file()
+        ):
+            raise RuntimeError(
+                "submitted evaluation cell lacks an active owner or terminal receipt: "
+                + run_key
+            )
+
+    def common(action: str, selected: list[str], workflow: str) -> dict[str, Any]:
+        waves = {run_key: entry_by_key[run_key][1] for run_key in selected}
+        authorization = {
+            "contract": "pearl.scaling-paradox-authorization/1",
+            "action": action,
+            "phase": phase["phase"],
+            "wave_index": min(int(wave["wave_index"]) for wave in waves.values()),
+            "wave_indices_by_run_key": {
+                run_key: int(waves[run_key]["wave_index"]) for run_key in selected
+            },
+            "campaign": phase["campaign"],
+            "stage": phase["stage"],
+            "workflow": workflow,
+            "plan_sha": phase["plan_sha"],
+            "authorized_run_keys": selected,
+            "max_active_after_dispatch": active_paid_cells + len(selected),
+            "scheduling_mode": "rolling_ordered",
+        }
+        return authorization
+
+    if resumable:
+        selected = resumable[:slots]
+        source_ids = {
+            run_key: int(continuations[run_key]["source_actions_run_id"])
+            for run_key in selected
+        }
+        completed = {
+            run_key: int(continuations[run_key]["completed_steps"])
+            for run_key in selected
+        }
+        segment_ends = {
+            run_key: training_segment_end(
+                manifest=manifest,
+                wave=entry_by_key[run_key][1],
+                run_key=run_key,
+                completed_steps=completed[run_key],
+            )
+            for run_key in selected
+        }
+        authorization = common("dispatch_training_resume", selected, phase["workflow"])
+        authorization.update(
+            {
+                "config": phase["config"],
+                "plan_dir": phase["plan_dir"],
+                "source_actions_run_ids": source_ids,
+                "source_artifact_prefix": phase["artifact_prefix"],
+                "completed_steps": completed,
+                "segment_end_steps": segment_ends,
+                "estimated_cost_usd": round(
+                    sum(
+                        estimated_segment_cost(
+                            wave=entry_by_key[run_key][1],
+                            run_key=run_key,
+                            start_step=completed[run_key],
+                            end_step=segment_ends[run_key],
+                        )
+                        for run_key in selected
+                    ),
+                    4,
+                ),
+            }
+        )
+    elif evaluation_ready:
+        selected = evaluation_ready[:slots]
+        source_ids = {
+            run_key: training[run_key].get("source_actions_run_id")
+            for run_key in selected
+        }
+        if any(
+            not isinstance(value, int) or value <= 0 for value in source_ids.values()
+        ):
+            raise RuntimeError(
+                "evaluation dispatch requires source Actions run IDs in training receipts"
+            )
+        authorization = common(
+            "dispatch_evaluation_wave", selected, phase["evaluation_workflow"]
+        )
+        authorization.update(
+            {
+                "source_workflow": phase["workflow"],
+                "source_actions_run_ids": source_ids,
+                "source_artifact_prefix": phase["artifact_prefix"],
+                "estimated_cost_usd": round(
+                    sum(
+                        float(
+                            entry_by_key[run_key][1][
+                                "estimated_checkpoint_evaluation_cost_by_run_key"
+                            ][run_key]
+                        )
+                        for run_key in selected
+                    ),
+                    4,
+                ),
+            }
+        )
+    elif new_training:
+        selected = new_training[:slots]
+        authorization = common("dispatch_training_wave", selected, phase["workflow"])
+        authorization.update(
+            {
+                "config": phase["config"],
+                "plan_dir": phase["plan_dir"],
+                "segment_end_steps": {
+                    run_key: training_segment_end(
+                        manifest=manifest,
+                        wave=entry_by_key[run_key][1],
+                        run_key=run_key,
+                        completed_steps=0,
+                    )
+                    for run_key in selected
+                },
+                "estimated_cost_usd": round(
+                    sum(
+                        estimated_segment_cost(
+                            wave=entry_by_key[run_key][1],
+                            run_key=run_key,
+                            start_step=0,
+                            end_step=training_segment_end(
+                                manifest=manifest,
+                                wave=entry_by_key[run_key][1],
+                                run_key=run_key,
+                                completed_steps=0,
+                            ),
+                        )
+                        for run_key in selected
+                    ),
+                    4,
+                ),
+            }
+        )
+    else:
+        return {
+            "contract": "pearl.scaling-paradox-authorization/1",
+            "action": "wait",
+            "reason": "eligible_rolling_cells_are_active",
+            "active_paid_cells": active_paid_cells,
+            "authorized_run_keys": [],
+        }
+    authorization["authorization_sha256"] = sha256_value(authorization)
+    return authorization
+
+
 def next_authorization(
-    *, manifest: dict[str, Any], state_dir: Path, active_paid_cells: int
+    *,
+    manifest: dict[str, Any],
+    state_dir: Path,
+    active_paid_cells: int,
+    active_runs: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     maximum = int(manifest["global_max_active_paid_cells"])
     if active_paid_cells < 0 or active_paid_cells > maximum:
-        raise RuntimeError("active paid cell count is invalid or exceeds the global cap")
+        raise RuntimeError(
+            "active paid cell count is invalid or exceeds the global cap"
+        )
+    active_index = validate_active_runs(
+        manifest=manifest,
+        active_paid_cells=active_paid_cells,
+        active_runs=active_runs,
+    )
     gate_path = state_dir / "analysis" / "adapter_rescue_gate.json"
     rescue_gate = read_json(gate_path) if gate_path.is_file() else None
     if rescue_gate is not None:
-        validate_rescue_gate(manifest=manifest, state_dir=state_dir, rescue_gate=rescue_gate)
+        validate_rescue_gate(
+            manifest=manifest, state_dir=state_dir, rescue_gate=rescue_gate
+        )
     for phase in manifest["phases"]:
         if phase_is_skipped(phase, rescue_gate):
             continue
@@ -712,6 +1268,17 @@ def next_authorization(
                 "reason": "frozen_adapter_rescue_gate_is_missing",
                 "authorized_run_keys": [],
             }
+        if (phase.get("scheduling") or {}).get("mode") == "rolling_ordered":
+            authorization = rolling_authorization(
+                manifest=manifest,
+                phase=phase,
+                state_dir=state_dir,
+                active_paid_cells=active_paid_cells,
+                active_index=active_index,
+            )
+            if authorization is not None:
+                return authorization
+            continue
         for wave in phase["waves"]:
             keys = list(wave["run_keys"])
             training = {
@@ -740,16 +1307,22 @@ def next_authorization(
                     )
                     for key in missing_training
                 }
-                resumable = [key for key, value in continuations.items() if value is not None]
+                resumable = [
+                    key for key, value in continuations.items() if value is not None
+                ]
                 if resumable:
-                    unresolved = [key for key in missing_training if continuations[key] is None]
+                    unresolved = [
+                        key for key in missing_training if continuations[key] is None
+                    ]
                     if unresolved:
                         raise RuntimeError(
                             "training wave mixes resumable and unowned missing cells: "
                             + ", ".join(unresolved)
                         )
                     if len(resumable) > maximum:
-                        raise RuntimeError("training continuation wave exceeds the global cap")
+                        raise RuntimeError(
+                            "training continuation wave exceeds the global cap"
+                        )
                     source_ids = {
                         key: int(continuations[key]["source_actions_run_id"])
                         for key in resumable
@@ -849,7 +1422,9 @@ def next_authorization(
             }
             if not phase.get("evaluation_required", True):
                 continue
-            missing_evaluation = [key for key, value in evaluation.items() if value is None]
+            missing_evaluation = [
+                key for key, value in evaluation.items() if value is None
+            ]
             if missing_evaluation:
                 if active_paid_cells:
                     return {
@@ -879,10 +1454,16 @@ def next_authorization(
                         + ", ".join(already_submitted)
                     )
                 source_run_ids = {
-                    key: training[key].get("source_actions_run_id") for key in missing_evaluation
+                    key: training[key].get("source_actions_run_id")
+                    for key in missing_evaluation
                 }
-                if any(not isinstance(value, int) or value <= 0 for value in source_run_ids.values()):
-                    raise RuntimeError("evaluation dispatch requires source Actions run IDs in training receipts")
+                if any(
+                    not isinstance(value, int) or value <= 0
+                    for value in source_run_ids.values()
+                ):
+                    raise RuntimeError(
+                        "evaluation dispatch requires source Actions run IDs in training receipts"
+                    )
                 authorization = {
                     "contract": "pearl.scaling-paradox-authorization/1",
                     "action": "dispatch_evaluation_wave",
@@ -896,7 +1477,9 @@ def next_authorization(
                     "authorized_run_keys": missing_evaluation,
                     "source_actions_run_ids": source_run_ids,
                     "source_artifact_prefix": phase["artifact_prefix"],
-                    "estimated_cost_usd": wave["estimated_checkpoint_evaluation_cost_usd"],
+                    "estimated_cost_usd": wave[
+                        "estimated_checkpoint_evaluation_cost_usd"
+                    ],
                     "max_active_after_dispatch": len(missing_evaluation),
                 }
                 authorization["authorization_sha256"] = sha256_value(authorization)
@@ -928,7 +1511,9 @@ def main() -> None:
     manifest_parser.add_argument("--output", required=True)
 
     audit_training_parser = subparsers.add_parser("audit-training")
-    audit_training_parser.add_argument("--campaign", choices=("original", "replication"), required=True)
+    audit_training_parser.add_argument(
+        "--campaign", choices=("original", "replication"), required=True
+    )
     audit_training_parser.add_argument("--stage", required=True)
     audit_training_parser.add_argument("--run-key", required=True)
     audit_training_parser.add_argument("--run-dir", required=True)
@@ -936,7 +1521,9 @@ def main() -> None:
     audit_training_parser.add_argument("--output", required=True)
 
     audit_evaluation_parser = subparsers.add_parser("audit-evaluation")
-    audit_evaluation_parser.add_argument("--campaign", choices=("original", "replication"), required=True)
+    audit_evaluation_parser.add_argument(
+        "--campaign", choices=("original", "replication"), required=True
+    )
     audit_evaluation_parser.add_argument("--stage", required=True)
     audit_evaluation_parser.add_argument("--run-key", required=True)
     audit_evaluation_parser.add_argument("--evaluation-dir", required=True)
@@ -947,6 +1534,7 @@ def main() -> None:
     next_parser = subparsers.add_parser("next")
     next_parser.add_argument("--state-dir", required=True)
     next_parser.add_argument("--active-paid-cells", type=int, required=True)
+    next_parser.add_argument("--active-runs-json")
     next_parser.add_argument("--output", required=True)
 
     for kind in ("training", "evaluation"):
@@ -985,6 +1573,11 @@ def main() -> None:
             manifest=manifest,
             state_dir=repo_path(args.state_dir),
             active_paid_cells=args.active_paid_cells,
+            active_runs=(
+                read_json(repo_path(args.active_runs_json))
+                if args.active_runs_json
+                else None
+            ),
         )
         write_json(repo_path(args.output), authorization)
         if authorization["action"] in {
@@ -992,7 +1585,11 @@ def main() -> None:
             "dispatch_training_resume",
             "dispatch_evaluation_wave",
         }:
-            kind = "evaluation" if authorization["action"] == "dispatch_evaluation_wave" else "training"
+            kind = (
+                "evaluation"
+                if authorization["action"] == "dispatch_evaluation_wave"
+                else "training"
+            )
             for run_key in authorization["authorized_run_keys"]:
                 write_json(
                     authorization_claim_path(repo_path(args.state_dir), kind, run_key),
@@ -1004,7 +1601,14 @@ def main() -> None:
                         "submitted": False,
                     },
                 )
-        print(json.dumps({"action": authorization["action"], "count": len(authorization["authorized_run_keys"])}))
+        print(
+            json.dumps(
+                {
+                    "action": authorization["action"],
+                    "count": len(authorization["authorized_run_keys"]),
+                }
+            )
+        )
     elif args.command.startswith("collect-"):
         kind = args.command.removeprefix("collect-")
         receipt = collect_actions_artifact(
@@ -1016,7 +1620,11 @@ def main() -> None:
         )
         print(
             json.dumps(
-                {"collected": kind, "run_key": receipt["run_key"] if receipt else None, "valid": bool(receipt)}
+                {
+                    "collected": kind,
+                    "run_key": receipt["run_key"] if receipt else None,
+                    "valid": bool(receipt),
+                }
             )
         )
     else:

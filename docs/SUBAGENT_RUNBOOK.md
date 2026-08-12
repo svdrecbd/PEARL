@@ -17,11 +17,16 @@ For the contemporary frontier extension, `docs/frontier_adaptation_v2_protocol.m
 `docs/FRONTIER_ADAPTATION_V2_EXECUTOR_PACKET.md` are the governing sources. Frontier v2 is a separate
 prospective 96-cell confirmatory matrix across Inkling, Nemotron, and GPT-OSS. It does not replace,
 relabel, or pool the Qwen v1 observations. Use only the frontier supervisors for v2 paid work.
-Nemotron 3 Ultra continuations are also supervisor decisions: the Executor invokes one assigned
+All frontier-model continuations are supervisor decisions: the Executor invokes an assigned
 `advance`, while the controller alone binds the prior artifact and selects the frozen next segment.
-Never dispatch a resume directly or convert a nonterminal segment into a replicate.
-For this one segmented path, multiple provider DPO records are continuation processes rather than
-replicates only when the frozen provider audit proves an exact match to the checkpoint lineage.
+Never dispatch a resume directly or convert a nonterminal segment into a replicate. Multiple
+provider DPO records are continuation processes rather than replicates only when the frozen provider
+audit proves an exact match to the checkpoint lineage. Each cohort retains a hard terminal-trained
+and terminal-evaluated sentinel. After it passes, the controller uses the pre-randomized rolling
+queue to keep up to six exact paid cells active; old wave numbers remain audit metadata. The Executor
+does not choose which freed slot is filled. A campaign-carry assignment may invoke successive
+`advance` transitions until the supervisor returns a mechanical wait, completion, analysis boundary,
+or stop condition.
 
 The clean-path research design and campaign engineering are complete. Remaining clean-path work is
 operational: invoke one frozen supervisor transition at a time, monitor remotely owned jobs, audit
