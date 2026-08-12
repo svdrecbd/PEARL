@@ -56,6 +56,13 @@ jobs:
           python scripts/manage_scaling_paradox_campaign.py --executor-config configs/experiments/frontier_adaptation_v2_executor.json write-manifest \
             --output "$STATE_DIR/campaign_manifest.json"
 
+      - name: Capture sanitized provider operational state
+        env:
+          TINKER_API_KEY: ${{ secrets.TINKER_API_KEY }}
+        run: |
+          python scripts/manage_scaling_paradox_campaign.py --executor-config configs/experiments/frontier_adaptation_v2_executor.json provider-snapshot \
+            --output "$STATE_DIR/provider_snapshot.json"
+
       - name: Compute the only permitted next transition
         run: |
           active=$(python - <<'PY'
@@ -69,11 +76,14 @@ jobs:
           phase_by_identity = {}
           for phase in manifest["phases"]:
               for wave in phase["waves"]:
-                  for run_key in wave["run_keys"]:
+                  for run_key, contract_sha in zip(wave["run_keys"], wave["run_contract_shas"], strict=True):
                       identity = (phase["campaign"], run_key)
                       if identity in phase_by_identity:
                           raise SystemExit(f"duplicate manifest run identity: {identity}")
-                      phase_by_identity[identity] = phase["phase"]
+                      phase_by_identity[identity] = {
+                          "phase": phase["phase"],
+                          "run_contract_sha": contract_sha,
+                      }
           active_rows = []
           title_pattern = re.compile(
               r"^Frontier (train|eval) (original|replication) (\S+) supervisor-([1-9][0-9]*)$"
@@ -86,7 +96,7 @@ jobs:
               result = subprocess.run(
                   [
                       "gh", "run", "list", "--workflow", workflow, "--limit", "1000",
-                      "--json", "databaseId,displayTitle,status",
+                      "--json", "createdAt,databaseId,displayTitle,startedAt,status,updatedAt",
                   ],
                   check=False, capture_output=True, text=True,
               )
@@ -109,9 +119,13 @@ jobs:
                       "supervisor_actions_run_id": int(supervisor_id),
                       "kind": kind,
                       "campaign": campaign,
-                      "phase": phase_by_identity[(campaign, run_key)],
+                      "phase": phase_by_identity[(campaign, run_key)]["phase"],
                       "run_key": run_key,
+                      "run_contract_sha": phase_by_identity[(campaign, run_key)]["run_contract_sha"],
                       "status": row["status"],
+                      "created_at": row["createdAt"],
+                      "started_at": row["startedAt"],
+                      "updated_at": row["updatedAt"],
                   })
           active_path = Path(os.environ["STATE_DIR"]) / "active_runs.json"
           active_path.write_text(json.dumps(active_rows, indent=2, sort_keys=True) + "\n")
@@ -121,6 +135,7 @@ jobs:
           python scripts/manage_scaling_paradox_campaign.py --executor-config configs/experiments/frontier_adaptation_v2_executor.json next \
             --state-dir "$STATE_DIR" --active-paid-cells "$active" \
             --active-runs-json "$STATE_DIR/active_runs.json" \
+            --provider-snapshot "$STATE_DIR/provider_snapshot.json" \
             --output supervisor/authorization.json
           action=$(jq -r .action supervisor/authorization.json)
           printf 'CAMPAIGN_ACTION=%s\n' "$action" >> "$GITHUB_ENV"
@@ -240,5 +255,6 @@ jobs:
             supervisor/state/submissions/
             supervisor/state/campaign_manifest.json
             supervisor/state/active_runs.json
+            supervisor/state/provider_snapshot.json
           if-no-files-found: warn
           retention-days: 90

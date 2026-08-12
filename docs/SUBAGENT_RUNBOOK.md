@@ -23,10 +23,13 @@ Never dispatch a resume directly or convert a nonterminal segment into a replica
 provider DPO records are continuation processes rather than replicates only when the frozen provider
 audit proves an exact match to the checkpoint lineage. Each cohort retains a hard terminal-trained
 and terminal-evaluated sentinel. After it passes, the controller uses the pre-randomized rolling
-queue to keep up to six exact paid cells active; old wave numbers remain audit metadata. The Executor
-does not choose which freed slot is filled. A campaign-carry assignment may invoke successive
-`advance` transitions until the supervisor returns a mechanical wait, completion, analysis boundary,
-or stop condition.
+queue under the prospective 12-to-24-to-47 result-blind capacity ramp; old wave numbers remain audit
+metadata. The Executor does not choose which freed slot is filled or decide whether a capacity gate
+passes. The controller requires the prior tier's exact ordered cells to have either an audited
+segment or 20 minutes of fresh, uncorrupted, uniquely owned provider progress. A campaign-carry
+assignment may invoke successive `advance` transitions until the supervisor returns a mechanical
+wait, completion, analysis boundary, or stop condition. Original and replication never overlap;
+structural jobs retain their separate six-job cap.
 
 The clean-path research design and campaign engineering are complete. Remaining clean-path work is
 operational: invoke one frozen supervisor transition at a time, monitor remotely owned jobs, audit

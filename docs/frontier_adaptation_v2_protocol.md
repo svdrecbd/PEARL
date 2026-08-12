@@ -84,7 +84,10 @@ Structural sampling is capped at $10.00 (estimated $8.97), for a $2,059.39 Tinke
 plan plus the $25.00 continuation-recovery allowance is capped at $2,084.39. The hard authorization
 envelope remains $2,300.00. GiveMeANode is capped at $481.83 and six active H100 jobs.
 
-All paid execution is remote and supervisor-owned. At most six cells may be active across both cohorts.
+All paid execution is remote and supervisor-owned. Frontier optimization uses the prospective
+capacity ramp below, with at most 47 paid cells active inside one cohort. Original and replication
+remain mutually exclusive. Structural generation and GiveMeANode folding retain their separate
+six-job limits.
 Closing or disconnecting the laptop does not stop a dispatched GitHub/Tinker worker or remote H100
 job. The laptop is required only to invoke the next transition or perform the mechanically specified
 manual GiveMeANode submission boundary.
@@ -169,12 +172,12 @@ audit metadata after each cohort sentinel has passed.
 
 Execution order 1 remains a hard sentinel for each cohort. It must have terminal-valid training and
 both endpoint evaluations before any later cell in that cohort can start. Thereafter, the supervisor
-fills available capacity from one deterministic queue, never exceeding six active training or
-evaluation cells. Valid continuations take priority, then terminal-checkpoint evaluations, then the
-next never-submitted training keys in pre-randomized order. Original must be completely trained and
-evaluated before the replication sentinel; cohorts never overlap. Exact active Actions IDs, kinds,
-campaigns, run keys, phases, and statuses are machine-validated before authorization. Unknown,
-duplicate, stale, or unowned activity fails closed.
+fills available capacity from one deterministic queue. Valid continuations take priority, then
+terminal-checkpoint evaluations, then never-submitted training keys in pre-randomized order.
+Original must be completely trained and evaluated before the replication sentinel; cohorts never
+overlap. Exact active Actions IDs, kinds, campaigns, run keys, contracts, phases, timestamps, and
+statuses are machine-validated before authorization. Unknown, duplicate, stale, or unowned activity
+fails closed.
 
 This is scheduling only. It changes no model, arm, seed, renderer, pair order, optimizer update,
 endpoint, analysis, cohort label, or spend ceiling. Based on frozen smoke timing and the measured
@@ -183,6 +186,42 @@ six-slot schedule is expected to reduce the clean-path campaign to about 15--18 
 endpoint evaluation and the presently estimated three-to-four-day structural phase. Provider
 capacity, retries, or infrastructure failures can widen that range; they do not permit a scientific
 substitution.
+
+### Prospective 12-to-24-to-cohort capacity ramp
+
+Before any post-sentinel v2 scientific endpoint was inspected, the user authorized a more aggressive
+operational ramp because the six-cell schedule made the wall time disproportionate to the scientific
+question. Executor contract v5 replaces the fixed six-cell frontier-optimization cap with three
+predeclared tiers:
+
+| Tier | Maximum active optimization cells | Machine gate |
+| --- | ---: | --- |
+| Initial | 12 | cohort sentinel terminal-trained and terminal-evaluated |
+| Expanded | 24 | first 12 ordered cells each have an audited segment or at least 20 minutes of fresh, uncorrupted provider progress |
+| Full cohort | 47 | first 24 ordered cells satisfy the same operational gate |
+
+The observation is result-blind. The supervisor reads only Actions ownership/status/timestamps and a
+sanitized Tinker snapshot containing run key, contract, stable provider ID, corruption state, and
+last-request time. It does not read margins, accuracies, losses, rewards, sequences, endpoint reports,
+or effect directions. An active cell counts as healthy only when it is `in_progress`, has existed for
+at least 20 minutes, has exactly the expected provider continuation ownership, is explicitly
+uncorrupted, and made a provider request within the previous 15 minutes. A terminal or nonterminal
+segment with a valid hashed audit receipt is stronger progress evidence and also satisfies the gate.
+Queued jobs do not satisfy a gate. Duplicate ownership, corruption, wrong contract, stale provider
+state, cross-cohort activity, or a non-prefix launch stops advancement.
+
+The maximum is 47 because the already-complete sentinel leaves 47 cells in a 48-cell cohort. GitHub
+may queue work above the account's hosted-runner concurrency, and Tinker may time-share clients; the
+ramp does not assume linear scaling. Those effects reduce realized speedup but do not change the
+scientific observations. If provider capacity absorbs the ramp, original and replication optimization
+can approach roughly three to five days combined instead of two weeks; adding endpoint collection
+and the separately six-job structural phase gives a best clean-path estimate of roughly six to nine
+days. This is an estimate, not a completion promise.
+
+The ramp changes neither the `$2,084.39` total Tinker ceiling nor any model, arm, seed, renderer,
+pair order, adapter, optimizer update, checkpoint, endpoint, analysis, or cohort label. It may expose
+more of the already-authorized cohort budget concurrently. The replication sentinel and its ramp
+remain blocked until every original cell and evaluation is terminal-valid.
 
 ## Prospective interpretation tree (primary-only, never operational)
 
