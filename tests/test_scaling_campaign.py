@@ -17,6 +17,7 @@ if str(SRC) not in sys.path:
 from pearl.scaling_campaign import (  # noqa: E402
     audit_evaluation_artifact,
     audit_provider_identity,
+    audit_training_continuation_artifact,
     audit_training_artifact,
     sha256_file,
     write_json,
@@ -134,6 +135,7 @@ def test_training_and_evaluation_audits_fail_closed(tmp_path: Path) -> None:
             "run_key": "cell-1",
             "run_contract_sha": "contract-sha",
             "provider_identity_valid": True,
+            "provider_continuation_chain_valid": True,
             "provider_corrupted": False,
             "provider_dpo_trainer_count": 1,
         },
@@ -163,6 +165,78 @@ def test_training_and_evaluation_audits_fail_closed(tmp_path: Path) -> None:
         )
 
 
+def test_training_continuation_audit_binds_exact_cursor_and_lineage(tmp_path: Path) -> None:
+    entry = {
+        **plan_entry(),
+        "max_steps": 10,
+        "max_pairs": 40,
+        "batch_pairs": 4,
+    }
+    run_dir = tmp_path / "continuation"
+    write_json(run_dir / "run_contract.json", entry)
+    write_json(
+        run_dir / "checkpoint_meta.json",
+        {
+            "epoch": 0,
+            "batch_index": 3,
+            "state_path": "tinker://step-3",
+            "checkpoint_name": "cell-1-chkpt-step3",
+            "completed_steps": 3,
+        },
+    )
+    write_json(
+        run_dir / "checkpoint_lineage.json",
+        {
+            "contract_sha": "contract-sha",
+            "checkpoints": [
+                {"step": 1, "state_path": "tinker://step-1", "checkpoint_name": "one", "terminal": False},
+                {
+                    "step": 3,
+                    "state_path": "tinker://step-3",
+                    "checkpoint_name": "cell-1-chkpt-step3",
+                    "terminal": False,
+                },
+            ],
+        },
+    )
+    write_json(
+        run_dir / "batch_reports_checkpoint.json",
+        [
+            {"epoch": 0, "batch_index": index, "forward_backward_metrics": {}}
+            for index in range(3)
+        ],
+    )
+    write_json(run_dir / "reference_margins.json", {"train_fingerprint": "frozen"})
+    write_json(
+        run_dir / "continuation_report.json",
+        {
+            "contract": "pearl.tinker-training-continuation/1",
+            "campaign_id": "campaign",
+            "run_key": "cell-1",
+            "run_contract_sha": "contract-sha",
+            "completed_steps": 3,
+            "target_steps": 10,
+            "checkpoint_path": "tinker://step-3",
+            "checkpoint_name": "cell-1-chkpt-step3",
+            "terminal": False,
+        },
+    )
+    receipt = audit_training_continuation_artifact(
+        plan_entry=entry,
+        run_dir=run_dir,
+        source_actions_run_id=99,
+    )
+    assert receipt["training_continuation_valid"] is True
+    assert receipt["completed_steps"] == 3
+    assert receipt["source_actions_run_id"] == 99
+
+    metadata = json.loads((run_dir / "checkpoint_meta.json").read_text())
+    metadata["batch_index"] = 4
+    write_json(run_dir / "checkpoint_meta.json", metadata)
+    with pytest.raises(RuntimeError, match="cursor"):
+        audit_training_continuation_artifact(plan_entry=entry, run_dir=run_dir)
+
+
 def test_provider_audit_distinguishes_reference_worker_and_duplicate_dpo() -> None:
     entry = plan_entry()
     metadata = {
@@ -178,6 +252,29 @@ def test_provider_audit_distinguishes_reference_worker_and_duplicate_dpo() -> No
     assert receipt["provider_dpo_trainer_id"] == "trainer"
     with pytest.raises(RuntimeError, match="exactly one"):
         audit_provider_identity(plan_entry=entry, provider_rows=rows + [dict(rows[-1], id="duplicate")])
+
+    continued = rows + [dict(rows[-1], id="continuation")]
+    lineage = {
+        "contract_sha": "contract-sha",
+        "checkpoints": [
+            {"step": 1, "state_path": "tinker://trainer/weights/one"},
+            {"step": 2, "state_path": "tinker://continuation/weights/two"},
+        ],
+    }
+    chained = audit_provider_identity(
+        plan_entry=entry,
+        provider_rows=continued,
+        checkpoint_lineage=lineage,
+    )
+    assert chained["provider_dpo_trainer_ids"] == ["trainer", "continuation"]
+    assert chained["provider_continuation_chain_valid"] is True
+    lineage["checkpoints"][-1]["state_path"] = "tinker://unowned/weights/two"
+    with pytest.raises(RuntimeError, match="continuation chain"):
+        audit_provider_identity(
+            plan_entry=entry,
+            provider_rows=continued,
+            checkpoint_lineage=lineage,
+        )
 
 
 def test_manager_never_redispatches_a_partial_or_submitted_wave(tmp_path: Path) -> None:

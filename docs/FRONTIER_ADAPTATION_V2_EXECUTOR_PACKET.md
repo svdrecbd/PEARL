@@ -22,8 +22,9 @@ The complete order is fixed:
 7. frozen original, replication, and combined structural analyses;
 8. primary-agent interpretation and manuscript writing.
 
-At most six paid cells are active. Tinker pre-structure is capped at $2,049.39; total Tinker is capped
-at $2,059.39 inside a $2,300 authorization envelope. GiveMeANode is capped at $481.83. Hash mismatch,
+At most six paid cells are active. Tinker pre-structure is capped at $2,049.39; planned total Tinker is
+$2,059.39, with a separately bounded $25 continuation-recovery allowance and a combined $2,084.39
+ceiling inside the $2,300 authorization envelope. GiveMeANode is capped at $481.83. Hash mismatch,
 duplicate ownership, missing lineage, partial artifact, unknown active count, renderer failure,
 unplanned spend, or an unhandled state means stop and escalate.
 
@@ -47,6 +48,25 @@ Actions artifacts, validates predecessors, counts active workers, publishes a on
 and dispatches only the next frozen wave. Workers are GitHub/Tinker-owned; laptop disconnect does not
 stop them. A training worker has a 330-minute supervised window. Invoke the next supervisor
 transition only after the prior wave is terminal and auditable.
+
+Nemotron 3 Ultra is deliberately segmented because its measured throughput cannot complete 2,250
+updates inside that window. The supervisor dispatches the initial 100-update segment and then exact
+150-update continuations of the same experimental unit. A continuation is not a relaunch: it restores
+the predecessor artifact and exact optimizer/model state, retains the run key, contract, seed, data
+order, cached reference margins, provider owner, and ordered batch history, and advances to one
+absolute step authorized in the receipt. The pre-segmentation Actions run `31554744343` is an exact
+allowlisted step-1 bootstrap; the manager validates it mechanically and does not count the unpersisted
+steps 2--132.
+
+For an Executor this introduces no discretionary command. After any Ultra segment is terminal and
+its artifact exists, invoke the same supervisor `status` or explicitly assigned single `advance`
+transition shown above. The supervisor will return or dispatch `dispatch_training_resume` when and
+only when the continuation is valid. Never call the worker directly, enter a source run ID, choose a
+segment size, extend the timeout, or treat an intermediate segment as terminal training evidence.
+An unexpected timeout or incomplete segment artifact is an escalation, not permission to retry.
+Multiple Tinker DPO records are expected only for these restored segments; the terminal provider
+audit must prove that their IDs exactly equal the checkpoint lineage. Any additional or missing ID is
+a duplicate/ownership failure.
 
 For local no-spend reconstruction:
 

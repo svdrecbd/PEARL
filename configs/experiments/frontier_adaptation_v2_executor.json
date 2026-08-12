@@ -1,5 +1,5 @@
 {
-  "contract": "pearl.frontier-adaptation-executor/2",
+  "contract": "pearl.frontier-adaptation-executor/3",
   "created_before_any_v2_outcome_review": true,
   "scientific_role": "contemporary frontier-scale confirmatory extension of the frozen Qwen scaling-paradox study",
   "global_max_active_paid_cells": 6,
@@ -17,6 +17,30 @@
   "planned_pre_structural_tinker_ceiling_usd": 2049.39,
   "planned_structural_sampling_ceiling_usd": 10.0,
   "planned_total_tinker_ceiling_usd": 2059.39,
+  "max_continuation_recovery_overhead_usd": 25.0,
+  "planned_total_with_recovery_ceiling_usd": 2084.39,
+  "training_slicing": {
+    "contract": "pearl.frontier-training-slicing/1",
+    "scientific_contract_unchanged": true,
+    "default": "terminal_in_one_worker",
+    "model_overrides": {
+      "nemotron3-ultra": {
+        "initial_segment_steps": 100,
+        "continuation_segment_steps": 150,
+        "reason": "observed wall time exceeds the remote supervised-worker boundary"
+      }
+    }
+  },
+  "legacy_training_continuation_actions_runs": {
+    "31554744343": {
+      "head_sha": "20a44a7a552f1a355acf9fbe7fc017abb1dae620",
+      "run_key": "core-fixed-rank-nemotron3-ultra-true-seed43-7bb65dbf6c",
+      "expected_completed_steps": 1,
+      "observed_steps_before_timeout": 132,
+      "estimated_recovery_overhead_usd": 3.3477,
+      "reason": "pre-segmentation worker reached the 330-minute boundary after checkpoint step 1"
+    }
+  },
   "campaigns": {
     "original": {
       "campaign_id": "pearl-frontier-adaptation-v2-original",
@@ -102,7 +126,7 @@
   "stop_conditions": [
     "unknown or mismatched plan hash",
     "missing or ambiguous artifact ownership",
-    "more than one provider trainer or evaluator owner for one contract",
+    "provider trainers do not exactly match the supervisor-authorized checkpoint continuation chain, or more than one evaluator owns one contract",
     "provider corrupted is not explicitly false",
     "active paid cell count is unknown or would exceed six",
     "estimated authorized spend would exceed the frozen envelope",

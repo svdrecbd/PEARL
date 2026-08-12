@@ -32,6 +32,7 @@ def load_launcher() -> Any:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-contract", required=True)
+    parser.add_argument("--checkpoint-lineage")
     parser.add_argument("--output", required=True)
     parser.add_argument("--provider-json", help="Offline provider-list fixture; otherwise query Tinker")
     args = parser.parse_args()
@@ -43,7 +44,16 @@ def main() -> None:
         rows = load_launcher().provider_runs()
     if not isinstance(rows, list):
         raise RuntimeError("provider run listing has an invalid shape")
-    receipt = audit_provider_identity(plan_entry=contract, provider_rows=rows)
+    lineage = (
+        json.loads(Path(args.checkpoint_lineage).read_text(encoding="utf-8"))
+        if args.checkpoint_lineage
+        else None
+    )
+    receipt = audit_provider_identity(
+        plan_entry=contract,
+        provider_rows=rows,
+        checkpoint_lineage=lineage,
+    )
     write_json(Path(args.output), receipt)
     print(json.dumps({"provider_identity_valid": True, "run_key": contract["run_key"]}))
 
