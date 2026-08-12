@@ -118,6 +118,28 @@ the complete set of DPO records exactly equals the ordered provider IDs encoded 
 checkpoint lineage and every record is explicitly uncorrupted. An extra provider record outside that
 chain is still a duplicate owner and stops the campaign.
 
+### Scheduling-only performance amendment
+
+The first Ultra workers also exposed a client scheduling defect before endpoint review. The DPO
+runner waited for the custom backward result before submitting the corresponding optimizer request.
+Tinker's custom-loss API has already completed the policy-logprob forward and submitted the backward
+request when `forward_backward_custom` returns its future, so the optimizer request can and should be
+submitted immediately, before either future is consumed. Waiting inserted an avoidable remote
+worker-pool clock-cycle bubble without changing the intended update.
+
+Executor release `frontier-adaptation-v2-executor-v1.0.2` therefore submits the custom backward and
+optimizer requests back-to-back and then consumes both results. It never overlaps different
+optimizer steps. Datum order, custom DPO loss, Adam parameters, restored optimizer/model state,
+checkpoint boundaries, seeds, endpoints, costs, and every frozen scientific identity remain
+unchanged. Each new batch record includes a `pearl.dpo-step-performance/1` timing receipt while the
+existing provider `clock_cycle:unique` metric remains the authoritative backend scheduling measure.
+
+The already-running step-2-through-151 Ultra continuation remains an unmodified sequential-schedule
+baseline. The next eligible supervisor-authorized continuation is the prospective operational
+comparison segment. `scripts/analyze_tinker_dpo_performance.py` must verify the exact historical
+batch prefix and compare predeclared non-overlapping step ranges. This comparison is engineering
+evidence only: it cannot exclude, relabel, repeat, or otherwise affect a scientific observation.
+
 ## Prospective interpretation tree (primary-only, never operational)
 
 This tree creates no gate, exclusion, relaunch, or permission. Executors remain result-blind.

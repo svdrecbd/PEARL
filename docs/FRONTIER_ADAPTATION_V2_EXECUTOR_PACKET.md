@@ -68,6 +68,25 @@ Multiple Tinker DPO records are expected only for these restored segments; the t
 audit must prove that their IDs exactly equal the checkpoint lineage. Any additional or missing ID is
 a duplicate/ownership failure.
 
+The source release may include the scheduling-only v1.0.2 amendment described in the protocol. It
+submits the custom backward and optimizer requests before waiting on either result and records
+operational timing evidence. This changes no scientific contract and grants no new Executor choice.
+Do not hand-edit performance rows or choose comparison windows. After the first v1.0.2 continuation
+is terminal-valid, a primary may run the frozen comparison against its exact v1.0.1 predecessor:
+
+```bash
+python scripts/analyze_tinker_dpo_performance.py \
+  --baseline-batches BASELINE_ARTIFACT/batch_reports_checkpoint.json \
+  --candidate-batches CANDIDATE_ARTIFACT/batch_reports_checkpoint.json \
+  --baseline-start-step 2 --baseline-end-step 151 \
+  --candidate-start-step 152 --candidate-end-step 301 \
+  --output PERFORMANCE_COMPARISON_JSON
+```
+
+If the predecessor ends at a different supervisor-authorized boundary, stop for a primary to version
+the comparison rather than inventing new ranges. Performance evidence never advances or blocks a
+scientific wave; only the ordinary continuation audit does.
+
 For local no-spend reconstruction:
 
 ```bash

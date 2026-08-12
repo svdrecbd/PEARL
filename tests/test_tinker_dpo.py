@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import os
-import math
+import importlib.util
 import json
+import math
+import os
 import subprocess
 import sys
 import tempfile
@@ -36,7 +37,70 @@ from pearl.tinker_dpo import (
 )
 
 
+def load_dpo_runner():
+    path = ROOT / "scripts" / "run_tinker_dpo_smoke.py"
+    spec = importlib.util.spec_from_file_location("run_tinker_dpo_smoke", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class TinkerDpoTests(unittest.TestCase):
+    def test_optimizer_is_submitted_before_either_training_result_is_consumed(self) -> None:
+        runner = load_dpo_runner()
+        events: list[str] = []
+
+        class _Future:
+            def __init__(self, name: str):
+                self.name = name
+
+            def result(self):
+                events.append(f"consume:{self.name}")
+                return type("Result", (), {"metrics": {}})()
+
+        class _Client:
+            def forward_backward_custom(self, batch_datums, loss_fn, loss_type_input=None):
+                self.batch_datums = batch_datums
+                self.loss_fn = loss_fn
+                self.loss_type_input = loss_type_input
+                events.append("submit:forward_backward_custom")
+                return _Future("forward_backward_custom")
+
+            def optim_step(self, adam_params):
+                self.adam_params = adam_params
+                events.append("submit:optim_step")
+                return _Future("optim_step")
+
+        client = _Client()
+        batch_datums = [object(), object()]
+        loss_fn = object()
+        adam_params = object()
+        _, _, performance = runner.run_dpo_optimizer_step(
+            client,
+            batch_datums,
+            loss_fn,
+            adam_params,
+        )
+
+        self.assertEqual(
+            events,
+            [
+                "submit:forward_backward_custom",
+                "submit:optim_step",
+                "consume:forward_backward_custom",
+                "consume:optim_step",
+            ],
+        )
+        self.assertIs(client.batch_datums, batch_datums)
+        self.assertIs(client.loss_fn, loss_fn)
+        self.assertEqual(client.loss_type_input, "logprobs")
+        self.assertIs(client.adam_params, adam_params)
+        self.assertEqual(
+            performance["request_schedule"],
+            "custom_backward_then_optimizer_before_result",
+        )
+
     def test_model_native_renderers_preserve_generation_prefix_and_target_mask(self) -> None:
         cases = (
             (
@@ -357,6 +421,14 @@ class TinkerDpoTests(unittest.TestCase):
             self.assertEqual([batch["batch_pair_count"] for batch in report["batches"]], [2, 1])
             self.assertEqual(report["batches"][0]["forward_backward_metrics"]["dpo_pair_count"], 2.0)
             self.assertEqual(report["batches"][1]["forward_backward_metrics"]["dpo_pair_count"], 1.0)
+            self.assertEqual(
+                report["batches"][0]["performance"]["request_schedule"],
+                "custom_backward_then_optimizer_before_result",
+            )
+            self.assertGreaterEqual(
+                report["batches"][0]["performance"]["client_step_wall_seconds"],
+                0.0,
+            )
 
 
 if __name__ == "__main__":
