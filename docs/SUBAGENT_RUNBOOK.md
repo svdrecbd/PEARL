@@ -204,9 +204,10 @@ Replication work additionally requires, in priority order:
 2. `configs/experiments/scaling_paradox_v1_replication.json` — exact replicated matrix.
 3. `.github/workflows/scaling-paradox-v1-replication.yml` — its only paid coordinator.
 
-Do not use the untracked `HANDOFF.md`, `PROJECT_LUMINOSITY.md`, `infra/`, old Concord scripts, old
-California Synthetic scripts, or old H100 scripts as PEARL authority. They are quarantine material.
-Do not stage, move, delete, or import them.
+The cross-repository `HANDOFF.md` is ignored in PEARL and maintained as private operational context.
+The August 2026 Project Luminosity documents, old launchers, and old H100 mechanics were moved to a
+labeled private historical archive. They remain useful forensic evidence but are not PEARL authority
+and must not be reconstructed or imported into a current campaign.
 
 Frozen identities for scaling-paradox v1:
 
@@ -414,9 +415,10 @@ outcome branch, alter execution, or write a scientific claim from it.
 - Expect unrelated untracked files. Never use `git add -A`.
 - Stage only explicit files created or edited for the assigned task.
 - Do not delete, rename, or reorganize user-owned untracked files.
-- Do not merge PEARL work with Concord, IMS, California Synthetic, Luminosity, or MirageBench product
-  code.
-- Generated contexts use `git archive`, not a filesystem copy, so quarantined files stay out.
+- Do not merge current PEARL scientific execution with Concord, IMS, California Synthetic,
+  Luminosity, or MirageBench product code. A private historical archive does not authorize reuse.
+- Generated contexts use `git archive`, not a filesystem copy, so ignored and private material stays
+  out.
 - Run focused tests, then the tracked test suite appropriate to the change.
 - PR text states scientific impact, checks, and whether external spend occurred.
 
