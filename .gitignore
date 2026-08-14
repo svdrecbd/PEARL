@@ -15,6 +15,7 @@ __pycache__/
 wandb/
 
 # Local notes and scratch artifacts
+/HANDOFF.md
 notes/FORLATERUSE.md
 .tinker_sampler_checkpoint_map.json
 .tmp_*/

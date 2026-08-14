@@ -25,8 +25,9 @@ context-limited agent working under a primary or supervisor.
    the campaign supervisor, which authorizes one exact frozen wave and dispatches one key per worker.
 6. Never treat duplicate runs as replicates, invent missing observations, hand-select endpoint
    candidates, or combine pilot and confirmatory cohorts.
-7. Never stage, import, copy, rewrite, or delete quarantined untracked Concord/California material.
-   A dirty worktree is expected; stage only explicit PEARL paths.
+7. The cross-repository `HANDOFF.md` is private operational context and is ignored at the PEARL
+   root. Never reconstruct or stage it as PEARL scientific authority. Historical Concord/California
+   and Luminosity material belongs in its labeled private archive; stage only explicit PEARL paths.
 8. A primary agent may delegate bounded tasks. A subagent must never delegate or spawn another agent.
 9. Stop and escalate on any hash mismatch, duplicate provider contract, unclear run ownership,
    missing checkpoint lineage, incomplete artifact, unplanned spend, or proposed conditional stage.
