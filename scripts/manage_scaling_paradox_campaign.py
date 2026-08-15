@@ -754,6 +754,7 @@ def collect_actions_artifact(
                         "actions_run_id": actions_run_id,
                         "run_key": run_key,
                         "receipt_sha256": receipt["receipt_sha256"],
+                        "checkpoint_lineage": receipt.get("checkpoint_lineage"),
                     },
                 )
                 return receipt
@@ -766,6 +767,7 @@ def collect_actions_artifact(
             "actions_run_id": actions_run_id,
             "run_key": run_key,
             "receipt_sha256": receipt["receipt_sha256"],
+            "checkpoint_lineage": receipt.get("checkpoint_lineage"),
         },
     )
     return receipt
@@ -1138,8 +1140,21 @@ def checkpoint_provider_ids(receipt: dict[str, Any] | None) -> list[str]:
         provider_id = state_path.removeprefix("tinker://").split("/weights/", 1)[0]
         if provider_id not in result:
             result.append(provider_id)
-    if not result:
-        raise RuntimeError("capacity gate found empty checkpoint provider lineage")
+    return result
+
+
+def all_prior_provider_ids(
+    state_dir: Path, run_key: str, continuation: dict[str, Any] | None
+) -> list[str]:
+    result: list[str] = list(checkpoint_provider_ids(continuation)) if continuation else []
+    actions_dir = state_dir / "actions_runs" / "training"
+    if actions_dir.is_dir():
+        for path in actions_dir.glob("*.json"):
+            data = read_json(path)
+            if data.get("run_key") == run_key:
+                for provider_id in checkpoint_provider_ids(data):
+                    if provider_id not in result:
+                        result.append(provider_id)
     return result
 
 
@@ -1274,7 +1289,7 @@ def rolling_capacity_limit(
                 raise RuntimeError(
                     "capacity-ramp provider ownership differs from the active plan"
                 )
-            prior_ids = checkpoint_provider_ids(continuation) if continuation else []
+            prior_ids = all_prior_provider_ids(state_dir, run_key, continuation)
             provider_ids = {
                 str(row["provider_training_run_id"]) for row in provider_rows
             }
