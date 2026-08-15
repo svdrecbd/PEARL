@@ -253,6 +253,11 @@ def audit_evaluation_artifact(
     report = read_json(report_path)
     operational = read_json(operational_path)
     provider = read_json(provider_path)
+    provider_quarantine_valid = provider.get("provider_quarantine_valid")
+    if provider_quarantine_valid is None:
+        provider_quarantine_valid = (
+            "quarantined_provider_dpo_trainer_ids" not in provider
+        )
     contract = report.get("contract") or {}
     if (
         training_receipt.get("run_key") != plan_entry["run_key"]
@@ -310,6 +315,7 @@ def audit_evaluation_artifact(
         or provider.get("run_contract_sha") != plan_entry["run_contract_sha"]
         or not provider.get("provider_identity_valid")
         or not provider.get("provider_continuation_chain_valid")
+        or not provider_quarantine_valid
         or provider.get("provider_corrupted") is not False
         or int(provider.get("provider_dpo_trainer_count", -1)) < 1
     ):
@@ -371,6 +377,7 @@ def audit_provider_identity(
     plan_entry: dict[str, Any],
     provider_rows: list[dict[str, Any]],
     checkpoint_lineage: dict[str, Any] | None = None,
+    quarantined_provider_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     matches: list[dict[str, Any]] = []
     for row in provider_rows:
@@ -394,7 +401,13 @@ def audit_provider_identity(
     if not provider_ids or len(provider_ids) != len(set(provider_ids)):
         raise RuntimeError("provider DPO trainer identities are absent or duplicated")
 
+    quarantined = list(quarantined_provider_ids or [])
+    if len(quarantined) != len(set(quarantined)) or any(not value for value in quarantined):
+        raise RuntimeError("provider quarantine contains duplicate or empty identities")
+
     if checkpoint_lineage is None:
+        if quarantined:
+            raise RuntimeError("provider quarantine requires an exact checkpoint lineage")
         if len(provider_ids) != 1:
             raise RuntimeError(
                 f"expected exactly one provider DPO trainer, observed {len(provider_ids)}"
@@ -414,8 +427,13 @@ def audit_provider_identity(
             provider_id = state_path.removeprefix("tinker://").split("/weights/", 1)[0]
             if provider_id not in lineage_provider_ids:
                 lineage_provider_ids.append(provider_id)
-        if set(lineage_provider_ids) != set(provider_ids):
-            raise RuntimeError("provider DPO trainers differ from the checkpoint continuation chain")
+        if set(lineage_provider_ids) & set(quarantined):
+            raise RuntimeError("provider quarantine overlaps the canonical checkpoint lineage")
+        expected_provider_ids = set(lineage_provider_ids) | set(quarantined)
+        if expected_provider_ids != set(provider_ids):
+            raise RuntimeError(
+                "provider DPO trainers differ from the canonical lineage plus exact quarantine"
+            )
     receipt = {
         "contract": "pearl.scaling-paradox-provider-audit/1",
         "campaign_id": plan_entry["campaign_id"],
@@ -424,6 +442,9 @@ def audit_provider_identity(
         "provider_dpo_trainer_id": lineage_provider_ids[-1],
         "provider_dpo_trainer_ids": lineage_provider_ids,
         "provider_dpo_trainer_count": len(lineage_provider_ids),
+        "provider_total_matching_dpo_record_count": len(provider_ids),
+        "quarantined_provider_dpo_trainer_ids": quarantined,
+        "provider_quarantine_valid": True,
         "provider_corrupted": False,
         "provider_continuation_chain_valid": True,
         "provider_identity_valid": True,
