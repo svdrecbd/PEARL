@@ -29,10 +29,39 @@ def load_launcher() -> Any:
     return module
 
 
+def quarantined_provider_ids(executor: dict[str, Any], run_key: str) -> list[str]:
+    claims = executor.get("redundant_training_continuation_quarantine", {})
+    if not isinstance(claims, dict):
+        raise RuntimeError("redundant continuation quarantine is malformed")
+    actions_ids: set[int] = set()
+    provider_ids: set[str] = set()
+    result: list[str] = []
+    for actions_id_text, claim in claims.items():
+        if not isinstance(claim, dict) or claim.get("contract") != (
+            "pearl.frontier-redundant-continuation-quarantine/1"
+        ):
+            raise RuntimeError("redundant continuation quarantine contract is invalid")
+        actions_id = int(actions_id_text)
+        provider_id = str(claim.get("redundant_provider_training_run_id") or "")
+        if actions_id <= 0 or actions_id in actions_ids or not provider_id:
+            raise RuntimeError("redundant continuation quarantine identity is invalid")
+        if provider_id in provider_ids:
+            raise RuntimeError("redundant provider identity is quarantined more than once")
+        actions_ids.add(actions_id)
+        provider_ids.add(provider_id)
+        if claim.get("run_key") == run_key:
+            result.append(provider_id)
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-contract", required=True)
     parser.add_argument("--checkpoint-lineage")
+    parser.add_argument(
+        "--executor-config",
+        help="Executor config containing exact redundant-provider quarantine claims",
+    )
     parser.add_argument("--output", required=True)
     parser.add_argument("--provider-json", help="Offline provider-list fixture; otherwise query Tinker")
     args = parser.parse_args()
@@ -49,10 +78,19 @@ def main() -> None:
         if args.checkpoint_lineage
         else None
     )
+    quarantined = (
+        quarantined_provider_ids(
+            json.loads(Path(args.executor_config).read_text(encoding="utf-8")),
+            str(contract["run_key"]),
+        )
+        if args.executor_config
+        else []
+    )
     receipt = audit_provider_identity(
         plan_entry=contract,
         provider_rows=rows,
         checkpoint_lineage=lineage,
+        quarantined_provider_ids=quarantined,
     )
     write_json(Path(args.output), receipt)
     print(json.dumps({"provider_identity_valid": True, "run_key": contract["run_key"]}))

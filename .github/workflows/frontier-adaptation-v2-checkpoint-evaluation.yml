@@ -154,6 +154,7 @@ jobs:
           lineage=$(python -c 'import json; print(json.load(open("source_paths.json"))["lineage"])')
           python scripts/audit_scaling_paradox_provider.py \
             --run-contract "$contract" --checkpoint-lineage "$lineage" \
+            --executor-config configs/experiments/frontier_adaptation_v2_executor.json \
             --output evaluation/provider_identity_receipt.json
           python scripts/evaluate_scaling_paradox_checkpoint.py \
             --run-contract "$contract" --training-report "$report" --output-dir evaluation

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -132,8 +133,78 @@ def build_provider_snapshot(
     return payload
 
 
+def validate_redundant_quarantine(
+    executor: dict[str, Any], plans: dict[tuple[str, str], dict[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    claims = executor.get("redundant_training_continuation_quarantine", {})
+    if not isinstance(claims, dict):
+        raise RuntimeError("redundant continuation quarantine is malformed")
+    provider_ids: set[str] = set()
+    canonical_provider_ids: set[str] = set()
+    canonical_ids: set[int] = set()
+    result: dict[str, dict[str, Any]] = {}
+    for actions_id_text, claim in claims.items():
+        if not isinstance(claim, dict) or claim.get("contract") != (
+            "pearl.frontier-redundant-continuation-quarantine/1"
+        ):
+            raise RuntimeError("redundant continuation quarantine contract is invalid")
+        actions_id = int(actions_id_text)
+        run_key = str(claim.get("run_key") or "")
+        _, _, entry = identify_plan_entry(plans, run_key)
+        canonical_id = int(claim.get("canonical_actions_run_id", 0))
+        source_id = int(claim.get("expected_source_actions_run_id", 0))
+        redundant_supervisor_id = int(claim.get("redundant_supervisor_run_id", 0))
+        canonical_supervisor_id = int(claim.get("canonical_supervisor_run_id", 0))
+        completed_steps = int(claim.get("expected_completed_steps", 0))
+        source_completed_steps = int(
+            claim.get("expected_source_completed_steps", 0)
+        )
+        provider_id = str(claim.get("redundant_provider_training_run_id") or "")
+        canonical_provider_id = str(
+            claim.get("canonical_provider_training_run_id") or ""
+        )
+        hashes = (
+            str(claim.get("canonical_authorization_sha256") or ""),
+            str(
+                claim.get("canonical_worker_authorization_receipt_sha256") or ""
+            ),
+            str(claim.get("redundant_authorization_sha256") or ""),
+            str(
+                claim.get("redundant_worker_authorization_receipt_sha256") or ""
+            ),
+        )
+        if (
+            actions_id <= 0
+            or canonical_id <= 0
+            or source_id <= 0
+            or redundant_supervisor_id <= 0
+            or canonical_supervisor_id <= 0
+            or actions_id == canonical_id
+            or completed_steps <= 0
+            or completed_steps >= int(entry["max_steps"])
+            or source_completed_steps <= 0
+            or source_completed_steps >= completed_steps
+            or not provider_id
+            or not canonical_provider_id
+            or provider_id == canonical_provider_id
+            or provider_id in provider_ids
+            or canonical_provider_id in canonical_provider_ids
+            or canonical_id in canonical_ids
+            or not re.fullmatch(r"[0-9a-f]{40}", str(claim.get("head_sha") or ""))
+            or any(not re.fullmatch(r"[0-9a-f]{64}", value) for value in hashes)
+            or float(claim.get("estimated_recovery_overhead_usd", -1.0)) < 0.0
+        ):
+            raise RuntimeError("redundant continuation quarantine identity is invalid")
+        provider_ids.add(provider_id)
+        canonical_provider_ids.add(canonical_provider_id)
+        canonical_ids.add(canonical_id)
+        result[actions_id_text] = claim
+    return result
+
+
 def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
     plans = build_plans(executor)
+    redundant_quarantine = validate_redundant_quarantine(executor, plans)
     launcher = load_launcher()
     phases: list[dict[str, Any]] = []
     for phase_index, phase_name in enumerate(executor["stage_order"], start=1):
@@ -279,6 +350,10 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
             for row in executor.get(
                 "legacy_training_continuation_actions_runs", {}
             ).values()
+        )
+        + sum(
+            float(row.get("estimated_recovery_overhead_usd", 0.0))
+            for row in redundant_quarantine.values()
         ),
         4,
     )
@@ -440,6 +515,226 @@ def gh_json(command: list[str]) -> Any:
     return json.loads(result.stdout)
 
 
+def dispatch_claim(
+    *,
+    action: str,
+    campaign: str,
+    stage: str,
+    run_key: str,
+    source_actions_run_id: int | None,
+    segment_end_step: int | None,
+) -> dict[str, Any]:
+    payload = {
+        "contract": "pearl.frontier-dispatch-claim/1",
+        "action": action,
+        "campaign": campaign,
+        "stage": stage,
+        "run_key": run_key,
+        "source_actions_run_id": source_actions_run_id,
+        "segment_end_step": segment_end_step,
+    }
+    payload["dispatch_claim_sha256"] = sha256_value(payload)
+    return payload
+
+
+def dispatch_claim_from_worker_auth(worker_auth: dict[str, Any]) -> dict[str, Any]:
+    source_value = worker_auth.get("source_training_actions_run_id")
+    segment_value = worker_auth.get("segment_end_step")
+    return dispatch_claim(
+        action=str(worker_auth["action"]),
+        campaign=str(worker_auth["campaign"]),
+        stage=str(worker_auth["stage"]),
+        run_key=str(worker_auth["run_key"]),
+        source_actions_run_id=(int(source_value) if source_value is not None else None),
+        segment_end_step=(int(segment_value) if segment_value is not None else None),
+    )
+
+
+def attach_and_validate_dispatch_claims(
+    state_dir: Path, authorization: dict[str, Any]
+) -> None:
+    action = str(authorization["action"])
+    kind = "evaluation" if action == "dispatch_evaluation_wave" else "training"
+    observed_claims: set[str] = set()
+    actions_dir = state_dir / "actions_runs" / kind
+    if actions_dir.is_dir():
+        for path in actions_dir.glob("*.json"):
+            marker = read_json(path)
+            claim_sha = str(marker.get("dispatch_claim_sha256") or "")
+            if claim_sha:
+                observed_claims.add(claim_sha)
+    claims: dict[str, dict[str, Any]] = {}
+    for run_key in authorization["authorized_run_keys"]:
+        source_value = (authorization.get("source_actions_run_ids") or {}).get(
+            run_key
+        )
+        segment_value = (authorization.get("segment_end_steps") or {}).get(run_key)
+        claim = dispatch_claim(
+            action=action,
+            campaign=str(authorization["campaign"]),
+            stage=str(authorization["stage"]),
+            run_key=str(run_key),
+            source_actions_run_id=(
+                int(source_value) if source_value is not None else None
+            ),
+            segment_end_step=(
+                int(segment_value) if segment_value is not None else None
+            ),
+        )
+        if claim["dispatch_claim_sha256"] in observed_claims:
+            raise RuntimeError("semantic dispatch claim was already consumed")
+        claims[str(run_key)] = claim
+    authorization["dispatch_claims"] = claims
+
+
+def quarantine_receipt_path(state_dir: Path, actions_run_id: int) -> Path:
+    return state_dir / "quarantines" / "training" / f"{actions_run_id}.json"
+
+
+def lineage_provider_ids(receipt: dict[str, Any]) -> list[str]:
+    result: list[str] = []
+    for checkpoint in receipt.get("checkpoint_lineage") or []:
+        state_path = str(checkpoint.get("state_path") or "")
+        if not state_path.startswith("tinker://") or "/weights/" not in state_path:
+            raise RuntimeError("checkpoint lineage has an invalid provider state path")
+        provider_id = state_path.removeprefix("tinker://").split("/weights/", 1)[0]
+        if provider_id not in result:
+            result.append(provider_id)
+    if not result:
+        raise RuntimeError("checkpoint lineage has no provider identity")
+    return result
+
+
+def provider_state_path_parts(checkpoint: dict[str, Any]) -> tuple[str, str]:
+    state_path = str(checkpoint.get("state_path") or "")
+    if not state_path.startswith("tinker://") or "/weights/" not in state_path:
+        raise RuntimeError("checkpoint lineage has an invalid provider state path")
+    provider_id, suffix = state_path.removeprefix("tinker://").split(
+        "/weights/", 1
+    )
+    return provider_id, suffix
+
+
+def quarantine_redundant_continuation(
+    *,
+    state_dir: Path,
+    actions_run_id: int,
+    claim: dict[str, Any],
+    prior: dict[str, Any],
+    receipt: dict[str, Any],
+    worker_auth: dict[str, Any],
+) -> None:
+    if int(prior.get("source_actions_run_id", 0)) != int(
+        claim["canonical_actions_run_id"]
+    ):
+        raise RuntimeError("redundant continuation canonical Actions owner differs")
+    if int(receipt.get("completed_steps", -1)) != int(
+        claim["expected_completed_steps"]
+    ) or int(prior.get("completed_steps", -2)) != int(
+        claim["expected_completed_steps"]
+    ):
+        raise RuntimeError("redundant continuation does not match the canonical boundary")
+    prior_lineage = prior.get("checkpoint_lineage") or []
+    redundant_lineage = receipt.get("checkpoint_lineage") or []
+    source_marker_path = (
+        state_dir
+        / "actions_runs"
+        / "training"
+        / f"{int(claim['expected_source_actions_run_id'])}.json"
+    )
+    if not source_marker_path.is_file():
+        raise RuntimeError("redundant continuation source lineage is unavailable")
+    source_marker = read_json(source_marker_path)
+    source_lineage = source_marker.get("checkpoint_lineage") or []
+    source_last_step = int(source_lineage[-1].get("step", -1)) if source_lineage else -1
+    if (
+        source_marker.get("run_key") != receipt.get("run_key")
+        or source_last_step != int(claim["expected_source_completed_steps"])
+        or len(prior_lineage) != len(redundant_lineage)
+        or len(source_lineage) >= len(prior_lineage)
+        or prior_lineage[: len(source_lineage)] != source_lineage
+        or redundant_lineage[: len(source_lineage)] != source_lineage
+    ):
+        raise RuntimeError("redundant continuation diverges before its final provider branch")
+    canonical_provider_id = str(claim["canonical_provider_training_run_id"])
+    quarantined_provider_id = str(claim["redundant_provider_training_run_id"])
+    for canonical_checkpoint, redundant_checkpoint in zip(
+        prior_lineage[len(source_lineage) :],
+        redundant_lineage[len(source_lineage) :],
+        strict=True,
+    ):
+        canonical_metadata = {
+            key: value
+            for key, value in canonical_checkpoint.items()
+            if key != "state_path"
+        }
+        redundant_metadata = {
+            key: value
+            for key, value in redundant_checkpoint.items()
+            if key != "state_path"
+        }
+        canonical_observed, canonical_suffix = provider_state_path_parts(
+            canonical_checkpoint
+        )
+        redundant_observed, redundant_suffix = provider_state_path_parts(
+            redundant_checkpoint
+        )
+        if (
+            canonical_metadata != redundant_metadata
+            or canonical_suffix != redundant_suffix
+            or canonical_observed != canonical_provider_id
+            or redundant_observed != quarantined_provider_id
+            or bool(canonical_checkpoint.get("terminal"))
+            or bool(redundant_checkpoint.get("terminal"))
+        ):
+            raise RuntimeError(
+                "redundant continuation final provider branch is not equivalent"
+            )
+    prior_provider_ids = lineage_provider_ids(prior)
+    redundant_provider_ids = lineage_provider_ids(receipt)
+    if (
+        quarantined_provider_id not in redundant_provider_ids
+        or quarantined_provider_id in prior_provider_ids
+        or canonical_provider_id not in prior_provider_ids
+        or canonical_provider_id in redundant_provider_ids
+        or set(redundant_provider_ids) - set(prior_provider_ids)
+        != {quarantined_provider_id}
+        or set(prior_provider_ids) - set(redundant_provider_ids)
+        != {canonical_provider_id}
+    ):
+        raise RuntimeError("redundant continuation provider branch is not exact")
+    quarantine = {
+        "contract": "pearl.frontier-redundant-continuation-quarantine-receipt/1",
+        "run_key": receipt["run_key"],
+        "redundant_actions_run_id": actions_run_id,
+        "canonical_actions_run_id": int(claim["canonical_actions_run_id"]),
+        "source_actions_run_id": int(claim["expected_source_actions_run_id"]),
+        "completed_steps": int(claim["expected_completed_steps"]),
+        "redundant_provider_training_run_id": quarantined_provider_id,
+        "canonical_receipt_sha256": prior["receipt_sha256"],
+        "redundant_receipt_sha256": receipt["receipt_sha256"],
+        "disposition": "excluded_operational_duplicate_not_a_replicate",
+        "scientific_values_omitted": True,
+    }
+    quarantine["quarantine_sha256"] = sha256_value(quarantine)
+    write_json(quarantine_receipt_path(state_dir, actions_run_id), quarantine)
+    consumed_dispatch_claim = dispatch_claim_from_worker_auth(worker_auth)
+    write_json(
+        state_dir / "actions_runs" / "training" / f"{actions_run_id}.json",
+        {
+            "actions_run_id": actions_run_id,
+            "run_key": receipt["run_key"],
+            "receipt_sha256": receipt["receipt_sha256"],
+            "checkpoint_lineage": receipt.get("checkpoint_lineage"),
+            "disposition": quarantine["disposition"],
+            "quarantine_sha256": quarantine["quarantine_sha256"],
+            "dispatch_claim_sha256": consumed_dispatch_claim[
+                "dispatch_claim_sha256"
+            ],
+        },
+    )
+
+
 def collect_actions_artifact(
     *,
     executor: dict[str, Any],
@@ -532,30 +827,54 @@ def collect_actions_artifact(
         legacy_continuation_claim = executor.get(
             "legacy_training_continuation_actions_runs", {}
         ).get(str(actions_run_id))
-        if legacy_continuation_claim is not None:
+        redundant_continuation_claim = executor.get(
+            "redundant_training_continuation_quarantine", {}
+        ).get(str(actions_run_id))
+        canonical_quarantine_claims = [
+            claim
+            for claim in executor.get(
+                "redundant_training_continuation_quarantine", {}
+            ).values()
+            if int(claim.get("canonical_actions_run_id", 0)) == actions_run_id
+        ]
+        if len(canonical_quarantine_claims) > 1:
+            raise RuntimeError("canonical continuation is claimed by multiple quarantines")
+        canonical_quarantine_claim = (
+            canonical_quarantine_claims[0] if canonical_quarantine_claims else None
+        )
+        if (
+            legacy_continuation_claim is not None
+            and redundant_continuation_claim is not None
+        ):
+            raise RuntimeError("continuation cannot be both legacy and redundant")
+        special_continuation_claim = (
+            redundant_continuation_claim or legacy_continuation_claim
+        )
+        if special_continuation_claim is not None:
             if kind != "training":
                 raise RuntimeError(
-                    "legacy continuation allowlist was used outside training"
+                    "continuation exception was used outside training"
                 )
-            if run["headSha"] != legacy_continuation_claim["head_sha"]:
+            if run["headSha"] != special_continuation_claim["head_sha"]:
                 raise RuntimeError(
-                    "legacy continuation has the wrong approved source commit"
+                    "continuation exception has the wrong approved source commit"
                 )
-            if run_key != legacy_continuation_claim["run_key"]:
-                raise RuntimeError("legacy continuation has the wrong approved run key")
-        write_json(
-            submission_path(state_dir, kind, run_key),
-            {
-                "contract": "pearl.scaling-paradox-submission/1",
-                "kind": kind,
-                "campaign": campaign,
-                "stage": stage,
-                "run_key": run_key,
-                "source_actions_run_id": actions_run_id,
-                "source_artifact_id": int(artifact["id"]),
-                "source_commit_sha": run["headSha"],
-            },
-        )
+            if run_key != special_continuation_claim["run_key"]:
+                raise RuntimeError("continuation exception has the wrong approved run key")
+        if redundant_continuation_claim is None:
+            write_json(
+                submission_path(state_dir, kind, run_key),
+                {
+                    "contract": "pearl.scaling-paradox-submission/1",
+                    "kind": kind,
+                    "campaign": campaign,
+                    "stage": stage,
+                    "run_key": run_key,
+                    "source_actions_run_id": actions_run_id,
+                    "source_artifact_id": int(artifact["id"]),
+                    "source_commit_sha": run["headSha"],
+                },
+            )
         worker_auth: dict[str, Any] | None = None
         legacy = executor.get("legacy_original_core_actions_runs", {})
         if str(actions_run_id) in legacy:
@@ -609,6 +928,31 @@ def collect_actions_artifact(
                 raise RuntimeError(
                     "worker authorization receipt differs from the collected cell"
                 )
+            if canonical_quarantine_claim is not None:
+                expected_canonical = {
+                    "receipt_sha256": canonical_quarantine_claim[
+                        "canonical_worker_authorization_receipt_sha256"
+                    ],
+                    "source_training_actions_run_id": int(
+                        canonical_quarantine_claim["expected_source_actions_run_id"]
+                    ),
+                    "segment_end_step": int(
+                        canonical_quarantine_claim["expected_completed_steps"]
+                    ),
+                    "supervisor_run_id": int(
+                        canonical_quarantine_claim["canonical_supervisor_run_id"]
+                    ),
+                    "authorization_sha256": canonical_quarantine_claim[
+                        "canonical_authorization_sha256"
+                    ],
+                }
+                if any(
+                    worker_auth.get(key) != value
+                    for key, value in expected_canonical.items()
+                ):
+                    raise RuntimeError(
+                        "canonical continuation authorization differs from quarantine"
+                    )
             if kind == "evaluation":
                 training_evidence = read_json(
                     receipt_path(state_dir, "training", run_key)
@@ -629,7 +973,34 @@ def collect_actions_artifact(
                     raise RuntimeError(
                         "training resume lacks a collected predecessor continuation"
                     )
-                if (
+                if redundant_continuation_claim is not None:
+                    expected_redundant = {
+                        "receipt_sha256": redundant_continuation_claim[
+                            "redundant_worker_authorization_receipt_sha256"
+                        ],
+                        "source_training_actions_run_id": int(
+                            redundant_continuation_claim[
+                                "expected_source_actions_run_id"
+                            ]
+                        ),
+                        "segment_end_step": int(
+                            redundant_continuation_claim["expected_completed_steps"]
+                        ),
+                        "supervisor_run_id": int(
+                            redundant_continuation_claim["redundant_supervisor_run_id"]
+                        ),
+                        "authorization_sha256": redundant_continuation_claim[
+                            "redundant_authorization_sha256"
+                        ],
+                    }
+                    if any(
+                        worker_auth.get(key) != value
+                        for key, value in expected_redundant.items()
+                    ):
+                        raise RuntimeError(
+                            "redundant continuation authorization differs from quarantine"
+                        )
+                elif (
                     worker_auth.get("source_training_actions_run_id")
                     != prior_continuation.get("source_actions_run_id")
                     and legacy_continuation_claim is None
@@ -680,6 +1051,12 @@ def collect_actions_artifact(
                 ) != int(legacy_continuation_claim["expected_completed_steps"]):
                     raise RuntimeError(
                         "legacy continuation has the wrong completed-step count"
+                    )
+                if redundant_continuation_claim is not None and int(
+                    receipt["completed_steps"]
+                ) != int(redundant_continuation_claim["expected_completed_steps"]):
+                    raise RuntimeError(
+                        "redundant continuation has the wrong completed-step count"
                     )
         else:
             receipt = audit_evaluation_artifact(
@@ -744,6 +1121,16 @@ def collect_actions_artifact(
         prior = read_json(existing_owner)
         if is_continuation:
             if int(receipt["completed_steps"]) <= int(prior.get("completed_steps", -1)):
+                if redundant_continuation_claim is not None:
+                    quarantine_redundant_continuation(
+                        state_dir=state_dir,
+                        actions_run_id=actions_run_id,
+                        claim=redundant_continuation_claim,
+                        prior=prior,
+                        receipt=receipt,
+                        worker_auth=worker_auth,
+                    )
+                    return receipt
                 if legacy_continuation_claim is None:
                     raise RuntimeError(
                         "training continuation did not advance monotonically"
@@ -761,15 +1148,18 @@ def collect_actions_artifact(
         elif int(prior.get("source_actions_run_id", -1)) != actions_run_id:
             raise RuntimeError("run key already has a different terminal Actions owner")
     write_json(existing_owner, receipt)
-    write_json(
-        state_dir / "actions_runs" / kind / f"{actions_run_id}.json",
-        {
-            "actions_run_id": actions_run_id,
-            "run_key": run_key,
-            "receipt_sha256": receipt["receipt_sha256"],
-            "checkpoint_lineage": receipt.get("checkpoint_lineage"),
-        },
-    )
+    marker = {
+        "actions_run_id": actions_run_id,
+        "run_key": run_key,
+        "receipt_sha256": receipt["receipt_sha256"],
+        "checkpoint_lineage": receipt.get("checkpoint_lineage"),
+    }
+    if worker_auth is not None:
+        consumed_dispatch_claim = dispatch_claim_from_worker_auth(worker_auth)
+        marker["dispatch_claim_sha256"] = consumed_dispatch_claim[
+            "dispatch_claim_sha256"
+        ]
+    write_json(state_dir / "actions_runs" / kind / f"{actions_run_id}.json", marker)
     return receipt
 
 
@@ -811,7 +1201,7 @@ def sync_github_state(
                     "--workflow",
                     workflow,
                     "--limit",
-                    "500",
+                    "1000",
                     "--json",
                     "databaseId,status,displayTitle",
                 ],
@@ -853,6 +1243,141 @@ def sync_github_state(
                     )
                 counts[kind] += 1
     return counts
+
+
+def build_paid_actions_inventory(
+    *,
+    manifest: dict[str, Any],
+    state_dir: Path,
+    rows_by_kind: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    known: dict[tuple[str, str], dict[str, Any]] = {}
+    for phase in manifest["phases"]:
+        for wave in phase["waves"]:
+            for run_key, contract_sha in zip(
+                wave["run_keys"], wave["run_contract_shas"], strict=True
+            ):
+                identity = (str(phase["campaign"]), str(run_key))
+                if identity in known:
+                    raise RuntimeError("campaign manifest has a duplicate run identity")
+                known[identity] = {
+                    "phase": phase["phase"],
+                    "run_contract_sha": contract_sha,
+                }
+    title_pattern = re.compile(
+        r"^Frontier (train|eval) (original|replication) (\S+) supervisor-([1-9][0-9]*)$"
+    )
+    active_rows: list[dict[str, Any]] = []
+    active_identities: set[tuple[str, str]] = set()
+    for expected_kind, rows in rows_by_kind.items():
+        if expected_kind not in {"training", "evaluation"}:
+            raise RuntimeError("paid Actions inventory has an unknown kind")
+        for row in rows:
+            title = str(row.get("displayTitle") or "")
+            match = title_pattern.fullmatch(title)
+            if match is None:
+                if row.get("status") != "completed" and "supervisor-" in title:
+                    raise RuntimeError(f"unrecognized active paid-run title: {title}")
+                continue
+            title_kind, campaign, run_key, supervisor_id = match.groups()
+            kind = "training" if title_kind == "train" else "evaluation"
+            identity = (campaign, run_key)
+            if kind != expected_kind or identity not in known:
+                raise RuntimeError(f"paid Actions identity is outside the manifest: {title}")
+            actions_run_id = int(row.get("databaseId", 0))
+            if actions_run_id <= 0:
+                raise RuntimeError("paid Actions inventory has an invalid run ID")
+            status = str(row.get("status") or "")
+            if status == "completed":
+                marker = (
+                    state_dir / "actions_runs" / kind / f"{actions_run_id}.json"
+                )
+                if not marker.is_file():
+                    raise RuntimeError(
+                        "paid run became terminal after artifact reconstruction: "
+                        f"{kind} Actions run {actions_run_id} ({title}); rerun the "
+                        "supervisor without dispatch"
+                    )
+                continue
+            if status not in {"requested", "queued", "in_progress", "waiting", "pending"}:
+                raise RuntimeError("paid Actions inventory has an unknown status")
+            active_identity = (kind, run_key)
+            if active_identity in active_identities:
+                raise RuntimeError("active paid run inventory has duplicate ownership")
+            active_identities.add(active_identity)
+            active_rows.append(
+                {
+                    "actions_run_id": actions_run_id,
+                    "supervisor_actions_run_id": int(supervisor_id),
+                    "kind": kind,
+                    "campaign": campaign,
+                    "phase": known[identity]["phase"],
+                    "run_key": run_key,
+                    "run_contract_sha": known[identity]["run_contract_sha"],
+                    "status": status,
+                    "created_at": row.get("createdAt"),
+                    "started_at": row.get("startedAt"),
+                    "updated_at": row.get("updatedAt"),
+                }
+            )
+    return sorted(active_rows, key=lambda row: int(row["actions_run_id"]))
+
+
+def query_paid_actions_inventory(
+    *, executor: dict[str, Any], manifest: dict[str, Any], state_dir: Path
+) -> list[dict[str, Any]]:
+    workflows = {
+        "training": tuple(
+            dict.fromkeys(
+                str(campaign["workflow"])
+                for campaign in executor["campaigns"].values()
+            )
+        ),
+        "evaluation": tuple(
+            dict.fromkeys(
+                str(
+                    campaign.get(
+                        "evaluation_workflow",
+                        "scaling-paradox-checkpoint-evaluation.yml",
+                    )
+                )
+                for campaign in executor["campaigns"].values()
+            )
+        ),
+    }
+    rows_by_kind: dict[str, list[dict[str, Any]]] = {
+        "training": [],
+        "evaluation": [],
+    }
+    for kind, names in workflows.items():
+        for workflow in names:
+            result = subprocess.run(
+                [
+                    "gh",
+                    "run",
+                    "list",
+                    "--workflow",
+                    workflow,
+                    "--limit",
+                    "1000",
+                    "--json",
+                    "createdAt,databaseId,displayTitle,startedAt,status,updatedAt",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                cwd=ROOT,
+            )
+            if result.returncode != 0:
+                if kind == "evaluation" and "not found" in result.stderr.lower():
+                    continue
+                raise RuntimeError(f"could not query paid Actions state for {workflow}")
+            rows_by_kind[kind].extend(json.loads(result.stdout))
+    return build_paid_actions_inventory(
+        manifest=manifest,
+        state_dir=state_dir,
+        rows_by_kind=rows_by_kind,
+    )
 
 
 def receipt_path(state_dir: Path, kind: str, run_key: str) -> Path:
@@ -1147,14 +1672,30 @@ def all_prior_provider_ids(
     state_dir: Path, run_key: str, continuation: dict[str, Any] | None
 ) -> list[str]:
     result: list[str] = list(checkpoint_provider_ids(continuation)) if continuation else []
-    actions_dir = state_dir / "actions_runs" / "training"
-    if actions_dir.is_dir():
-        for path in actions_dir.glob("*.json"):
+    quarantine_dir = state_dir / "quarantines" / "training"
+    if quarantine_dir.is_dir():
+        for path in quarantine_dir.glob("*.json"):
             data = read_json(path)
-            if data.get("run_key") == run_key:
-                for provider_id in checkpoint_provider_ids(data):
-                    if provider_id not in result:
-                        result.append(provider_id)
+            supplied_sha = data.get("quarantine_sha256")
+            unsigned = {
+                key: value
+                for key, value in data.items()
+                if key != "quarantine_sha256"
+            }
+            if (
+                supplied_sha != sha256_value(unsigned)
+                or data.get("contract")
+                != "pearl.frontier-redundant-continuation-quarantine-receipt/1"
+                or data.get("disposition")
+                != "excluded_operational_duplicate_not_a_replicate"
+            ):
+                raise RuntimeError("capacity gate found a malformed quarantine receipt")
+            if data.get("run_key") != run_key:
+                continue
+            provider_id = str(data.get("redundant_provider_training_run_id") or "")
+            if not provider_id or provider_id in result:
+                raise RuntimeError("capacity gate found ambiguous quarantined ownership")
+            result.append(provider_id)
     return result
 
 
@@ -1641,6 +2182,7 @@ def rolling_authorization(
             "active_paid_cells": active_paid_cells,
             "authorized_run_keys": [],
         }
+    attach_and_validate_dispatch_claims(state_dir, authorization)
     authorization["authorization_sha256"] = sha256_value(authorization)
     return authorization
 
@@ -1926,6 +2468,10 @@ def main() -> None:
     provider_parser = subparsers.add_parser("provider-snapshot")
     provider_parser.add_argument("--output", required=True)
 
+    inventory_parser = subparsers.add_parser("write-active-inventory")
+    inventory_parser.add_argument("--state-dir", required=True)
+    inventory_parser.add_argument("--output", required=True)
+
     audit_training_parser = subparsers.add_parser("audit-training")
     audit_training_parser.add_argument(
         "--campaign", choices=("original", "replication"), required=True
@@ -1969,6 +2515,14 @@ def main() -> None:
         write_json(repo_path(args.output), manifest)
     elif args.command == "provider-snapshot":
         write_json(repo_path(args.output), build_provider_snapshot(plans))
+    elif args.command == "write-active-inventory":
+        active_rows = query_paid_actions_inventory(
+            executor=executor,
+            manifest=manifest,
+            state_dir=repo_path(args.state_dir),
+        )
+        write_json(repo_path(args.output), active_rows)
+        print(json.dumps({"active_paid_cells": len(active_rows)}))
     elif args.command == "audit-training":
         entry = plan_entry(plans, args.campaign, args.stage, args.run_key)
         receipt = audit_training_artifact(

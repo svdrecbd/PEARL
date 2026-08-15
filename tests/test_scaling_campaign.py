@@ -268,8 +268,40 @@ def test_provider_audit_distinguishes_reference_worker_and_duplicate_dpo() -> No
     )
     assert chained["provider_dpo_trainer_ids"] == ["trainer", "continuation"]
     assert chained["provider_continuation_chain_valid"] is True
+    quarantined = audit_provider_identity(
+        plan_entry=entry,
+        provider_rows=continued + [dict(rows[-1], id="redundant-branch")],
+        checkpoint_lineage=lineage,
+        quarantined_provider_ids=["redundant-branch"],
+    )
+    assert quarantined["provider_dpo_trainer_ids"] == ["trainer", "continuation"]
+    assert quarantined["quarantined_provider_dpo_trainer_ids"] == [
+        "redundant-branch"
+    ]
+    assert quarantined["provider_total_matching_dpo_record_count"] == 3
+    with pytest.raises(RuntimeError, match="canonical lineage plus exact quarantine"):
+        audit_provider_identity(
+            plan_entry=entry,
+            provider_rows=continued
+            + [
+                dict(rows[-1], id="redundant-branch"),
+                dict(rows[-1], id="unknown-extra"),
+            ],
+            checkpoint_lineage=lineage,
+            quarantined_provider_ids=["redundant-branch"],
+        )
+    with pytest.raises(RuntimeError, match="overlaps"):
+        audit_provider_identity(
+            plan_entry=entry,
+            provider_rows=continued,
+            checkpoint_lineage=lineage,
+            quarantined_provider_ids=["continuation"],
+        )
     lineage["checkpoints"][-1]["state_path"] = "tinker://unowned/weights/two"
-    with pytest.raises(RuntimeError, match="continuation chain"):
+    with pytest.raises(
+        RuntimeError,
+        match="canonical lineage plus exact quarantine",
+    ):
         audit_provider_identity(
             plan_entry=entry,
             provider_rows=continued,

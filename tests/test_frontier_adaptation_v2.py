@@ -7,6 +7,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -96,7 +97,7 @@ def test_frontier_manifest_budget_and_smoke_transition_are_fail_closed(
     )
     assert observed_training == 1910.2628
     assert observed_training <= executor["planned_training_ceiling_usd"]
-    assert manifest["observed_continuation_recovery_overhead_usd"] == 3.3477
+    assert manifest["observed_continuation_recovery_overhead_usd"] == 6.5524
     assert manifest["planned_total_with_recovery_ceiling_usd"] == 2084.39
     assert (
         manifest["planned_total_with_recovery_ceiling_usd"]
@@ -677,6 +678,228 @@ def test_frontier_capacity_ramp_waits_for_observation_and_rejects_duplicate_prov
         raise AssertionError("capacity ramp accepted duplicate provider ownership")
 
 
+def test_frontier_inventory_stops_when_a_worker_finishes_after_reconstruction(
+    tmp_path: Path,
+) -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    manifest = {
+        "phases": [
+            {
+                "phase": "original:core",
+                "campaign": "original",
+                "waves": [
+                    {
+                        "run_keys": ["cell-a"],
+                        "run_contract_shas": ["contract-a"],
+                    }
+                ],
+            }
+        ]
+    }
+    terminal = {
+        "databaseId": 101,
+        "displayTitle": "Frontier train original cell-a supervisor-99",
+        "status": "completed",
+    }
+    with pytest.raises(RuntimeError, match="became terminal after artifact reconstruction"):
+        manager.build_paid_actions_inventory(
+            manifest=manifest,
+            state_dir=tmp_path,
+            rows_by_kind={"training": [terminal], "evaluation": []},
+        )
+
+    write_json(
+        tmp_path / "actions_runs/training/101.json",
+        {"actions_run_id": 101, "run_key": "cell-a"},
+    )
+    assert (
+        manager.build_paid_actions_inventory(
+            manifest=manifest,
+            state_dir=tmp_path,
+            rows_by_kind={"training": [terminal], "evaluation": []},
+        )
+        == []
+    )
+
+    active = {
+        **terminal,
+        "databaseId": 102,
+        "status": "in_progress",
+        "createdAt": "2026-08-15T00:00:00Z",
+        "startedAt": "2026-08-15T00:00:01Z",
+        "updatedAt": "2026-08-15T00:00:02Z",
+    }
+    inventory = manager.build_paid_actions_inventory(
+        manifest=manifest,
+        state_dir=tmp_path,
+        rows_by_kind={"training": [active], "evaluation": []},
+    )
+    assert [row["actions_run_id"] for row in inventory] == [102]
+
+
+def test_frontier_semantic_dispatch_claim_cannot_be_consumed_twice(
+    tmp_path: Path,
+) -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    authorization = {
+        "action": "dispatch_training_resume",
+        "campaign": "original",
+        "stage": "core",
+        "authorized_run_keys": ["cell-a"],
+        "source_actions_run_ids": {"cell-a": 100},
+        "segment_end_steps": {"cell-a": 650},
+    }
+    consumed = manager.dispatch_claim(
+        action="dispatch_training_resume",
+        campaign="original",
+        stage="core",
+        run_key="cell-a",
+        source_actions_run_id=100,
+        segment_end_step=650,
+    )
+    write_json(
+        tmp_path / "actions_runs/training/200.json",
+        {
+            "actions_run_id": 200,
+            "run_key": "cell-a",
+            "dispatch_claim_sha256": consumed["dispatch_claim_sha256"],
+        },
+    )
+    with pytest.raises(RuntimeError, match="semantic dispatch claim was already consumed"):
+        manager.attach_and_validate_dispatch_claims(tmp_path, authorization)
+
+    authorization["segment_end_steps"]["cell-a"] = 900
+    manager.attach_and_validate_dispatch_claims(tmp_path, authorization)
+    assert authorization["dispatch_claims"]["cell-a"]["segment_end_step"] == 900
+
+
+def test_frontier_redundant_quarantine_claims_are_exact_and_unique() -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    executor = json.loads(
+        (ROOT / "configs/experiments/frontier_adaptation_v2_executor.json").read_text()
+    )
+    claims = manager.validate_redundant_quarantine(
+        executor, manager.build_plans(executor)
+    )
+    assert set(map(int, claims)) == {
+        31872368393,
+        31872376941,
+        31872940776,
+        31872956133,
+    }
+    assert len({row["canonical_actions_run_id"] for row in claims.values()}) == 4
+    assert len(
+        {row["redundant_provider_training_run_id"] for row in claims.values()}
+    ) == 4
+    assert all(
+        row["reason"]
+        == "duplicate concurrent continuation dispatched before prior slice became observable"
+        for row in claims.values()
+    )
+
+
+def test_frontier_quarantine_preserves_canonical_branch_and_rejects_prefix_drift(
+    tmp_path: Path,
+) -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    prior = {
+        "run_key": "cell-a",
+        "source_actions_run_id": 200,
+        "completed_steps": 650,
+        "receipt_sha256": "a" * 64,
+        "checkpoint_lineage": [
+            {
+                "step": 400,
+                "state_path": "tinker://source/weights/400",
+                "terminal": False,
+            },
+            {
+                "step": 650,
+                "state_path": "tinker://canonical/weights/650",
+                "terminal": False,
+            },
+        ],
+    }
+    redundant = {
+        "run_key": "cell-a",
+        "source_actions_run_id": 201,
+        "completed_steps": 650,
+        "receipt_sha256": "b" * 64,
+        "checkpoint_lineage": [
+            {
+                "step": 400,
+                "state_path": "tinker://source/weights/400",
+                "terminal": False,
+            },
+            {
+                "step": 650,
+                "state_path": "tinker://redundant/weights/650",
+                "terminal": False,
+            },
+        ],
+    }
+    claim = {
+        "canonical_actions_run_id": 200,
+        "expected_source_actions_run_id": 100,
+        "expected_source_completed_steps": 400,
+        "expected_completed_steps": 650,
+        "canonical_provider_training_run_id": "canonical",
+        "redundant_provider_training_run_id": "redundant",
+    }
+    worker_auth = {
+        "action": "dispatch_training_resume",
+        "campaign": "original",
+        "stage": "core",
+        "run_key": "cell-a",
+        "source_training_actions_run_id": 100,
+        "segment_end_step": 650,
+    }
+    source_marker = {
+        "run_key": "cell-a",
+        "checkpoint_lineage": [
+            {
+                "step": 400,
+                "state_path": "tinker://source/weights/400",
+                "terminal": False,
+            }
+        ],
+    }
+    write_json(tmp_path / "actions_runs/training/100.json", source_marker)
+    manager.quarantine_redundant_continuation(
+        state_dir=tmp_path,
+        actions_run_id=201,
+        claim=claim,
+        prior=prior,
+        receipt=redundant,
+        worker_auth=worker_auth,
+    )
+    quarantine = json.loads(
+        (tmp_path / "quarantines/training/201.json").read_text()
+    )
+    assert quarantine["canonical_actions_run_id"] == 200
+    assert quarantine["disposition"] == (
+        "excluded_operational_duplicate_not_a_replicate"
+    )
+    assert prior["source_actions_run_id"] == 200
+
+    drifted = json.loads(json.dumps(redundant))
+    drifted["checkpoint_lineage"][0]["state_path"] = (
+        "tinker://different-source/weights/400"
+    )
+    write_json(
+        tmp_path / "drifted/actions_runs/training/100.json", source_marker
+    )
+    with pytest.raises(RuntimeError, match="diverges before"):
+        manager.quarantine_redundant_continuation(
+            state_dir=tmp_path / "drifted",
+            actions_run_id=202,
+            claim=claim,
+            prior=prior,
+            receipt=drifted,
+            worker_auth=worker_auth,
+        )
+
+
 def test_frontier_executor_segments_every_frozen_model_without_changing_plan_hashes() -> (
     None
 ):
@@ -726,6 +949,7 @@ def test_frontier_resume_worker_restores_inside_the_immutable_run_directory() ->
     evaluator = (
         ROOT / ".github/workflows/frontier-adaptation-v2-checkpoint-evaluation.yml"
     ).read_text()
+    manager = (ROOT / "scripts/manage_scaling_paradox_campaign.py").read_text()
     trainer = (ROOT / "scripts/run_tinker_dpo_smoke.py").read_text()
     assert '--dir "$restore_dir"' in worker
     assert (
@@ -745,8 +969,9 @@ def test_frontier_resume_worker_restores_inside_the_immutable_run_directory() ->
     assert '--checkpoint-lineage "$lineage"' in evaluator
     assert "provider-snapshot" in supervisor
     assert "secrets.TINKER_API_KEY" in supervisor
+    assert "write-active-inventory" in supervisor
     assert (
-        '"createdAt,databaseId,displayTitle,startedAt,status,updatedAt"' in supervisor
+        '"createdAt,databaseId,displayTitle,startedAt,status,updatedAt"' in manager
     )
     assert '--provider-snapshot "$STATE_DIR/provider_snapshot.json"' in supervisor
 

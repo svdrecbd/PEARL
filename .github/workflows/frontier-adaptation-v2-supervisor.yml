@@ -65,73 +65,11 @@ jobs:
 
       - name: Compute the only permitted next transition
         run: |
-          active=$(python - <<'PY'
-          import json
-          import os
-          import re
-          import subprocess
-          from pathlib import Path
-
-          manifest = json.load(open(Path(os.environ["STATE_DIR"]) / "campaign_manifest.json"))
-          phase_by_identity = {}
-          for phase in manifest["phases"]:
-              for wave in phase["waves"]:
-                  for run_key, contract_sha in zip(wave["run_keys"], wave["run_contract_shas"], strict=True):
-                      identity = (phase["campaign"], run_key)
-                      if identity in phase_by_identity:
-                          raise SystemExit(f"duplicate manifest run identity: {identity}")
-                      phase_by_identity[identity] = {
-                          "phase": phase["phase"],
-                          "run_contract_sha": contract_sha,
-                      }
-          active_rows = []
-          title_pattern = re.compile(
-              r"^Frontier (train|eval) (original|replication) (\S+) supervisor-([1-9][0-9]*)$"
-          )
-          workflows = {
-              "frontier-adaptation-v2.yml": "training",
-              "frontier-adaptation-v2-checkpoint-evaluation.yml": "evaluation",
-          }
-          for workflow, expected_kind in workflows.items():
-              result = subprocess.run(
-                  [
-                      "gh", "run", "list", "--workflow", workflow, "--limit", "1000",
-                      "--json", "createdAt,databaseId,displayTitle,startedAt,status,updatedAt",
-                  ],
-                  check=False, capture_output=True, text=True,
-              )
-              if result.returncode != 0:
-                  if workflow == "frontier-adaptation-v2-checkpoint-evaluation.yml" and "not found" in result.stderr.lower():
-                      continue
-                  raise SystemExit(f"could not query active state for {workflow}")
-              for row in json.loads(result.stdout):
-                  if row["status"] not in {"requested", "queued", "in_progress", "waiting", "pending"}:
-                      continue
-                  match = title_pattern.fullmatch(row["displayTitle"])
-                  if match is None:
-                      raise SystemExit(f"unrecognized active paid-run title: {row['displayTitle']}")
-                  title_kind, campaign, run_key, supervisor_id = match.groups()
-                  kind = "training" if title_kind == "train" else "evaluation"
-                  if kind != expected_kind or (campaign, run_key) not in phase_by_identity:
-                      raise SystemExit(f"active paid-run identity is outside the frozen manifest: {row['displayTitle']}")
-                  active_rows.append({
-                      "actions_run_id": int(row["databaseId"]),
-                      "supervisor_actions_run_id": int(supervisor_id),
-                      "kind": kind,
-                      "campaign": campaign,
-                      "phase": phase_by_identity[(campaign, run_key)]["phase"],
-                      "run_key": run_key,
-                      "run_contract_sha": phase_by_identity[(campaign, run_key)]["run_contract_sha"],
-                      "status": row["status"],
-                      "created_at": row["createdAt"],
-                      "started_at": row["startedAt"],
-                      "updated_at": row["updatedAt"],
-                  })
-          active_path = Path(os.environ["STATE_DIR"]) / "active_runs.json"
-          active_path.write_text(json.dumps(active_rows, indent=2, sort_keys=True) + "\n")
-          print(len(active_rows))
-          PY
-          )
+          python scripts/manage_scaling_paradox_campaign.py \
+            --executor-config configs/experiments/frontier_adaptation_v2_executor.json \
+            write-active-inventory --state-dir "$STATE_DIR" \
+            --output "$STATE_DIR/active_runs.json"
+          active=$(jq 'length' "$STATE_DIR/active_runs.json")
           python scripts/manage_scaling_paradox_campaign.py --executor-config configs/experiments/frontier_adaptation_v2_executor.json next \
             --state-dir "$STATE_DIR" --active-paid-cells "$active" \
             --active-runs-json "$STATE_DIR/active_runs.json" \
@@ -253,6 +191,9 @@ jobs:
             supervisor/authorization.json
             supervisor/state/receipts/
             supervisor/state/submissions/
+            supervisor/state/actions_runs/
+            supervisor/state/continuations/
+            supervisor/state/quarantines/
             supervisor/state/campaign_manifest.json
             supervisor/state/active_runs.json
             supervisor/state/provider_snapshot.json
