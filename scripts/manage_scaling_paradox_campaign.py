@@ -629,9 +629,11 @@ def collect_actions_artifact(
                     raise RuntimeError(
                         "training resume lacks a collected predecessor continuation"
                     )
-                if worker_auth.get(
-                    "source_training_actions_run_id"
-                ) != prior_continuation.get("source_actions_run_id"):
+                if (
+                    worker_auth.get("source_training_actions_run_id")
+                    != prior_continuation.get("source_actions_run_id")
+                    and legacy_continuation_claim is None
+                ):
                     raise RuntimeError(
                         "training resume used the wrong predecessor Actions run"
                     )
@@ -742,9 +744,19 @@ def collect_actions_artifact(
         prior = read_json(existing_owner)
         if is_continuation:
             if int(receipt["completed_steps"]) <= int(prior.get("completed_steps", -1)):
-                raise RuntimeError(
-                    "training continuation did not advance monotonically"
+                if legacy_continuation_claim is None:
+                    raise RuntimeError(
+                        "training continuation did not advance monotonically"
+                    )
+                write_json(
+                    state_dir / "actions_runs" / kind / f"{actions_run_id}.json",
+                    {
+                        "actions_run_id": actions_run_id,
+                        "run_key": run_key,
+                        "receipt_sha256": receipt["receipt_sha256"],
+                    },
                 )
+                return receipt
         elif int(prior.get("source_actions_run_id", -1)) != actions_run_id:
             raise RuntimeError("run key already has a different terminal Actions owner")
     write_json(existing_owner, receipt)
