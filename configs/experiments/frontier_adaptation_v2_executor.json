@@ -90,6 +90,22 @@
       "observed_steps_before_timeout": 650,
       "estimated_recovery_overhead_usd": 0.8521,
       "reason": "duplicate concurrent continuation dispatched before prior slice became observable"
+    },
+    "31872940776": {
+      "head_sha": "1122780e7663b36bf0d2b469af46f9b3a5418666",
+      "run_key": "core-fixed-rank-gptoss-120b-true-seed43-79c733d9e7",
+      "expected_completed_steps": 1050,
+      "observed_steps_before_timeout": 1050,
+      "estimated_recovery_overhead_usd": 0.9842,
+      "reason": "duplicate concurrent continuation dispatched before prior slice became observable"
+    },
+    "31872956133": {
+      "head_sha": "1122780e7663b36bf0d2b469af46f9b3a5418666",
+      "run_key": "core-fixed-rank-gptoss-120b-true-seed17-6aecd7fbc1",
+      "expected_completed_steps": 1050,
+      "observed_steps_before_timeout": 1050,
+      "estimated_recovery_overhead_usd": 0.9842,
+      "reason": "duplicate concurrent continuation dispatched before prior slice became observable"
     }
   },
   "campaigns": {
