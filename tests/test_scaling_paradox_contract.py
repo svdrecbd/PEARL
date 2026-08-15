@@ -328,6 +328,13 @@ def test_subagent_runbook_is_bound_to_frozen_contract_and_contamination_rules() 
     assert "Stopping a local" in runbook
     assert "`gh run watch` is harmless; cancelling the GitHub workflow is not" in runbook
     assert '"Useful" is scope expansion, not low-stakes autonomy' in runbook
+    assert "## Absolute boundary: anomaly means stop, not repair" in runbook
+    assert "### Tests are alarms, not instructions" in runbook
+    assert "### Duplicate or ambiguous ownership is an incident" in runbook
+    assert "never independently modify the campaign control plane" in runbook
+    assert "never commits or pushes directly to `main`" in runbook
+    assert "never edit the contract to make unexpected state legal" in runbook
+    assert "docs/frontier_adaptation_v2_incident_20260815.md" in runbook
     assert "f63f3bd2f9f0654c819f3f5a806145847c9b899ae16859d870c7a3b320d43226" in runbook
     assert "ac90ed77143986eeaec127983df8306c7ced37cd7aed38b87fdc2cb6e7c66b5d" in runbook
     assert "1f410d4346b354b789408729c2c7cfc1f0bdef3b9580716171d86593bd9e9a22" in runbook
