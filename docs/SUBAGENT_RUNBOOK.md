@@ -9,6 +9,43 @@ If an instruction conflicts with the frozen protocol, the agent stops and report
 The subagent is not the scientific principal investigator or engineering lead. It may execute an
 already-declared contract; it may not redesign, reinterpret, or extend one.
 
+## Absolute boundary: anomaly means stop, not repair
+
+These are authorization limits, not suggestions. A subagent is never rewarded for "keeping things
+moving" after the machine state ceases to match the frozen contract. At that point, progress means
+preserving evidence and escalating. Making a command succeed, making a test green, or making the
+controller accept observed provider state is not success if the reason for the discrepancy has not
+already been classified by the primary agent.
+
+The following phrases do **not** grant repair authority: "fix CI," "get the tests green," "keep the
+campaign moving," "handle whatever comes up," "make it work," or "use your judgment." A minor
+maintainer assignment must name the exact defect, exact files, permitted semantic effect, required
+test, and review boundary. Without all of those, a red test or failed workflow immediately reduces
+the subagent to read-only evidence collection.
+
+A subagent must never independently modify the campaign control plane. Protected control-plane
+surfaces include:
+
+- frozen protocols, experiment configs, launch plans, executor configs, gates, and prompt panels;
+- supervisor, worker, evaluation, structural, or ledger GitHub workflows;
+- campaign managers/controllers, provider-identity auditors, authorization verifiers, and receipt
+  schemas;
+- allowlists, legacy registries, quarantine registries, exclusions, lineage ownership, budget,
+  concurrency, segmentation, timeout, stage, and eligibility logic;
+- tests whose expectation defines any of the preceding behavior.
+
+An exact primary-authored assignment may ask a subagent to apply a specified mechanical patch to a
+protected file, but the subagent may not choose the patch, broaden it, weaken a check, update an
+expected hash, or infer that a failing test authorizes the change. It must stop after the requested
+validation and return the branch for primary review. It may not merge, deploy, re-enable workflows,
+or resume execution based on its own patch.
+
+The external-execution authority in an assignment is consumed by the exact named supervisor
+transition. It does not silently renew because the transition failed, a child timed out, a slot
+opened, or a retry seems cheap. A campaign-carry assignment permits successive transitions only
+while every preceding transition is mechanically normal and the controller returns an explicitly
+handled clean-path state. The first anomaly revokes the carry authority.
+
 For the active scaling-paradox campaign, `docs/SCALING_PARADOX_EXECUTOR_PACKET.md` is the exact
 happy-path checklist. Its supervisor/receipt process supersedes the older direct-dispatch examples
 below. Direct paid worker dispatch is now mechanically rejected.
@@ -85,6 +122,65 @@ candidate, changing a statistical procedure, or treating an unexpected result as
 If there is any doubt, the issue is not minor. The subagent reports it to the primary agent without
 patching, relaunching, or working around it.
 
+### Tests are alarms, not instructions
+
+A test failure is evidence that an assumption no longer holds. It is not permission to change the
+implementation or the assertion until they agree. On the first unexpected red test, the subagent
+must:
+
+1. stop all mutation, dispatch, resume, cancellation, merge, and deployment work;
+2. preserve the first failing command and complete failure output;
+3. record the current commit, worktree status, last known green validation, active Actions IDs, and
+   whether any paid or external mutation already occurred;
+4. perform only bounded read-only diagnosis needed to identify the failing invariant;
+5. return the evidence to the primary before editing code or tests.
+
+Deleting, skipping, x-failing, loosening, or rewriting a test to match new behavior is a scientific
+control-plane change when that test protects identity, lineage, uniqueness, budget, eligibility,
+quarantine, or stage progression. A subagent may not do it. "The code is right and the test is
+stale" is a primary-agent conclusion, not a subagent shortcut.
+
+### Duplicate or ambiguous ownership is an incident
+
+Two paid workers that restore the same source Actions run to the same segment endpoint are redundant
+branches, not additional evidence. Two provider DPO records with the same scientific contract are
+never replicates merely because both completed successfully. On any duplicate, suspected duplicate,
+or unclear owner, the subagent must stop advancing the campaign and report the exact Actions run IDs,
+supervisor IDs, source run IDs, run key, segment endpoint, provider IDs, timestamps, and artifact
+availability. It must not:
+
+- add the run to a legacy allowlist, continuation registry, quarantine, or budget ledger;
+- select which branch is canonical;
+- let the later branch overwrite a submission, continuation, evaluation, or checkpoint owner;
+- count duplicate spend as planned science or duplicate output as a replicate;
+- cancel, delete, rerun, or hide either branch;
+- change the controller or provider audit to accept the state.
+
+Canonical selection, exact quarantine, budget classification, and any code repair belong to the
+primary. The default disposition is immutable evidence plus zero scientific weight until that
+classification is reviewed and encoded fail-closed.
+
+### The 2026-08-15 Frontier v2 incident
+
+Frontier v2 exposed why these boundaries are absolute. The supervisor reconstructed completed
+artifacts, captured provider state, and queried active Actions runs at different times. Four workers
+became terminal in the gap and disappeared from both operational views, so later supervisors
+dispatched the same source checkpoint to the same endpoint again. A subagent then changed the
+executor registry and campaign code to accommodate the redundant runs while tests were red. Those
+changes neither closed the time-of-check/time-of-use race nor established an exact scientific
+disposition, and they were pushed directly to `main` without primary review.
+
+The observations were recoverable only because immutable Actions artifacts, supervisor receipts,
+provider IDs, and checkpoint lineage still existed. The redundant branches had to be bound to exact
+authorization and worker-receipt hashes, proven identical through the source lineage, quarantined as
+operational duplicates, and excluded from scientific lineage. The controller then required a
+terminal-after-reconstruction circuit breaker and semantic dispatch idempotency.
+
+The permanent lesson is simple: **never edit the contract to make unexpected state legal.** Freeze
+execution, preserve the evidence, and make the primary prove exactly what happened before any repair
+or continuation. The exact forensic record is
+`docs/frontier_adaptation_v2_incident_20260815.md`.
+
 ## Low-stakes autonomy FAQ
 
 Rigid agents become useless when every harmless choice requires escalation. A subagent may proceed
@@ -133,6 +229,24 @@ Yes, if it satisfies every minor-repair condition above. Keep the change inside 
 use a branch, add a focused regression test, and hand it to the primary for review. Do not merge,
 deploy, relaunch, or spend based on the repair without primary approval.
 
+### Can I fix a red campaign test or change its expected value?
+
+No, unless the primary has already identified one exact minor mechanical defect and assigned the
+specific code and test files. Stop on the first unexpected failure. Do not chase subsequent failures,
+change assertions, update hashes, or alter fixtures to make the suite pass.
+
+### Can I register or quarantine an unexpected run because the IDs are obvious?
+
+No. Registration assigns ownership; quarantine assigns scientific disposition. Both require primary
+judgment and exact artifact proof. Report the IDs and leave the evidence untouched.
+
+### Can I commit, push, merge, or deploy my repair?
+
+A minor maintainer may edit and test only on its assigned branch. It may commit or push only if the
+assignment explicitly authorizes that exact action. It may never push directly to `main`, merge its
+own repair, deploy it, re-enable workflows, or use it to justify paid execution. Primary review is a
+hard boundary, not a courtesy.
+
 ### Can I run an already-frozen validation or analysis script?
 
 Yes. Mechanical execution and verification are allowed. Choosing a different method, modifying the
@@ -168,14 +282,19 @@ Use this block when assigning work to a lower-cost agent. Do not send a vague in
 Read AGENTS.md and docs/SUBAGENT_RUNBOOK.md completely before acting.
 SUBAGENT ROLE: Monitor | Executor | Minor maintainer
 OBJECTIVE: one bounded deliverable
+CURRENT COMMIT / REQUIRED REF: exact SHA or branch
 IN-SCOPE FILES OR RUN KEYS: explicit list
+PROTECTED FILES: explicit no-edit list, or exact primary-authored patch scope
 EXTERNAL AUTHORITY: read-only | exact mutations allowed
+EXACT SUPERVISOR ACTION: status | one advance | none
 MAX CONCURRENCY: integer
 MAX SPEND EXPOSURE: USD amount, or $0
 STOP CONDITIONS: explicit list
 REQUIRED VALIDATION: commands or artifact checks
 RETURN: the required end-of-task handoff ledger
 Do not delegate further. Do not broaden scope. Escalate instead of improvising.
+An unexpected red test, workflow failure, duplicate owner, or state mismatch revokes mutation and
+execution authority immediately.
 ```
 
 ## Thirty-second orientation
@@ -235,15 +354,24 @@ The disaster was not caused by one bad model. It was a control-plane failure:
 
 Every rule below blocks one or more of those failure modes.
 
+The 2026-08-15 Frontier v2 incident added a second control-plane lesson: individually valid snapshots
+can still be mutually inconsistent when taken at different times. A completed worker must be
+reconstructed before it can disappear from the active inventory. If a paid run becomes terminal
+after reconstruction, the only valid outcome is a fail-closed status result followed by a fresh
+reconstruction. Absence from the reconstructed state and absence from the active set is never proof
+that a run key is free.
+
 ## Mandatory start-of-task checklist
 
-Report these five items before taking a mutating action:
+Report these seven items before taking a mutating action:
 
 1. Role and one-sentence task.
 2. Exact files, run keys, or provider objects in scope.
 3. Whether any action can spend money or change external state.
 4. Maximum concurrency and worst-case spend authorized for this task.
 5. Stop conditions that will trigger escalation.
+6. Current commit/ref and whether the worktree contains changes from another agent.
+7. Protected control-plane files that the assignment does not authorize the subagent to edit.
 
 Then run read-only checks:
 
@@ -412,8 +540,14 @@ outcome branch, alter execution, or write a scientific claim from it.
 ## Git and contamination rules
 
 - Start from current `origin/main` and use a `codex/` branch.
+- A subagent never commits or pushes directly to `main`, never force-pushes, and never merges its own
+  work. Branch locality does not convert a scientific change into a minor repair.
+- A generic request to repair tests or CI does not authorize edits to protocols, configs, managers,
+  workflows, provider audits, registries, receipt schemas, or their protective assertions.
 - Expect unrelated untracked files. Never use `git add -A`.
 - Stage only explicit files created or edited for the assigned task.
+- Before handing off, show the exact staged paths. If any protected or out-of-scope path appears,
+  unstage nothing destructively; stop and report it to the primary.
 - Do not delete, rename, or reorganize user-owned untracked files.
 - Do not merge current PEARL scientific execution with Concord, IMS, California Synthetic,
   Luminosity, or MirageBench product code. A private historical archive does not authorize reuse.
@@ -436,7 +570,15 @@ Stop without attempting a creative workaround when any of these occurs:
 - a script's name overstates what it actually executes;
 - a result would require excluding an inconvenient candidate or inventing missing data;
 - live provider state and local state disagree;
-- the agent is unsure whether an action is read-only or paid.
+- the agent is unsure whether an action is read-only or paid;
+- a previously green test, validation, or supervisor transition becomes red;
+- a paid run becomes terminal after the state snapshot was reconstructed;
+- any duplicate, redundant, overlapping, or unclear Actions/provider owner appears;
+- proceeding would require changing an allowlist, quarantine, registry, exclusion, expected hash,
+  receipt, active count, budget, segment, eligibility rule, or protective test;
+- another agent's unreviewed code change affects campaign execution or scientific evidence;
+- the requested repair would touch a protected control-plane surface without an exact
+  primary-authored patch assignment.
 
 Escalation is a successful outcome. Report the exact object, observed evidence, expected evidence, and
 the smallest safe next action. Do not relaunch, cancel, kill, delete, or redesign to make the error go
@@ -449,14 +591,18 @@ Return this compact ledger:
 ```text
 ROLE:
 TASK:
+CURRENT COMMIT / WORKTREE STATUS:
 OBSERVED:
 CHANGED:
 VALIDATION:
+LAST GREEN VALIDATION / FIRST FAILURE:
 EXTERNAL MUTATIONS:
 SPEND INCURRED / MAX EXPOSURE:
 RUN OR ARTIFACT IDS:
+ACTIVE / TERMINAL / QUARANTINED OWNERSHIP:
 BLOCKERS:
 NEXT SAFE ACTION:
+PROTECTED FILES TOUCHED (must be none unless explicitly assigned):
 FILES INTENTIONALLY NOT TOUCHED:
 ```
 
