@@ -79,6 +79,24 @@ inventory. Every other exception and exhaustion of the three total attempts stil
 fails closed. This is an operational liveness repair; it changes no scientific
 identity, observation, endpoint, analysis, cohort boundary, or budget.
 
+## Full-tier scheduling follow-up — 2026-08-16
+
+Supervisor `31968329435` correctly opened the full 47-cell tier but retained the
+ordinary resume-first queue priority. With 13 cells terminal and evaluated, 24 cells
+already exposed, and 11 frozen cells never started, it authorized 17 resumptions.
+That was contract-valid but defeated the purpose of opening the full cohort tier:
+long-running cells could repeatedly reclaim free slots while later frozen identities
+remained starved.
+
+Before any remaining unstarted-cell endpoint was inspected, the primary prospectively
+amended scheduling liveness. At the validated full-cohort tier only, never-submitted
+frozen identities take temporary priority in pre-randomized order until every cohort
+identity has started. Ordinary resume-then-evaluate-then-new ordering then returns.
+The controller applies the same rule to original and replication and records the
+chosen priority in each authorization. This changes scheduling only: no scientific
+identity, data, model, seed, endpoint, estimand, exclusion, cohort boundary, or spend
+ceiling changed.
+
 ## Re-enable gate
 
 Do not re-enable paid dispatch until all of the following are true:

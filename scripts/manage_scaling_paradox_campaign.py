@@ -2044,6 +2044,10 @@ def rolling_authorization(
         and not continuations.get(run_key)
         and ("training", run_key) not in active_phase
     ]
+    full_tier_exposure_fill = (
+        capacity_tier == "full_original_or_replication_cohort"
+        and bool(new_training)
+    )
 
     for run_key in new_training:
         if (
@@ -2081,6 +2085,11 @@ def rolling_authorization(
             "authorized_run_keys": selected,
             "max_active_after_dispatch": active_paid_cells + len(selected),
             "scheduling_mode": "rolling_ordered",
+            "scheduling_priority": (
+                "full_tier_complete_cohort_exposure"
+                if full_tier_exposure_fill
+                else "resume_then_evaluate_then_new"
+            ),
             "capacity_tier": capacity_tier,
             "capacity_limit": maximum,
             "capacity_gate": capacity_gate,
@@ -2090,7 +2099,7 @@ def rolling_authorization(
         }
         return authorization
 
-    if resumable:
+    if resumable and not full_tier_exposure_fill:
         selected = resumable[:slots]
         source_ids = {
             run_key: int(continuations[run_key]["source_actions_run_id"])
@@ -2132,7 +2141,7 @@ def rolling_authorization(
                 ),
             }
         )
-    elif evaluation_ready:
+    elif evaluation_ready and not full_tier_exposure_fill:
         selected = evaluation_ready[:slots]
         source_ids = {
             run_key: training[run_key].get("source_actions_run_id")

@@ -86,6 +86,13 @@ validates the exact active-run inventory and fills free slots, in deterministic 
 2. evaluations for terminal-trained cells;
 3. never-submitted training cells in the pre-randomized run order.
 
+There is one controller-enforced full-tier liveness rule. Once the validated 47-cell tier is open,
+any still-unstarted frozen post-sentinel identities temporarily move ahead of resumptions and
+evaluations. They are dispatched in pre-randomized order until every cohort identity has started;
+then the ordinary priority above resumes. This applies to original and replication alike. It is not
+Executor discretion and does not authorize manual key selection, mixed action types, extra cells, or
+outcome inspection.
+
 The old wave number remains audit metadata; it is not a reason to leave slots idle. Original must be
 entirely complete before replication begins. One authorization contains only one action type. If it
 fills fewer than all evidence-authorized free slots, an Executor assigned to carry the clean path may

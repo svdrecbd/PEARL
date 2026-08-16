@@ -687,6 +687,92 @@ def test_frontier_capacity_ramp_revalidates_gate_after_completed_cells_refill_sl
     assert len(final["capacity_gate"]["operational_evidence"]) == 24
 
 
+def test_frontier_full_tier_starts_unexposed_cells_before_resuming(
+    tmp_path: Path,
+) -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    manifest = ramped_manifest()
+    write_terminal_pair(tmp_path, "sentinel")
+
+    for index in range(1, 13):
+        run_key = f"cell-{index:02d}"
+        training = {
+            "run_key": run_key,
+            "training_terminal_valid": True,
+            "source_actions_run_id": index,
+        }
+        training["receipt_sha256"] = sha256_value(training)
+        write_json(tmp_path / "receipts/training" / f"{run_key}.json", training)
+        write_json(
+            tmp_path / "receipts/evaluation" / f"{run_key}.json",
+            {"run_key": run_key, "evaluation_terminal_valid": True},
+        )
+
+    for index in range(13, 37):
+        run_key = f"cell-{index:02d}"
+        continuation = {
+            "run_key": run_key,
+            "training_continuation_valid": True,
+            "completed_steps": 20,
+            "source_actions_run_id": 1000 + index,
+        }
+        continuation["receipt_sha256"] = sha256_value(continuation)
+        write_json(
+            tmp_path / "continuations/training" / f"{run_key}.json",
+            continuation,
+        )
+
+    active_keys = [f"cell-{index:02d}" for index in range(30, 37)]
+    active = [
+        ramp_active_row(run_key, 2000 + index)
+        for index, run_key in enumerate(active_keys)
+    ]
+    authorization = manager.next_authorization(
+        manifest=manifest,
+        state_dir=tmp_path,
+        active_paid_cells=len(active),
+        active_runs=active,
+        provider_snapshot=provider_snapshot(active_keys),
+    )
+
+    assert authorization["action"] == "dispatch_training_wave"
+    assert authorization["authorized_run_keys"] == [
+        f"cell-{index:02d}" for index in range(37, 48)
+    ]
+    assert authorization["capacity_tier"] == (
+        "full_original_or_replication_cohort"
+    )
+    assert authorization["scheduling_priority"] == (
+        "full_tier_complete_cohort_exposure"
+    )
+    assert authorization["max_active_after_dispatch"] == 18
+
+    for index in range(37, 48):
+        run_key = f"cell-{index:02d}"
+        continuation = {
+            "run_key": run_key,
+            "training_continuation_valid": True,
+            "completed_steps": 20,
+            "source_actions_run_id": 3000 + index,
+        }
+        continuation["receipt_sha256"] = sha256_value(continuation)
+        write_json(
+            tmp_path / "continuations/training" / f"{run_key}.json",
+            continuation,
+        )
+
+    resumed = manager.next_authorization(
+        manifest=manifest,
+        state_dir=tmp_path,
+        active_paid_cells=len(active),
+        active_runs=active,
+        provider_snapshot=provider_snapshot(active_keys),
+    )
+    assert resumed["action"] == "dispatch_training_resume"
+    assert resumed["authorized_run_keys"][0] == "cell-13"
+    assert resumed["scheduling_priority"] == "resume_then_evaluate_then_new"
+
+
 def test_frontier_capacity_ramp_waits_for_observation_and_rejects_duplicate_provider_owner(
     tmp_path: Path,
 ) -> None:
