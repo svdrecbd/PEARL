@@ -71,12 +71,13 @@ artifact reconstruction and active-inventory capture. No authorization was publi
 and no child was dispatched. This was the circuit breaker working, but at high
 concurrency repeated ordinary completions could force repeated manual supervisor runs.
 
-The supervisor now recognizes this exact condition through a dedicated process exit
-code and performs at most two internal retries. Before each retry it reconstructs
-Actions artifacts again, rewrites the frozen manifest, and refreshes the sanitized
-provider snapshot. Authorization and dispatch remain downstream of a successful fresh
-inventory. Every other exception and exhaustion of the three total attempts still
-fails closed. This is an operational liveness repair; it changes no scientific
+The manager recognizes this exact terminal-boundary condition explicitly (the
+standalone inventory command exposes it as exit code 75), and the supervisor converges
+internally before authorization. Every crossing must be followed by a fresh Actions
+reconstruction that adds at least one audited marker and a refreshed sanitized provider
+snapshot. Crossings are bounded by the frozen active-cell cap; no progress or any other
+exception fails closed. Authorization and dispatch remain downstream of a successful
+fresh inventory. This is an operational liveness repair; it changes no scientific
 identity, observation, endpoint, analysis, cohort boundary, or budget.
 
 ## Full-tier scheduling follow-up — 2026-08-16
@@ -96,6 +97,19 @@ The controller applies the same rule to original and replication and records the
 chosen priority in each authorization. This changes scheduling only: no scientific
 identity, data, model, seed, endpoint, estimand, exclusion, cohort boundary, or spend
 ceiling changed.
+
+Supervisor `31972853759` then demonstrated why the earlier fixed three-attempt bound
+was insufficient at high concurrency. Three different successful paid workers—Actions
+runs `31971381219`, `31971332981`, and `31971367905`—became terminal across its three
+successive reconstruction windows. Each uploaded one immutable artifact, but the third
+crossing exhausted the arbitrary attempt count. The supervisor failed before computing
+an authorization; publication and dispatch were skipped.
+
+The convergence rule above replaces that attempt count with a progress proof. The set
+of already-active paid cells is finite and no new child can start before convergence.
+Therefore each accepted crossing must strictly increase audited terminal evidence and
+the frozen active-cell cap is a conservative termination bound. This preserves the
+same fail-closed boundary while allowing ordinary simultaneous completions to drain.
 
 ## Re-enable gate
 

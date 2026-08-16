@@ -46,6 +46,12 @@ opened, or a retry seems cheap. A campaign-carry assignment permits successive t
 while every preceding transition is mechanically normal and the controller returns an explicitly
 handled clean-path state. The first anomaly revokes the carry authority.
 
+Frontier supervisor reconstruction may internally converge across successive paid workers becoming
+terminal. This is one transition, not renewed Executor authority. Each boundary crossing must produce
+a new audited Actions marker and the total is bounded by the frozen active-cell cap; no progress or
+any other error still stops before authorization. An Executor must not imitate this loop by rerunning
+a failed supervisor.
+
 For the active scaling-paradox campaign, `docs/SCALING_PARADOX_EXECUTOR_PACKET.md` is the exact
 happy-path checklist. Its supervisor/receipt process supersedes the older direct-dispatch examples
 below. Direct paid worker dispatch is now mechanically rejected.

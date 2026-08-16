@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -1405,6 +1406,69 @@ def write_paid_actions_inventory(
     return active_rows
 
 
+def actions_marker_count(state_dir: Path) -> int:
+    return sum(
+        1
+        for kind in ("training", "evaluation")
+        for _ in (state_dir / "actions_runs" / kind).glob("*.json")
+    )
+
+
+def converge_paid_actions_inventory(
+    *,
+    executor: dict[str, Any],
+    plans: dict[tuple[str, str], dict[str, Any]],
+    manifest: dict[str, Any],
+    state_dir: Path,
+    output: Path,
+    provider_output: Path,
+) -> list[dict[str, Any]]:
+    maximum_crossings = int(manifest["global_max_active_paid_cells"])
+    if maximum_crossings <= 0:
+        raise RuntimeError("campaign active-cell cap must be positive")
+    marker_count = actions_marker_count(state_dir)
+    crossings = 0
+    while True:
+        try:
+            active_rows = query_paid_actions_inventory(
+                executor=executor,
+                manifest=manifest,
+                state_dir=state_dir,
+            )
+        except TerminalAfterReconstructionError as exc:
+            print(str(exc), file=sys.stderr)
+            if crossings >= maximum_crossings:
+                raise RuntimeError(
+                    "terminal-boundary convergence exceeded the frozen active-cell cap"
+                ) from exc
+            crossings += 1
+            print(
+                "Paid worker crossed the reconstruction boundary; refreshing "
+                f"authoritative state (crossing {crossings} of at most "
+                f"{maximum_crossings})."
+            )
+            time.sleep(5)
+            sync_github_state(executor=executor, plans=plans, state_dir=state_dir)
+            refreshed_marker_count = actions_marker_count(state_dir)
+            if refreshed_marker_count <= marker_count:
+                raise RuntimeError(
+                    "terminal-boundary reconstruction made no auditable progress"
+                ) from exc
+            marker_count = refreshed_marker_count
+            write_json(provider_output, build_provider_snapshot(plans))
+            continue
+        write_json(output, active_rows)
+        print(
+            json.dumps(
+                {
+                    "active_paid_cells": len(active_rows),
+                    "terminal_boundary_crossings_reconciled": crossings,
+                }
+            )
+        )
+        return active_rows
+
+
 def receipt_path(state_dir: Path, kind: str, run_key: str) -> Path:
     return state_dir / "receipts" / kind / f"{run_key}.json"
 
@@ -2507,6 +2571,11 @@ def main() -> None:
     inventory_parser.add_argument("--state-dir", required=True)
     inventory_parser.add_argument("--output", required=True)
 
+    convergence_parser = subparsers.add_parser("converge-active-inventory")
+    convergence_parser.add_argument("--state-dir", required=True)
+    convergence_parser.add_argument("--output", required=True)
+    convergence_parser.add_argument("--provider-output", required=True)
+
     audit_training_parser = subparsers.add_parser("audit-training")
     audit_training_parser.add_argument(
         "--campaign", choices=("original", "replication"), required=True
@@ -2558,6 +2627,15 @@ def main() -> None:
             output=repo_path(args.output),
         )
         print(json.dumps({"active_paid_cells": len(active_rows)}))
+    elif args.command == "converge-active-inventory":
+        converge_paid_actions_inventory(
+            executor=executor,
+            plans=plans,
+            manifest=manifest,
+            state_dir=repo_path(args.state_dir),
+            output=repo_path(args.output),
+            provider_output=repo_path(args.provider_output),
+        )
     elif args.command == "audit-training":
         entry = plan_entry(plans, args.campaign, args.stage, args.run_key)
         receipt = audit_training_artifact(

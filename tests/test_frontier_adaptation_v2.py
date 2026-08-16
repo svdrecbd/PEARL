@@ -907,6 +907,124 @@ def test_frontier_inventory_exposes_only_terminal_boundary_as_retryable(
         )
 
 
+def test_frontier_inventory_convergence_absorbs_more_than_three_crossings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    query_count = 0
+    sync_count = 0
+
+    def changing_inventory(**_: object) -> list[dict[str, object]]:
+        nonlocal query_count
+        query_count += 1
+        if query_count <= 4:
+            raise manager.TerminalAfterReconstructionError(
+                f"crossed boundary {query_count}"
+            )
+        return [{"actions_run_id": 900, "run_key": "still-active"}]
+
+    def reconstruct(**_: object) -> dict[str, int]:
+        nonlocal sync_count
+        sync_count += 1
+        write_json(
+            tmp_path / "actions_runs/training" / f"{sync_count}.json",
+            {"actions_run_id": sync_count},
+        )
+        return {"training": 1, "evaluation": 0}
+
+    monkeypatch.setattr(manager, "query_paid_actions_inventory", changing_inventory)
+    monkeypatch.setattr(manager, "sync_github_state", reconstruct)
+    monkeypatch.setattr(
+        manager,
+        "build_provider_snapshot",
+        lambda _: {"scientific_values_omitted": True},
+    )
+    monkeypatch.setattr(manager.time, "sleep", lambda _: None)
+
+    inventory = manager.converge_paid_actions_inventory(
+        executor={},
+        plans={},
+        manifest={"global_max_active_paid_cells": 47},
+        state_dir=tmp_path,
+        output=tmp_path / "active.json",
+        provider_output=tmp_path / "provider.json",
+    )
+
+    assert inventory == [{"actions_run_id": 900, "run_key": "still-active"}]
+    assert query_count == 5
+    assert sync_count == 4
+    assert json.loads((tmp_path / "active.json").read_text()) == inventory
+    assert json.loads((tmp_path / "provider.json").read_text()) == {
+        "scientific_values_omitted": True
+    }
+
+
+def test_frontier_inventory_convergence_requires_auditable_progress(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+
+    def terminal_boundary(**_: object) -> list[dict[str, object]]:
+        raise manager.TerminalAfterReconstructionError("crossed boundary")
+
+    monkeypatch.setattr(manager, "query_paid_actions_inventory", terminal_boundary)
+    monkeypatch.setattr(
+        manager,
+        "sync_github_state",
+        lambda **_: {"training": 0, "evaluation": 0},
+    )
+    monkeypatch.setattr(manager.time, "sleep", lambda _: None)
+
+    with pytest.raises(RuntimeError, match="made no auditable progress"):
+        manager.converge_paid_actions_inventory(
+            executor={},
+            plans={},
+            manifest={"global_max_active_paid_cells": 47},
+            state_dir=tmp_path,
+            output=tmp_path / "active.json",
+            provider_output=tmp_path / "provider.json",
+        )
+
+
+def test_frontier_inventory_convergence_cannot_exceed_active_cell_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    sync_count = 0
+
+    def terminal_boundary(**_: object) -> list[dict[str, object]]:
+        raise manager.TerminalAfterReconstructionError("crossed boundary")
+
+    def reconstruct(**_: object) -> dict[str, int]:
+        nonlocal sync_count
+        sync_count += 1
+        write_json(
+            tmp_path / "actions_runs/training" / f"{sync_count}.json",
+            {"actions_run_id": sync_count},
+        )
+        return {"training": 1, "evaluation": 0}
+
+    monkeypatch.setattr(manager, "query_paid_actions_inventory", terminal_boundary)
+    monkeypatch.setattr(manager, "sync_github_state", reconstruct)
+    monkeypatch.setattr(
+        manager,
+        "build_provider_snapshot",
+        lambda _: {"scientific_values_omitted": True},
+    )
+    monkeypatch.setattr(manager.time, "sleep", lambda _: None)
+
+    with pytest.raises(RuntimeError, match="exceeded the frozen active-cell cap"):
+        manager.converge_paid_actions_inventory(
+            executor={},
+            plans={},
+            manifest={"global_max_active_paid_cells": 2},
+            state_dir=tmp_path,
+            output=tmp_path / "active.json",
+            provider_output=tmp_path / "provider.json",
+        )
+    assert sync_count == 2
+
+
 def test_frontier_semantic_dispatch_claim_cannot_be_consumed_twice(
     tmp_path: Path,
 ) -> None:
@@ -1139,12 +1257,13 @@ def test_frontier_resume_worker_restores_inside_the_immutable_run_directory() ->
     assert '--checkpoint-lineage "$lineage"' in evaluator
     assert "provider-snapshot" in supervisor
     assert "secrets.TINKER_API_KEY" in supervisor
-    assert "write-active-inventory" in supervisor
-    assert 'inventory_status" -ne 75' in supervisor
-    assert 'attempt" -ge 3' in supervisor
-    assert "refreshing authoritative state" in supervisor
-    assert supervisor.count("sync-github --state-dir") == 2
-    assert 'provider-snapshot --output "$STATE_DIR/provider_snapshot.json"' in supervisor
+    assert "write-active-inventory" in manager
+    assert "converge-active-inventory" in supervisor
+    assert "terminal_boundary_crossings_reconciled" in manager
+    assert "terminal-boundary reconstruction made no auditable progress" in manager
+    assert supervisor.count("sync-github --state-dir") == 1
+    assert "provider-snapshot \\" in supervisor
+    assert '--provider-output "$STATE_DIR/provider_snapshot.json"' in supervisor
     assert (
         '"createdAt,databaseId,displayTitle,startedAt,status,updatedAt"' in manager
     )
