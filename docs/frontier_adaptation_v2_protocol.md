@@ -179,6 +179,13 @@ overlap. Exact active Actions IDs, kinds, campaigns, run keys, contracts, phases
 statuses are machine-validated before authorization. Unknown, duplicate, stale, or unowned activity
 fails closed.
 
+At the validated full-cohort tier, cohort exposure is a temporary liveness exception to that ordinary
+priority. While any frozen post-sentinel identity has never started, the supervisor authorizes those
+never-submitted training keys first, in their pre-randomized order, before resumptions or evaluations.
+Once every identity in the cohort has started, the ordinary continuation-then-evaluation priority
+returns. This prospective scheduling rule applies identically to original and replication, preserves
+the one-action-type authorization boundary and active-cell cap, and consults no scientific outcome.
+
 This is scheduling only. It changes no model, arm, seed, renderer, pair order, optimizer update,
 endpoint, analysis, cohort label, or spend ceiling. Based on frozen smoke timing and the measured
 pipeline improvement, strict wave barriers implied roughly 25--29 days end to end; the rolling

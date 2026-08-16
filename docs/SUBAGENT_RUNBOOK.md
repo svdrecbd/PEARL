@@ -64,9 +64,13 @@ queue under the prospective 12-to-24-to-47 result-blind capacity ramp; old wave 
 metadata. The Executor does not choose which freed slot is filled or decide whether a capacity gate
 passes. The controller requires the prior tier's exact ordered cells to have either an audited
 segment or 20 minutes of fresh, uncorrupted, uniquely owned provider progress. A campaign-carry
-assignment may invoke successive `advance` transitions until the supervisor returns a mechanical
-wait, completion, analysis boundary, or stop condition. Original and replication never overlap;
-structural jobs retain their separate six-job cap.
+assignment also does not authorize preserving resume-first behavior when the controller reaches the
+full tier: until all frozen cohort identities have started, the controller's prospective result-blind
+cohort-exposure rule puts never-submitted keys first. The Executor must neither override nor imitate
+that selection manually. Once all identities have started, ordinary resume-then-evaluate priority
+returns. A campaign-carry assignment may invoke successive `advance` transitions until the
+supervisor returns a mechanical wait, completion, analysis boundary, or stop condition. Original
+and replication never overlap; structural jobs retain their separate six-job cap.
 
 The clean-path research design and campaign engineering are complete. Remaining clean-path work is
 operational: invoke one frozen supervisor transition at a time, monitor remotely owned jobs, audit
