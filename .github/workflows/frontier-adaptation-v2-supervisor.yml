@@ -67,34 +67,11 @@ jobs:
         env:
           TINKER_API_KEY: ${{ secrets.TINKER_API_KEY }}
         run: |
-          attempt=1
-          while true; do
-            set +e
-            python scripts/manage_scaling_paradox_campaign.py \
-              --executor-config configs/experiments/frontier_adaptation_v2_executor.json \
-              write-active-inventory --state-dir "$STATE_DIR" \
-              --output "$STATE_DIR/active_runs.json"
-            inventory_status=$?
-            set -e
-            if [[ "$inventory_status" -eq 0 ]]; then
-              break
-            fi
-            if [[ "$inventory_status" -ne 75 || "$attempt" -ge 3 ]]; then
-              exit "$inventory_status"
-            fi
-            printf 'Paid worker crossed the reconstruction boundary; refreshing authoritative state (attempt %s of 3).\n' "$((attempt + 1))"
-            sleep 5
-            python scripts/manage_scaling_paradox_campaign.py \
-              --executor-config configs/experiments/frontier_adaptation_v2_executor.json \
-              sync-github --state-dir "$STATE_DIR"
-            python scripts/manage_scaling_paradox_campaign.py \
-              --executor-config configs/experiments/frontier_adaptation_v2_executor.json \
-              write-manifest --output "$STATE_DIR/campaign_manifest.json"
-            python scripts/manage_scaling_paradox_campaign.py \
-              --executor-config configs/experiments/frontier_adaptation_v2_executor.json \
-              provider-snapshot --output "$STATE_DIR/provider_snapshot.json"
-            attempt=$((attempt + 1))
-          done
+          python scripts/manage_scaling_paradox_campaign.py \
+            --executor-config configs/experiments/frontier_adaptation_v2_executor.json \
+            converge-active-inventory --state-dir "$STATE_DIR" \
+            --output "$STATE_DIR/active_runs.json" \
+            --provider-output "$STATE_DIR/provider_snapshot.json"
           active=$(jq 'length' "$STATE_DIR/active_runs.json")
           python scripts/manage_scaling_paradox_campaign.py --executor-config configs/experiments/frontier_adaptation_v2_executor.json next \
             --state-dir "$STATE_DIR" --active-paid-cells "$active" \
