@@ -33,6 +33,11 @@ from pearl.tinker_dpo import pair_rows_fingerprint  # noqa: E402
 
 
 DEFAULT_EXECUTOR = ROOT / "configs" / "experiments" / "scaling_paradox_executor_v1.json"
+TERMINAL_AFTER_RECONSTRUCTION_EXIT_CODE = 75
+
+
+class TerminalAfterReconstructionError(RuntimeError):
+    """A paid worker completed after the last authoritative artifact reconstruction."""
 
 
 def repo_path(value: str | Path) -> Path:
@@ -1293,7 +1298,7 @@ def build_paid_actions_inventory(
                     state_dir / "actions_runs" / kind / f"{actions_run_id}.json"
                 )
                 if not marker.is_file():
-                    raise RuntimeError(
+                    raise TerminalAfterReconstructionError(
                         "paid run became terminal after artifact reconstruction: "
                         f"{kind} Actions run {actions_run_id} ({title}); rerun the "
                         "supervisor without dispatch"
@@ -1378,6 +1383,26 @@ def query_paid_actions_inventory(
         state_dir=state_dir,
         rows_by_kind=rows_by_kind,
     )
+
+
+def write_paid_actions_inventory(
+    *,
+    executor: dict[str, Any],
+    manifest: dict[str, Any],
+    state_dir: Path,
+    output: Path,
+) -> list[dict[str, Any]]:
+    try:
+        active_rows = query_paid_actions_inventory(
+            executor=executor,
+            manifest=manifest,
+            state_dir=state_dir,
+        )
+    except TerminalAfterReconstructionError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(TERMINAL_AFTER_RECONSTRUCTION_EXIT_CODE) from exc
+    write_json(output, active_rows)
+    return active_rows
 
 
 def receipt_path(state_dir: Path, kind: str, run_key: str) -> Path:
@@ -2517,12 +2542,12 @@ def main() -> None:
     elif args.command == "provider-snapshot":
         write_json(repo_path(args.output), build_provider_snapshot(plans))
     elif args.command == "write-active-inventory":
-        active_rows = query_paid_actions_inventory(
+        active_rows = write_paid_actions_inventory(
             executor=executor,
             manifest=manifest,
             state_dir=repo_path(args.state_dir),
+            output=repo_path(args.output),
         )
-        write_json(repo_path(args.output), active_rows)
         print(json.dumps({"active_paid_cells": len(active_rows)}))
     elif args.command == "audit-training":
         entry = plan_entry(plans, args.campaign, args.stage, args.run_key)

@@ -63,6 +63,22 @@ permitted only as an exact disjoint set during the terminal provider audit.
    configured quarantine. Unknown, overlapping, or missing provider identities fail
    closed.
 
+## High-concurrency follow-up — 2026-08-16
+
+After the 24-cell tier opened, supervisor `31965179273` encountered the protected
+terminal-after-reconstruction condition: training run `31961922223` completed between
+artifact reconstruction and active-inventory capture. No authorization was published
+and no child was dispatched. This was the circuit breaker working, but at high
+concurrency repeated ordinary completions could force repeated manual supervisor runs.
+
+The supervisor now recognizes this exact condition through a dedicated process exit
+code and performs at most two internal retries. Before each retry it reconstructs
+Actions artifacts again, rewrites the frozen manifest, and refreshes the sanitized
+provider snapshot. Authorization and dispatch remain downstream of a successful fresh
+inventory. Every other exception and exhaustion of the three total attempts still
+fails closed. This is an operational liveness repair; it changes no scientific
+identity, observation, endpoint, analysis, cohort boundary, or budget.
+
 ## Re-enable gate
 
 Do not re-enable paid dispatch until all of the following are true:
