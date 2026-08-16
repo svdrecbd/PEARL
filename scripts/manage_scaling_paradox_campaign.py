@@ -1749,7 +1749,7 @@ def rolling_capacity_limit(
         required = int(tier["minimum_started_cells"])
         if len(started_keys) < required:
             break
-        if len(started_keys) > required:
+        if len(active_phase) > current_limit:
             gate = {
                 "contract": "pearl.frontier-capacity-gate/1",
                 "campaign": phase["campaign"],
@@ -1760,9 +1760,10 @@ def rolling_capacity_limit(
                 "scientific_values_omitted": True,
                 "operational_evidence": [
                     {
-                        "evidence": "previously_consumed_ordered_capacity_tier",
+                        "evidence": "previously_consumed_active_capacity_tier",
+                        "active_paid_cells": len(active_phase),
+                        "prior_capacity_limit": current_limit,
                         "started_ordered_prefix_count": len(started_keys),
-                        "first_key_beyond_gate": ordered_keys[required],
                     }
                 ],
             }
