@@ -53,6 +53,13 @@ stop them. A training worker has a 330-minute supervised window. Invoke the next
 transition only after at least one prior child is terminal and auditable or capacity is otherwise
 known to be available. Do not tight-poll: use Actions completion state or a bounded status check.
 
+The supervisor may internally repeat artifact reconstruction at most twice when, and only when, the
+active-inventory command returns the dedicated terminal-after-reconstruction exit code. Each retry
+occurs before authorization, refreshes both Actions artifacts and the result-blind provider snapshot,
+and cannot dispatch on the stale attempt. Any other error, or a third consecutive boundary crossing,
+fails closed. This bounded internal retry does not renew an Executor's authority or permit an
+Executor to rerun a failed supervisor.
+
 Every frontier model is deliberately segmented because the frozen smoke timings provide inadequate
 headroom to promise a 2,250-update core inside that window. Segment sizes are frozen by model in the
 protocol and controller; the Executor never selects them. A continuation is not a relaunch: it

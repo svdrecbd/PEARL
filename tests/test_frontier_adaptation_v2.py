@@ -756,7 +756,10 @@ def test_frontier_inventory_stops_when_a_worker_finishes_after_reconstruction(
         "displayTitle": "Frontier train original cell-a supervisor-99",
         "status": "completed",
     }
-    with pytest.raises(RuntimeError, match="became terminal after artifact reconstruction"):
+    with pytest.raises(
+        manager.TerminalAfterReconstructionError,
+        match="became terminal after artifact reconstruction",
+    ):
         manager.build_paid_actions_inventory(
             manifest=manifest,
             state_dir=tmp_path,
@@ -790,6 +793,32 @@ def test_frontier_inventory_stops_when_a_worker_finishes_after_reconstruction(
         rows_by_kind={"training": [active], "evaluation": []},
     )
     assert [row["actions_run_id"] for row in inventory] == [102]
+
+
+def test_frontier_inventory_exposes_only_terminal_boundary_as_retryable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+
+    def terminal_boundary(**_: object) -> list[dict[str, object]]:
+        raise manager.TerminalAfterReconstructionError("crossed boundary")
+
+    monkeypatch.setattr(manager, "query_paid_actions_inventory", terminal_boundary)
+    with pytest.raises(SystemExit) as retryable:
+        manager.write_paid_actions_inventory(
+            executor={}, manifest={}, state_dir=tmp_path, output=tmp_path / "active.json"
+        )
+    assert retryable.value.code == manager.TERMINAL_AFTER_RECONSTRUCTION_EXIT_CODE == 75
+    assert not (tmp_path / "active.json").exists()
+
+    def other_failure(**_: object) -> list[dict[str, object]]:
+        raise RuntimeError("not retryable")
+
+    monkeypatch.setattr(manager, "query_paid_actions_inventory", other_failure)
+    with pytest.raises(RuntimeError, match="not retryable"):
+        manager.write_paid_actions_inventory(
+            executor={}, manifest={}, state_dir=tmp_path, output=tmp_path / "active.json"
+        )
 
 
 def test_frontier_semantic_dispatch_claim_cannot_be_consumed_twice(
@@ -1025,6 +1054,11 @@ def test_frontier_resume_worker_restores_inside_the_immutable_run_directory() ->
     assert "provider-snapshot" in supervisor
     assert "secrets.TINKER_API_KEY" in supervisor
     assert "write-active-inventory" in supervisor
+    assert 'inventory_status" -ne 75' in supervisor
+    assert 'attempt" -ge 3' in supervisor
+    assert "refreshing authoritative state" in supervisor
+    assert supervisor.count("sync-github --state-dir") == 2
+    assert 'provider-snapshot --output "$STATE_DIR/provider_snapshot.json"' in supervisor
     assert (
         '"createdAt,databaseId,displayTitle,startedAt,status,updatedAt"' in manager
     )
