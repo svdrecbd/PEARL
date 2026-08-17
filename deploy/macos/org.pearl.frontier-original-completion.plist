@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>org.pearl.frontier-original-completion</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/svdr/tinker/scripts/run_frontier_original_completion.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/svdr/tinker</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>/Users/svdr/tinker/reports/frontier_adaptation_v2_local_state/original_completion_launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/svdr/tinker/reports/frontier_adaptation_v2_local_state/original_completion_launchd.log</string>
+</dict>
+</plist>

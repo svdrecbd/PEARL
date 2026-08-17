@@ -73,3 +73,43 @@ The GitHub supervisor may be re-enabled only after every locally started key is 
 the local ledger and provider lineage have been incorporated into a versioned controller state, and a
 no-spend status reconstruction proves exactly one owner per semantic dispatch claim. Re-enabling it
 while any local trainer or unresolved local intent exists is a duplicate-run incident.
+
+## Prospective original-completion automation
+
+Before the active 35-cell local wave produced any endpoint evaluation, the project owner authorized
+an additional result-blind operational controller: `scripts/manage_frontier_original_completion.py`.
+Its authority is mechanically bounded to the already-frozen original/core plan SHA
+`ce4fd33d9f5f8d62d42a4ddc383222adc18c48ba1399920073beaf44879842c6`.
+
+After—and only after—the active wave records 35 valid segment audits, the controller may:
+
+1. recognize the nine cells whose existing authorization already reaches update 2,250;
+2. preserve immutable backups of the other 26 intermediate artifacts, audit their exact checkpoint
+   and optimizer lineage, and continue those same experimental units directly to update 2,250;
+3. consolidate the 13 pre-existing and 35 local terminal-training receipts into an exact 48-cell
+   original cohort;
+4. evaluate the exact 35 original cells lacking an immutable endpoint evaluation, using the same
+   frozen evaluator, holdout, challenge set, normalization, and checkpoint contract; and
+5. emit a 48-training/48-evaluation completion gate and exit.
+
+Direct continuation to the already-frozen terminal update changes only operational slicing after the
+current wave. It does not change optimizer state, batch order, total updates, checkpoint identity,
+endpoint, cohort, exclusion, or analysis. The decision was made without inspecting loss, reward,
+margin, accuracy, sequence, endpoint, or effect direction.
+
+The controller writes a durable launch intent before every process creation and a start record after
+it. An intent lacking a start record is permanently ambiguous and causes a human-escalation stop;
+it is never retried automatically. A recorded start may be recovered only by finding its unique live
+process or by passing the complete frozen artifact audit. Provider snapshots and authorizations are
+immutable once written and are not regenerated during recovery.
+
+This automation grants no authority whatsoever for replication, structural sampling, analysis,
+outcome inspection, exclusions, conditional stages, or publication decisions. Its final state is a
+hard conversational boundary: original optimization is complete, replication has not started, and
+the primary agent must return to the project owner before any next step.
+
+On the sole authoritative Mac, the controller runs through the versioned
+`deploy/macos/org.pearl.frontier-original-completion.plist`. The launch agent restarts only an
+unexpected nonzero exit. A safety stop or successful 48/48 completion exits zero, so neither can
+become an automatic retry loop. The wrapper loads the ignored local credential, enforces an
+exhaustive provider-list bound, and holds `caffeinate`; it contains no replication entrypoint.

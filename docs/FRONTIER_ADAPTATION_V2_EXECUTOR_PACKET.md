@@ -35,8 +35,10 @@ unplanned spend, or an unhandled state means stop and escalate.
 Primary-only local takeover exception: the project owner prospectively authorized the exact process
 in `docs/frontier_adaptation_v2_local_orchestration_amendment_20260816.md` after GitHub quota failures.
 That path does not grant an Executor or subagent local paid authority. Only the primary may prepare
-and start one existing machine authorization with `scripts/manage_frontier_local_wave.py`, and only
-after disabling the GitHub supervisor and proving result-blind provider ownership. Any local intent,
+and start an explicitly versioned local controller, including the original-only completion controller
+described in the same amendment, and only after disabling the GitHub supervisor and proving
+result-blind provider ownership. The completion controller must stop after exact 48/48 original
+training/evaluation receipt coverage and may not enter replication or analysis. Any local intent,
 partial prefix, process failure, or ledger mismatch is a stop; never rerun the controller or re-enable
 GitHub to fill the remainder.
 
