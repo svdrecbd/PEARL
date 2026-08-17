@@ -57,6 +57,15 @@ before provider access or training. Those 34 are machine-audited pre-authorizati
 spend and zero scientific weight; they do not consume a dispatch claim. Any failure that does not
 match that exact registry and step-level proof remains an escalation.
 
+The first v7 tag check failed closed in supervisor `31989649480` because `gh api` emitted a missing-
+ref 404 body on standard output and the shell treated it as an existing tag. Authorization
+`d9b94d562d644407f846a76a2a8cd01203a7b04d712a80a29efc3d45578c11fd` was preserved, but no tag,
+dispatch receipt, child workflow, provider run, spend, or scientific observation was created. The
+authorization is an immutable one-time orphan and must never be reused. The durable check uses an
+exact GraphQL qualified-ref lookup, verifies the tag before publishing authorization, and initializes
+the dispatch receipt before requesting the first child. Executors must not replace this with parsing
+human-readable REST error text.
+
 When explicitly assigned a transition, or assigned to carry the frozen clean path until a stop
 condition:
 

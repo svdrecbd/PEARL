@@ -583,11 +583,50 @@ def identify_plan_entry(
     return matches[0]
 
 
-def gh_json(command: list[str]) -> Any:
-    result = subprocess.run(
-        command, check=True, capture_output=True, text=True, cwd=ROOT
+def gh_json(command: list[str], *, max_attempts: int = 5) -> Any:
+    """Run an approved read-only GitHub query with bounded retries."""
+    read_only_prefixes = (
+        ["gh", "api"],
+        ["gh", "repo", "view"],
+        ["gh", "run", "list"],
+        ["gh", "run", "view"],
     )
-    return json.loads(result.stdout)
+    if not any(command[: len(prefix)] == prefix for prefix in read_only_prefixes):
+        raise RuntimeError("gh_json refuses a command that is not an approved read")
+    if command[:2] == ["gh", "api"]:
+        method = "GET"
+        for flag in ("--method", "-X"):
+            if flag in command:
+                method = command[command.index(flag) + 1].upper()
+        has_fields = any(
+            value in command for value in ("-f", "--raw-field", "-F", "--field")
+        )
+        if method != "GET" or (has_fields and "--method" not in command):
+            raise RuntimeError("gh_json refuses a GitHub API mutation")
+    if max_attempts <= 0:
+        raise RuntimeError("gh_json requires at least one attempt")
+
+    last_failure = "GitHub returned no result"
+    for attempt in range(1, max_attempts + 1):
+        result = subprocess.run(
+            command, check=False, capture_output=True, text=True, cwd=ROOT
+        )
+        if result.returncode == 0:
+            try:
+                return json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                last_failure = f"GitHub returned invalid JSON: {exc}"
+        else:
+            detail = (result.stderr.strip() or result.stdout.strip())[:1000]
+            last_failure = (
+                f"GitHub read exited {result.returncode}"
+                + (f": {detail}" if detail else "")
+            )
+        if attempt < max_attempts:
+            time.sleep(2 ** (attempt - 1))
+    raise RuntimeError(
+        f"GitHub JSON read failed after {max_attempts} attempts: {last_failure}"
+    )
 
 
 def dispatch_claim(
@@ -1414,31 +1453,25 @@ def sync_github_state(
     }
     for kind, names in workflows.items():
         for workflow in names:
-            result = subprocess.run(
-                [
-                    "gh",
-                    "run",
-                    "list",
-                    "--workflow",
-                    workflow,
-                    "--limit",
-                    "1000",
-                    "--json",
-                    "conclusion,databaseId,displayTitle,headSha,status",
-                ],
-                check=False,
-                capture_output=True,
-                text=True,
-                cwd=ROOT,
-            )
-            if result.returncode != 0:
-                if kind == "evaluation" and "not found" in result.stderr.lower():
+            command = [
+                "gh",
+                "run",
+                "list",
+                "--workflow",
+                workflow,
+                "--limit",
+                "1000",
+                "--json",
+                "conclusion,databaseId,displayTitle,headSha,status",
+            ]
+            try:
+                rows = gh_json(command)
+            except RuntimeError as exc:
+                if kind == "evaluation" and "not found" in str(exc).lower():
                     continue
-                raise RuntimeError(
-                    f"could not enumerate {workflow}: {result.stderr.strip()}"
-                )
+                raise
             for row in sorted(
-                json.loads(result.stdout), key=lambda item: int(item["databaseId"])
+                rows, key=lambda item: int(item["databaseId"])
             ):
                 run_id = int(row["databaseId"])
                 if row.get("status") != "completed":

@@ -98,6 +98,15 @@ shells: reconstruction verifies their head, title, failed authorization step, sk
 training steps, and source-mismatch log before assigning zero spend and zero scientific weight. A
 subagent may not add another ID to that registry or generalize the exception.
 
+Supervisor `31989649480` is a distinct zero-dispatch control-plane incident: a missing REST tag ref
+produced a 404 JSON body on standard output, which the first v7 shell check misclassified as an
+existing tag. Its one-time authorization
+`d9b94d562d644407f846a76a2a8cd01203a7b04d712a80a29efc3d45578c11fd` was published, but no tag,
+child, provider run, spend, or scientific observation followed. Never reuse that authorization or
+generalize the incident. The repaired supervisor resolves the exact qualified ref through GraphQL,
+verifies the tag before publishing authorization, and initializes a zero-child receipt before the
+dispatch loop. Do not replace the exact query with human-readable error-body matching.
+
 The clean-path research design and campaign engineering are complete. Remaining clean-path work is
 operational: invoke one frozen supervisor transition at a time, monitor remotely owned jobs, audit
 their immutable artifacts, execute the frozen analyses, and hand the validated outputs to the
