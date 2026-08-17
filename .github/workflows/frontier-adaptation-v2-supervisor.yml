@@ -20,7 +20,7 @@ on:
       - completed
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 concurrency:
@@ -31,8 +31,7 @@ jobs:
   reconcile-and-dispatch:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.conclusion == 'success' &&
+      (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'workflow_dispatch' &&
        !endsWith(github.event.workflow_run.display_title, 'supervisor-validate'))
     runs-on: ubuntu-24.04
@@ -45,6 +44,17 @@ jobs:
       STATE_DIR: supervisor/state
       SUPERVISOR_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'advance' }}
     steps:
+      - name: Verify an automatic trigger against its immutable supervisor tag
+        if: github.event_name == 'workflow_run'
+        env:
+          TRIGGER_DISPLAY_TITLE: ${{ github.event.workflow_run.display_title }}
+          TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          [[ "$TRIGGER_DISPLAY_TITLE" =~ supervisor-([1-9][0-9]*)$ ]] || { echo "automatic trigger lacks a numeric supervisor owner"; exit 1; }
+          dispatch_ref="frontier-supervisor-${BASH_REMATCH[1]}"
+          observed=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${dispatch_ref}" --jq .object.sha)
+          test "$observed" = "$TRIGGER_HEAD_SHA" || { echo "automatic trigger differs from its immutable supervisor tag"; exit 1; }
+
       - name: Check out the exact supervisor commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -117,6 +127,21 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      - name: Create and verify the immutable supervisor dispatch tag
+        if: env.DISPATCH_ALLOWED == 'true'
+        run: |
+          dispatch_ref="frontier-supervisor-${GITHUB_RUN_ID}"
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${dispatch_ref}" --jq .object.sha 2>/dev/null || true)
+          if [[ -z "$existing" ]]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${dispatch_ref}" -f sha="$GITHUB_SHA" >/dev/null
+          else
+            test "$existing" = "$GITHUB_SHA" || { echo "supervisor dispatch tag points to another commit"; exit 1; }
+          fi
+          observed=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${dispatch_ref}" --jq .object.sha)
+          test "$observed" = "$GITHUB_SHA" || { echo "supervisor dispatch tag verification failed"; exit 1; }
+          printf 'DISPATCH_REF=%s\n' "$dispatch_ref" >> "$GITHUB_ENV"
+
       - name: Dispatch and identify every authorized child
         if: env.DISPATCH_ALLOWED == 'true'
         env:
@@ -139,7 +164,7 @@ jobs:
                   workflow = authorization["workflow"]
                   title = f"Frontier train {authorization['campaign']} {run_key} supervisor-{os.environ['SUPERVISOR_RUN_ID']}"
                   command = [
-                      "gh", "workflow", "run", workflow, "--ref", "main",
+                      "gh", "workflow", "run", workflow, "--ref", os.environ["DISPATCH_REF"],
                       "-f", f"campaign={authorization['campaign']}",
                       "-f", "mode=execute", "-f", f"stage={authorization['stage']}",
                       "-f", f"run_key={run_key}",
@@ -157,7 +182,7 @@ jobs:
                   title = f"Frontier eval {authorization['campaign']} {run_key} supervisor-{os.environ['SUPERVISOR_RUN_ID']}"
                   source_id = authorization["source_actions_run_ids"][run_key]
                   command = [
-                      "gh", "workflow", "run", workflow, "--ref", "main",
+                      "gh", "workflow", "run", workflow, "--ref", os.environ["DISPATCH_REF"],
                       "-f", f"campaign={authorization['campaign']}",
                       "-f", f"stage={authorization['stage']}", "-f", f"run_key={run_key}",
                       "-f", f"launch_plan_sha={authorization['plan_sha']}",

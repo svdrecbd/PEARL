@@ -39,11 +39,23 @@ gh workflow run frontier-adaptation-v2-supervisor.yml --ref main -f mode=status
 ```
 
 Executor contract v6 normally refills capacity automatically. Each successful supervisor-owned
-frontier training or checkpoint-evaluation child on `main` triggers one result-blind supervisor
-`advance`; simultaneous events coalesce behind the existing campaign-global lock. Before invoking a
+frontier training or checkpoint-evaluation child bound to a verified `frontier-supervisor-<run-id>`
+tag triggers one result-blind supervisor `advance`; the trigger first requires that tag SHA to equal
+the child's head SHA. Simultaneous events coalesce behind the existing campaign-global lock. Before
+invoking a
 manual transition, query the supervisor runs and do not proceed while an automatic supervisor is
 queued or in progress. There is no time-based schedule. A failed, cancelled, validation-only,
-non-dispatch, or non-`main` child does not auto-advance and remains a stop for review.
+non-dispatch, or unrecognized-ref child does not auto-advance and remains a stop for review.
+
+Executor contract v7 creates and verifies immutable tag `frontier-supervisor-<run-id>` at the exact
+supervisor commit and dispatches every child from that tag rather than moving `main`. Tag creation,
+collision, or read-back failure stops before child dispatch. This prevents an in-flight authorization
+from crossing a merge boundary. Supervisor
+`31985313255` crossed the earlier moving-ref boundary once: child `31985920144` retained the old head
+and its ordinary authorized continuation, while 34 exact children on merge commit `8367e36` failed
+before provider access or training. Those 34 are machine-audited pre-authorization shells with zero
+spend and zero scientific weight; they do not consume a dispatch claim. Any failure that does not
+match that exact registry and step-level proof remains an escalation.
 
 When explicitly assigned a transition, or assigned to carry the frozen clean path until a stop
 condition:
@@ -158,7 +170,9 @@ end-to-end throughput for the candidate segment. It grants no Executor authority
 repeat. Executor contract v4 added bounded segmentation for all models and the rolling-capacity
 queue. Executor contract v5 added only the prospective result-blind capacity ramp. Executor contract
 v6 widens future continuation boundaries and adds completion-triggered supervisor refills using only
-sanitized operational evidence. None changes any scientific identity or total planned spend.
+sanitized operational evidence. Executor contract v7 pins child source commits through retained
+run-specific audit tags and records the exact zero-spend moving-ref incident. None changes any
+scientific identity or total planned spend.
 
 For local no-spend reconstruction:
 

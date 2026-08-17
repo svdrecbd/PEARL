@@ -82,7 +82,7 @@ def test_frontier_manifest_budget_and_smoke_transition_are_fail_closed(
     )
     manifest = manager.build_manifest(executor)
     assert len(manifest["phases"]) == 3
-    assert manifest["executor_contract"] == "pearl.frontier-adaptation-executor/6"
+    assert manifest["executor_contract"] == "pearl.frontier-adaptation-executor/7"
     assert executor["operational_amendment"] == {
         "contract": "pearl.frontier-operational-amendment/1",
         "frozen_date": "2026-08-16",
@@ -99,7 +99,7 @@ def test_frontier_manifest_budget_and_smoke_transition_are_fail_closed(
         "scientific_outcomes_consulted": False,
         "applies_only_to_future_continuation_authorizations": True,
         "automatic_refill_trigger": (
-            "successful_supervisor_owned_training_or_evaluation_workflow_run_on_main"
+            "successful_supervisor_owned_training_or_evaluation_workflow_run_bound_to_immutable_supervisor_tag"
         ),
         "time_based_schedule": False,
     }
@@ -118,6 +118,7 @@ def test_frontier_manifest_budget_and_smoke_transition_are_fail_closed(
     assert observed_training == 1910.2628
     assert observed_training <= executor["planned_training_ceiling_usd"]
     assert manifest["observed_continuation_recovery_overhead_usd"] == 6.5524
+    assert manifest["preauthorization_failure_quarantine_count"] == 34
     assert manifest["planned_total_with_recovery_ceiling_usd"] == 2084.39
     assert (
         manifest["planned_total_with_recovery_ceiling_usd"]
@@ -1320,13 +1321,109 @@ def test_frontier_resume_worker_restores_inside_the_immutable_run_directory() ->
     )
     assert '--provider-snapshot "$STATE_DIR/provider_snapshot.json"' in supervisor
     assert "workflow_run:" in supervisor
-    assert "github.event.workflow_run.head_branch == 'main'" in supervisor
+    assert "frontier-supervisor-" in supervisor
     assert "github.event.workflow_run.conclusion == 'success'" in supervisor
     assert "github.event.workflow_run.event == 'workflow_dispatch'" in supervisor
     assert "supervisor-validate" in supervisor
     assert 'SUPERVISOR_MODE: ${{' in supervisor
     assert '"$SUPERVISOR_MODE" == advance' in supervisor
     assert "schedule:" not in supervisor
+    assert supervisor.count('"--ref", os.environ["DISPATCH_REF"]') == 2
+    assert '"--ref", "main"' not in supervisor
+    assert "frontier-supervisor-${GITHUB_RUN_ID}" in supervisor
+    assert 'test "$observed" = "$GITHUB_SHA"' in supervisor
+    assert "contents: write" in supervisor
+    assert "TRIGGER_HEAD_SHA" in supervisor
+    assert "automatic trigger differs from its immutable supervisor tag" in supervisor
+
+
+def test_frontier_preauthorization_failure_is_exact_zero_spend_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    run_key = "core-fixed-rank-model-true-seed17-deadbeef00"
+    actions_run_id = 123
+    supervisor_id = 100
+    claim = {
+        "run_key": run_key,
+        "source_supervisor_actions_run_id": supervisor_id,
+        "source_supervisor_head_sha": "a" * 40,
+        "source_authorization_sha256": "b" * 64,
+        "worker_head_sha": "c" * 40,
+        "expected_job_name": "train",
+        "expected_step_conclusions": {
+            "Verify immutable plan identity": "success",
+            "Verify one-time supervisor authorization": "failure",
+            "Verify Tinker provider access without spending": "skipped",
+            "Run one supervised Tinker cell": "skipped",
+            "Validate terminal or resumable segment report": "skipped",
+        },
+        "expected_failure_message": "worker and supervisor source commits differ",
+        "disposition": (
+            "excluded_pre_authorization_shell_zero_spend_no_scientific_observation"
+        ),
+    }
+    title = f"Frontier train original {run_key} supervisor-{supervisor_id}"
+    row = {
+        "databaseId": actions_run_id,
+        "status": "completed",
+        "conclusion": "failure",
+        "headSha": "c" * 40,
+        "displayTitle": title,
+    }
+    steps = [
+        {"name": name, "conclusion": conclusion}
+        for name, conclusion in claim["expected_step_conclusions"].items()
+    ]
+    detail = {
+        **row,
+        "jobs": [
+            {
+                "name": "train",
+                "status": "completed",
+                "conclusion": "failure",
+                "steps": steps,
+            }
+        ],
+    }
+
+    def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        if "--json" in command:
+            return subprocess.CompletedProcess(command, 0, json.dumps(detail), "")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            "worker and supervisor source commits differ",
+            "",
+        )
+
+    monkeypatch.setattr(manager.subprocess, "run", fake_run)
+    receipt = manager.audit_preauthorization_failure(
+        state_dir=tmp_path,
+        actions_run_id=actions_run_id,
+        row=row,
+        claim=claim,
+        kind="training",
+    )
+    assert receipt["provider_accessed"] is False
+    assert receipt["training_started"] is False
+    assert receipt["estimated_tinker_spend_usd"] == 0.0
+    assert receipt["scientific_observation_created"] is False
+    assert receipt["scientific_dispatch_claim_consumed"] is False
+    marker = json.loads(
+        (tmp_path / f"actions_runs/training/{actions_run_id}.json").read_text()
+    )
+    assert "dispatch_claim_sha256" not in marker
+
+    detail["jobs"][0]["steps"][3]["conclusion"] = "success"
+    with pytest.raises(RuntimeError, match="crossed its zero-spend boundary"):
+        manager.audit_preauthorization_failure(
+            state_dir=tmp_path / "unsafe",
+            actions_run_id=actions_run_id,
+            row=row,
+            claim=claim,
+            kind="training",
+        )
 
 
 def test_frontier_provider_snapshot_is_result_blind_and_rejects_unknown_contracts() -> (
