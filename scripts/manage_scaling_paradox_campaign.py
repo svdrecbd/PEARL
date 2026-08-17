@@ -629,6 +629,32 @@ def gh_json(command: list[str], *, max_attempts: int = 5) -> Any:
     )
 
 
+def gh_run_download(command: list[str], *, max_attempts: int = 5) -> None:
+    """Download an Actions run artifact with bounded retries."""
+    if command[:3] != ["gh", "run", "download"]:
+        raise RuntimeError("gh_run_download refuses a non-download command")
+    if max_attempts <= 0:
+        raise RuntimeError("gh_run_download requires at least one attempt")
+
+    last_failure = "GitHub returned no result"
+    for attempt in range(1, max_attempts + 1):
+        result = subprocess.run(
+            command, check=False, capture_output=True, text=True, cwd=ROOT
+        )
+        if result.returncode == 0:
+            return
+        detail = (result.stderr.strip() or result.stdout.strip())[:1000]
+        last_failure = (
+            f"GitHub artifact download exited {result.returncode}"
+            + (f": {detail}" if detail else "")
+        )
+        if attempt < max_attempts:
+            time.sleep(2 ** (attempt - 1))
+    raise RuntimeError(
+        f"GitHub artifact download failed after {max_attempts} attempts: {last_failure}"
+    )
+
+
 def dispatch_claim(
     *,
     action: str,
@@ -1045,7 +1071,7 @@ def collect_actions_artifact(
     artifact = candidates[0]
     with tempfile.TemporaryDirectory(prefix="pearl-scaling-collector-") as temporary:
         destination = Path(temporary)
-        subprocess.run(
+        gh_run_download(
             [
                 "gh",
                 "run",
@@ -1055,9 +1081,7 @@ def collect_actions_artifact(
                 str(artifact["name"]),
                 "--dir",
                 str(destination),
-            ],
-            check=True,
-            cwd=ROOT,
+            ]
         )
         if kind == "training":
             contracts = list(destination.rglob("run_contract.json"))
