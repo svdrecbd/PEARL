@@ -300,6 +300,23 @@ head, title, conclusion, job, step conclusion, or error message fails closed. Th
 operational receipts contain no scientific values and never enter lineage, endpoints, spend, or
 analysis.
 
+Supervisor `31989649480` later exposed an operational bug in the first v7 tag-existence check. On
+commit `586b0b5f7a4bcb2a8e870a2942746d6d73f61fcf`, a missing REST ref returned a 404 JSON body on
+standard output; the shell suppressed the nonzero exit and mistook that body for an existing tag at
+another commit. Reconstruction, provider snapshotting, and authorization computation succeeded,
+and authorization `d9b94d562d644407f846a76a2a8cd01203a7b04d712a80a29efc3d45578c11fd`
+was published, but tag creation and every child dispatch were skipped. The tag is absent, no child
+title names that supervisor, the reconciled active inventory contained zero paid cells, and the
+authorization remains an immutable one-time orphan with zero spend and zero scientific weight. No
+endpoint or scientific outcome was inspected to diagnose or repair the failure.
+
+The durable v7 implementation resolves the fully qualified tag through an exact GraphQL ref query,
+where an absent ref is a successful null result rather than an error body. Any GraphQL or permission
+failure remains fatal. It creates and reads back the immutable tag before publishing authorization,
+then initializes an empty dispatch receipt before the first child request so any partial dispatcher
+failure retains an exact prefix. These changes alter only control-plane provenance and failure
+accounting; all frozen plans, cohorts, endpoints, widths, budgets, and plan hashes are unchanged.
+
 ## Prospective interpretation tree (primary-only, never operational)
 
 This tree creates no gate, exclusion, relaunch, or permission. Executors remain result-blind.

@@ -1331,10 +1331,28 @@ def test_frontier_resume_worker_restores_inside_the_immutable_run_directory() ->
     assert supervisor.count('"--ref", os.environ["DISPATCH_REF"]') == 2
     assert '"--ref", "main"' not in supervisor
     assert "frontier-supervisor-${GITHUB_RUN_ID}" in supervisor
+    assert "gh api graphql" in supervisor
+    assert "ref(qualifiedName: $qualifiedName)" in supervisor
+    assert ".data.repository.ref.target.oid // \"\"" in supervisor
+    assert '== *"Not Found"*' not in supervisor
+    assert "|| echo \"\"" not in supervisor
+    assert "|| true" not in supervisor
     assert 'test "$observed" = "$GITHUB_SHA"' in supervisor
     assert "contents: write" in supervisor
     assert "TRIGGER_HEAD_SHA" in supervisor
     assert "automatic trigger differs from its immutable supervisor tag" in supervisor
+    refuse_index = supervisor.index("- name: Refuse reuse of a prior authorization")
+    tag_index = supervisor.index(
+        "- name: Create and verify the immutable supervisor dispatch tag"
+    )
+    publish_index = supervisor.index("- name: Publish one-time supervisor authorization")
+    dispatch_index = supervisor.index(
+        "- name: Dispatch and identify every authorized child"
+    )
+    assert refuse_index < tag_index < publish_index < dispatch_index
+    assert (
+        'receipt_path.write_text(json.dumps({"dispatches": records}' in supervisor
+    )
 
 
 def test_frontier_preauthorization_failure_is_exact_zero_spend_evidence(

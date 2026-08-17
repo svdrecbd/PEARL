@@ -118,6 +118,35 @@ jobs:
             -f name="frontier-adaptation-v2-authorization-${auth_sha}" --jq '.total_count')
           test "$count" = 0 || { echo "authorization was already consumed"; exit 1; }
 
+      - name: Create and verify the immutable supervisor dispatch tag
+        if: env.DISPATCH_ALLOWED == 'true'
+        run: |
+          dispatch_ref="frontier-supervisor-${GITHUB_RUN_ID}"
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          resolve_dispatch_ref() {
+            # shellcheck disable=SC2016 # GraphQL variables are intentionally literal.
+            gh api graphql \
+              -f owner="$GITHUB_REPOSITORY_OWNER" \
+              -f name="$repository_name" \
+              -f qualifiedName="refs/tags/${dispatch_ref}" \
+              -f query='query($owner: String!, $name: String!, $qualifiedName: String!) {
+                repository(owner: $owner, name: $name) {
+                  ref(qualifiedName: $qualifiedName) { target { oid } }
+                }
+              }' \
+              --jq '.data.repository.ref.target.oid // ""'
+          }
+          existing=$(resolve_dispatch_ref)
+          if [[ -z "$existing" ]]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${dispatch_ref}" -f sha="$GITHUB_SHA" >/dev/null
+          else
+            test "$existing" = "$GITHUB_SHA" || { echo "supervisor dispatch tag points to another commit"; exit 1; }
+          fi
+          observed=$(resolve_dispatch_ref)
+          test "$observed" = "$GITHUB_SHA" || { echo "supervisor dispatch tag verification failed"; exit 1; }
+          printf 'DISPATCH_REF=%s\n' "$dispatch_ref" >> "$GITHUB_ENV"
+
       - name: Publish one-time supervisor authorization
         if: env.DISPATCH_ALLOWED == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -126,21 +155,6 @@ jobs:
           path: supervisor/authorization.json
           if-no-files-found: error
           retention-days: 90
-
-      - name: Create and verify the immutable supervisor dispatch tag
-        if: env.DISPATCH_ALLOWED == 'true'
-        run: |
-          dispatch_ref="frontier-supervisor-${GITHUB_RUN_ID}"
-          existing=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${dispatch_ref}" --jq .object.sha 2>/dev/null || echo "")
-          if [[ -z "$existing" || "$existing" == *"Not Found"* || "$existing" == "null" ]]; then
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-              -f ref="refs/tags/${dispatch_ref}" -f sha="$GITHUB_SHA" >/dev/null
-          else
-            test "$existing" = "$GITHUB_SHA" || { echo "supervisor dispatch tag points to another commit"; exit 1; }
-          fi
-          observed=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${dispatch_ref}" --jq .object.sha)
-          test "$observed" = "$GITHUB_SHA" || { echo "supervisor dispatch tag verification failed"; exit 1; }
-          printf 'DISPATCH_REF=%s\n' "$dispatch_ref" >> "$GITHUB_ENV"
 
       - name: Dispatch and identify every authorized child
         if: env.DISPATCH_ALLOWED == 'true'
@@ -159,6 +173,7 @@ jobs:
           action = authorization["action"]
           records = []
           receipt_path = Path("supervisor/dispatch_receipt.json")
+          receipt_path.write_text(json.dumps({"dispatches": records}, indent=2, sort_keys=True) + "\n")
           for run_key in authorization["authorized_run_keys"]:
               if action in {"dispatch_training_wave", "dispatch_training_resume"}:
                   workflow = authorization["workflow"]
