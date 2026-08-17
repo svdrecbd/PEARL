@@ -82,7 +82,27 @@ def test_frontier_manifest_budget_and_smoke_transition_are_fail_closed(
     )
     manifest = manager.build_manifest(executor)
     assert len(manifest["phases"]) == 3
-    assert manifest["executor_contract"] == "pearl.frontier-adaptation-executor/5"
+    assert manifest["executor_contract"] == "pearl.frontier-adaptation-executor/6"
+    assert executor["operational_amendment"] == {
+        "contract": "pearl.frontier-operational-amendment/1",
+        "frozen_date": "2026-08-16",
+        "source_supervisor_actions_run_id": 31978917585,
+        "source_child_count": 35,
+        "evidence_fields": [
+            "actions_run_id",
+            "model_tag",
+            "authorized_optimizer_updates",
+            "created_at",
+            "updated_at",
+            "conclusion",
+        ],
+        "scientific_outcomes_consulted": False,
+        "applies_only_to_future_continuation_authorizations": True,
+        "automatic_refill_trigger": (
+            "successful_supervisor_owned_training_or_evaluation_workflow_run_on_main"
+        ),
+        "time_based_schedule": False,
+    }
     assert manifest["global_max_active_paid_cells"] == 47
     smoke = manifest["phases"][0]
     assert smoke["evaluation_required"] is False
@@ -1196,6 +1216,19 @@ def test_frontier_executor_segments_every_frozen_model_without_changing_plan_has
         (ROOT / "configs/experiments/frontier_adaptation_v2_executor.json").read_text()
     )
     manifest = manager.build_manifest(executor)
+    assert manifest["training_slicing"]["contract"] == (
+        "pearl.frontier-training-slicing/3"
+    )
+    expected_segment_widths = {
+        "inkling-small": (150, 500),
+        "inkling": (100, 300),
+        "nemotron3-nano": (250, 800),
+        "nemotron3-super": (150, 500),
+        "nemotron3-ultra": (100, 250),
+        "nemotron3p5-lightning": (250, 800),
+        "gptoss-20b": (300, 900),
+        "gptoss-120b": (250, 800),
+    }
     assert set(manifest["training_slicing"]["model_overrides"]) == {
         "inkling-small",
         "inkling",
@@ -1226,6 +1259,24 @@ def test_frontier_executor_segments_every_frozen_model_without_changing_plan_has
                         completed_steps=0,
                     )
                     < wave["run_max_steps"][run_key]
+                )
+                initial, continuation = expected_segment_widths[
+                    wave["run_model_tags"][run_key]
+                ]
+                assert manager.training_segment_end(
+                    manifest=manifest,
+                    wave=wave,
+                    run_key=run_key,
+                    completed_steps=0,
+                ) == min(initial, wave["run_max_steps"][run_key])
+                assert manager.training_segment_end(
+                    manifest=manifest,
+                    wave=wave,
+                    run_key=run_key,
+                    completed_steps=initial,
+                ) == min(
+                    initial + continuation,
+                    wave["run_max_steps"][run_key],
                 )
 
 
@@ -1268,6 +1319,14 @@ def test_frontier_resume_worker_restores_inside_the_immutable_run_directory() ->
         '"createdAt,databaseId,displayTitle,startedAt,status,updatedAt"' in manager
     )
     assert '--provider-snapshot "$STATE_DIR/provider_snapshot.json"' in supervisor
+    assert "workflow_run:" in supervisor
+    assert "github.event.workflow_run.head_branch == 'main'" in supervisor
+    assert "github.event.workflow_run.conclusion == 'success'" in supervisor
+    assert "github.event.workflow_run.event == 'workflow_dispatch'" in supervisor
+    assert "supervisor-validate" in supervisor
+    assert 'SUPERVISOR_MODE: ${{' in supervisor
+    assert '"$SUPERVISOR_MODE" == advance' in supervisor
+    assert "schedule:" not in supervisor
 
 
 def test_frontier_provider_snapshot_is_result_blind_and_rejects_unknown_contracts() -> (

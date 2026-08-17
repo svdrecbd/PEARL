@@ -1,6 +1,24 @@
 {
-  "contract": "pearl.frontier-adaptation-executor/5",
+  "contract": "pearl.frontier-adaptation-executor/6",
   "created_before_any_v2_outcome_review": true,
+  "operational_amendment": {
+    "contract": "pearl.frontier-operational-amendment/1",
+    "frozen_date": "2026-08-16",
+    "source_supervisor_actions_run_id": 31978917585,
+    "source_child_count": 35,
+    "evidence_fields": [
+      "actions_run_id",
+      "model_tag",
+      "authorized_optimizer_updates",
+      "created_at",
+      "updated_at",
+      "conclusion"
+    ],
+    "scientific_outcomes_consulted": false,
+    "applies_only_to_future_continuation_authorizations": true,
+    "automatic_refill_trigger": "successful_supervisor_owned_training_or_evaluation_workflow_run_on_main",
+    "time_based_schedule": false
+  },
   "scientific_role": "contemporary frontier-scale confirmatory extension of the frozen Qwen scaling-paradox study",
   "global_max_active_paid_cells": 47,
   "max_authorized_tinker_usd": 2300.0,
@@ -20,49 +38,49 @@
   "max_continuation_recovery_overhead_usd": 25.0,
   "planned_total_with_recovery_ceiling_usd": 2084.39,
   "training_slicing": {
-    "contract": "pearl.frontier-training-slicing/2",
+    "contract": "pearl.frontier-training-slicing/3",
     "scientific_contract_unchanged": true,
     "default": "bounded_resumable_segments",
     "model_overrides": {
       "inkling-small": {
         "initial_segment_steps": 150,
-        "continuation_segment_steps": 250,
-        "reason": "conservative circuit-breaker headroom from the frozen smoke timing"
+        "continuation_segment_steps": 500,
+        "reason": "prospective result-blind continuation width retains at least 100 minutes of observed Actions headroom"
       },
       "inkling": {
         "initial_segment_steps": 100,
-        "continuation_segment_steps": 150,
-        "reason": "conservative circuit-breaker headroom from the frozen smoke timing"
+        "continuation_segment_steps": 300,
+        "reason": "prospective result-blind continuation width retains at least 100 minutes of observed Actions headroom"
       },
       "nemotron3-nano": {
         "initial_segment_steps": 250,
-        "continuation_segment_steps": 400,
-        "reason": "conservative circuit-breaker headroom from the frozen smoke timing"
+        "continuation_segment_steps": 800,
+        "reason": "prospective result-blind continuation width retains at least 100 minutes of observed Actions headroom"
       },
       "nemotron3-super": {
         "initial_segment_steps": 150,
-        "continuation_segment_steps": 250,
-        "reason": "conservative circuit-breaker headroom from the frozen smoke timing"
+        "continuation_segment_steps": 500,
+        "reason": "prospective result-blind continuation width retains at least 100 minutes of observed Actions headroom"
       },
       "nemotron3-ultra": {
         "initial_segment_steps": 100,
-        "continuation_segment_steps": 150,
-        "reason": "observed wall time exceeds the remote supervised-worker boundary"
+        "continuation_segment_steps": 250,
+        "reason": "prospective result-blind width preserves about 97 minutes of headroom even under the historical slow continuation"
       },
       "nemotron3p5-lightning": {
         "initial_segment_steps": 250,
-        "continuation_segment_steps": 400,
-        "reason": "conservative circuit-breaker headroom from the frozen smoke timing"
+        "continuation_segment_steps": 800,
+        "reason": "prospective result-blind continuation width retains at least 100 minutes of observed Actions headroom"
       },
       "gptoss-20b": {
         "initial_segment_steps": 300,
-        "continuation_segment_steps": 450,
-        "reason": "conservative circuit-breaker headroom from the frozen smoke timing"
+        "continuation_segment_steps": 900,
+        "reason": "prospective result-blind continuation width retains at least 100 minutes of observed Actions headroom"
       },
       "gptoss-120b": {
         "initial_segment_steps": 250,
-        "continuation_segment_steps": 400,
-        "reason": "conservative circuit-breaker headroom from the frozen smoke timing"
+        "continuation_segment_steps": 800,
+        "reason": "prospective result-blind continuation width retains at least 100 minutes of observed Actions headroom"
       }
     }
   },

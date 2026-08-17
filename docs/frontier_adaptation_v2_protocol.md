@@ -101,19 +101,25 @@ not a scientific outcome. The model, seed, data order, optimizer, rank, update b
 analysis remain frozen.
 
 The frozen smokes also show that the other frontier models have insufficient or uncomfortably narrow
-headroom at core length. Executor contract v4 therefore gives every model a conservative,
-supervisor-authorized segment size:
+headroom at core length. Executor contract v4 therefore gave every model a conservative,
+supervisor-authorized segment size. Executor contract v6 retains every initial width and
+prospectively widens only future continuations using result-blind Actions timing evidence:
 
 | Model tag | Initial updates | Continuation updates |
 | --- | ---: | ---: |
-| `inkling-small` | 150 | 250 |
-| `inkling` | 100 | 150 |
-| `nemotron3-nano` | 250 | 400 |
-| `nemotron3-super` | 150 | 250 |
-| `nemotron3-ultra` | 100 | 150 |
-| `nemotron3p5-lightning` | 250 | 400 |
-| `gptoss-20b` | 300 | 450 |
-| `gptoss-120b` | 250 | 400 |
+| `inkling-small` | 150 | 500 |
+| `inkling` | 100 | 300 |
+| `nemotron3-nano` | 250 | 800 |
+| `nemotron3-super` | 150 | 500 |
+| `nemotron3-ultra` | 100 | 250 |
+| `nemotron3p5-lightning` | 250 | 800 |
+| `gptoss-20b` | 300 | 900 |
+| `gptoss-120b` | 250 | 800 |
+
+The v4 continuation widths were respectively 250, 150, 400, 250, 150, 400, 450, and 400.
+Their completed and already-authorized segments remain immutable evidence. The v6 widths apply only
+to a continuation authorized after the v6 source commit; they do not reinterpret or extend a prior
+authorization.
 
 Each segment is capped at the original absolute step 2,250 and ends by saving the exact Tinker
 optimizer/model state, full ordered batch history, cached reference margins, and hash-bound
@@ -229,6 +235,40 @@ The ramp changes neither the `$2,084.39` total Tinker ceiling nor any model, arm
 pair order, adapter, optimizer update, checkpoint, endpoint, analysis, or cohort label. It may expose
 more of the already-authorized cohort budget concurrently. The replication sentinel and its ramp
 remain blocked until every original cell and evaluation is terminal-valid.
+
+### Prospective continuation-efficiency and event-driven refill amendment
+
+Executor contract v6 was frozen on August 16, 2026 after the original cohort's first full-capacity
+continuation pass was operationally complete and before any v2 scientific endpoint was inspected.
+The amendment used only GitHub Actions identifiers, timestamps, conclusions, model tags, and exact
+supervisor-authorized update counts from supervisor run `31978917585` and its 35 child workers. No
+loss, reward, margin, accuracy, sequence, endpoint, or effect direction was consulted.
+
+For each model, the prospective continuation width was bounded so the worst successful Actions
+elapsed-time-per-update in that pass projected to no more than about 220 minutes. Ultra was kept more
+conservative: its 250-update width projects to about 233 minutes under the separately recorded
+historical slow continuation, leaving roughly 97 minutes inside the unchanged 330-minute supervised
+training window. These are circuit-breaker margins, not performance endpoints or exclusion rules.
+An incomplete segment still fails closed and may only resume from its last complete audited
+checkpoint after primary review.
+
+Only the number of recovery boundaries changes. Every cell still executes the same ordered 2,250
+optimizer updates with the same model, renderer, pair order, seed, adapter, optimizer state, cached
+reference margins, checkpoints, terminal endpoint, and analysis. The original and replication plan
+hashes, experimental-unit identities, cohort boundary, active-cell cap, and spend ceilings remain
+unchanged. The same prospective continuation policy is used for every continuation authorized after
+v6, irrespective of cohort or scientific outcome.
+
+Contract v6 also removes avoidable idle time without introducing a scheduler or polling loop. A
+successful, supervisor-owned frontier training or checkpoint-evaluation workflow on `main` triggers
+one new supervisor reconstruction in `advance` mode. The existing campaign-global concurrency lock
+coalesces simultaneous completion events. The triggered supervisor still reconstructs all audited
+artifacts, captures a fresh sanitized provider snapshot, converges the active inventory, computes
+one action type, publishes a one-time authorization, and enforces every existing ownership,
+lineage, capacity, cohort, and budget gate before dispatch. There is no cron trigger. Failed,
+cancelled, non-`main`, non-dispatch, and validation-only child runs cannot auto-advance; they stop the
+automatic chain for review. Manual `status` and `advance` remain available, but an operator must not
+race an already queued or running automatic supervisor.
 
 ## Prospective interpretation tree (primary-only, never operational)
 
