@@ -208,9 +208,75 @@ def validate_redundant_quarantine(
     return result
 
 
+def validate_preauthorization_failure_quarantine(
+    executor: dict[str, Any], plans: dict[tuple[str, str], dict[str, Any]]
+) -> dict[int, dict[str, Any]]:
+    group = executor.get("preauthorization_failure_quarantine")
+    if group is None:
+        return {}
+    if not isinstance(group, dict) or group.get("contract") != (
+        "pearl.frontier-preauthorization-failure-quarantine/1"
+    ):
+        raise RuntimeError("preauthorization failure quarantine contract is invalid")
+    supervisor_id = int(group.get("source_supervisor_actions_run_id", 0))
+    valid_child_id = int(group.get("valid_old_head_child_actions_run_id", 0))
+    supervisor_head = str(group.get("source_supervisor_head_sha") or "")
+    worker_head = str(group.get("worker_head_sha") or "")
+    authorization_sha = str(group.get("source_authorization_sha256") or "")
+    failed = group.get("failed_actions_runs")
+    expected_steps = group.get("expected_step_conclusions")
+    if (
+        supervisor_id <= 0
+        or valid_child_id <= 0
+        or not re.fullmatch(r"[0-9a-f]{40}", supervisor_head)
+        or not re.fullmatch(r"[0-9a-f]{40}", worker_head)
+        or supervisor_head == worker_head
+        or not re.fullmatch(r"[0-9a-f]{64}", authorization_sha)
+        or not isinstance(failed, dict)
+        or len(failed) != int(group.get("failed_child_count", -1))
+        or not failed
+        or not isinstance(expected_steps, dict)
+        or expected_steps.get("Verify one-time supervisor authorization")
+        != "failure"
+        or expected_steps.get("Run one supervised Tinker cell") != "skipped"
+        or not str(group.get("expected_failure_message") or "")
+        or group.get("disposition")
+        != "excluded_pre_authorization_shell_zero_spend_no_scientific_observation"
+    ):
+        raise RuntimeError("preauthorization failure quarantine identity is invalid")
+    valid_run_key = str(group.get("valid_old_head_child_run_key") or "")
+    identify_plan_entry(plans, valid_run_key)
+    result: dict[int, dict[str, Any]] = {}
+    run_keys: set[str] = set()
+    for actions_id_text, run_key_value in failed.items():
+        actions_id = int(actions_id_text)
+        run_key = str(run_key_value or "")
+        identify_plan_entry(plans, run_key)
+        if (
+            actions_id <= 0
+            or actions_id == valid_child_id
+            or actions_id in result
+            or run_key == valid_run_key
+            or run_key in run_keys
+        ):
+            raise RuntimeError(
+                "preauthorization failure quarantine has a duplicate identity"
+            )
+        claim = dict(group)
+        claim["actions_run_id"] = actions_id
+        claim["run_key"] = run_key
+        claim.pop("failed_actions_runs", None)
+        result[actions_id] = claim
+        run_keys.add(run_key)
+    return result
+
+
 def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
     plans = build_plans(executor)
     redundant_quarantine = validate_redundant_quarantine(executor, plans)
+    preauthorization_quarantine = validate_preauthorization_failure_quarantine(
+        executor, plans
+    )
     launcher = load_launcher()
     phases: list[dict[str, Any]] = []
     for phase_index, phase_name in enumerate(executor["stage_order"], start=1):
@@ -388,6 +454,9 @@ def build_manifest(executor: dict[str, Any]) -> dict[str, Any]:
             executor.get("max_continuation_recovery_overhead_usd", 0.0)
         ),
         "observed_continuation_recovery_overhead_usd": observed_recovery_overhead,
+        "preauthorization_failure_quarantine_count": len(
+            preauthorization_quarantine
+        ),
         "planned_total_tinker_ceiling_usd": float(
             executor.get(
                 "planned_total_tinker_ceiling_usd",
@@ -595,6 +664,149 @@ def attach_and_validate_dispatch_claims(
 
 def quarantine_receipt_path(state_dir: Path, actions_run_id: int) -> Path:
     return state_dir / "quarantines" / "training" / f"{actions_run_id}.json"
+
+
+def preauthorization_failure_receipt_path(
+    state_dir: Path, actions_run_id: int
+) -> Path:
+    return (
+        state_dir
+        / "operational_failures"
+        / "preauthorization"
+        / f"{actions_run_id}.json"
+    )
+
+
+def audit_preauthorization_failure(
+    *,
+    state_dir: Path,
+    actions_run_id: int,
+    row: dict[str, Any],
+    claim: dict[str, Any],
+    kind: str,
+) -> dict[str, Any]:
+    run_key = str(claim["run_key"])
+    supervisor_id = int(claim["source_supervisor_actions_run_id"])
+    expected_title = f"Frontier train original {run_key} supervisor-{supervisor_id}"
+    if (
+        kind != "training"
+        or int(row.get("databaseId", 0)) != actions_run_id
+        or row.get("status") != "completed"
+        or row.get("conclusion") != "failure"
+        or row.get("headSha") != claim["worker_head_sha"]
+        or row.get("displayTitle") != expected_title
+    ):
+        raise RuntimeError(
+            f"preauthorization failure Actions identity differs: {actions_run_id}"
+        )
+    result = subprocess.run(
+        [
+            "gh",
+            "run",
+            "view",
+            str(actions_run_id),
+            "--json",
+            "databaseId,status,conclusion,headSha,displayTitle,jobs",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"could not audit preauthorization failure {actions_run_id}"
+        )
+    detail = json.loads(result.stdout)
+    if any(
+        detail.get(key) != value
+        for key, value in {
+            "databaseId": actions_run_id,
+            "status": "completed",
+            "conclusion": "failure",
+            "headSha": claim["worker_head_sha"],
+            "displayTitle": expected_title,
+        }.items()
+    ):
+        raise RuntimeError(
+            f"preauthorization failure detail differs: {actions_run_id}"
+        )
+    jobs = detail.get("jobs")
+    if not isinstance(jobs, list) or len(jobs) != 1:
+        raise RuntimeError(
+            f"preauthorization failure has ambiguous jobs: {actions_run_id}"
+        )
+    job = jobs[0]
+    if (
+        job.get("name") != claim["expected_job_name"]
+        or job.get("status") != "completed"
+        or job.get("conclusion") != "failure"
+    ):
+        raise RuntimeError(
+            f"preauthorization failure job identity differs: {actions_run_id}"
+        )
+    steps = job.get("steps")
+    if not isinstance(steps, list):
+        raise RuntimeError(
+            f"preauthorization failure steps are unavailable: {actions_run_id}"
+        )
+    step_conclusions = {
+        str(step.get("name") or ""): str(step.get("conclusion") or "")
+        for step in steps
+    }
+    if any(
+        step_conclusions.get(name) != conclusion
+        for name, conclusion in claim["expected_step_conclusions"].items()
+    ):
+        raise RuntimeError(
+            f"preauthorization failure crossed its zero-spend boundary: {actions_run_id}"
+        )
+    log_result = subprocess.run(
+        ["gh", "run", "view", str(actions_run_id), "--log-failed"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    if (
+        log_result.returncode != 0
+        or claim["expected_failure_message"]
+        not in (log_result.stdout + log_result.stderr)
+    ):
+        raise RuntimeError(
+            f"preauthorization failure reason differs: {actions_run_id}"
+        )
+    receipt = {
+        "contract": "pearl.frontier-preauthorization-failure-receipt/1",
+        "actions_run_id": actions_run_id,
+        "run_key": run_key,
+        "source_supervisor_actions_run_id": supervisor_id,
+        "source_supervisor_head_sha": claim["source_supervisor_head_sha"],
+        "source_authorization_sha256": claim["source_authorization_sha256"],
+        "worker_head_sha": claim["worker_head_sha"],
+        "failed_step": "Verify one-time supervisor authorization",
+        "failure_message": claim["expected_failure_message"],
+        "provider_accessed": False,
+        "training_started": False,
+        "estimated_tinker_spend_usd": 0.0,
+        "scientific_observation_created": False,
+        "scientific_dispatch_claim_consumed": False,
+        "disposition": claim["disposition"],
+    }
+    receipt["receipt_sha256"] = sha256_value(receipt)
+    write_json(
+        preauthorization_failure_receipt_path(state_dir, actions_run_id), receipt
+    )
+    write_json(
+        state_dir / "actions_runs" / "training" / f"{actions_run_id}.json",
+        {
+            "actions_run_id": actions_run_id,
+            "run_key": run_key,
+            "preauthorization_failure_receipt_sha256": receipt["receipt_sha256"],
+            "disposition": receipt["disposition"],
+        },
+    )
+    return receipt
 
 
 def lineage_provider_ids(receipt: dict[str, Any]) -> list[str]:
@@ -1194,6 +1406,9 @@ def sync_github_state(
         ),
     }
     counts = {"training": 0, "evaluation": 0}
+    preauthorization_failures = validate_preauthorization_failure_quarantine(
+        executor, plans
+    )
     legacy = {
         int(value) for value in executor.get("legacy_original_core_actions_runs", {})
     }
@@ -1209,7 +1424,7 @@ def sync_github_state(
                     "--limit",
                     "1000",
                     "--json",
-                    "databaseId,status,displayTitle",
+                    "conclusion,databaseId,displayTitle,headSha,status",
                 ],
                 check=False,
                 capture_output=True,
@@ -1229,6 +1444,16 @@ def sync_github_state(
                 if row.get("status") != "completed":
                     continue
                 if (state_dir / "actions_runs" / kind / f"{run_id}.json").is_file():
+                    continue
+                preauthorization_claim = preauthorization_failures.get(run_id)
+                if preauthorization_claim is not None:
+                    audit_preauthorization_failure(
+                        state_dir=state_dir,
+                        actions_run_id=run_id,
+                        row=row,
+                        claim=preauthorization_claim,
+                        kind=kind,
+                    )
                     continue
                 title = str(row.get("displayTitle") or "")
                 is_paid_worker = run_id in legacy or (

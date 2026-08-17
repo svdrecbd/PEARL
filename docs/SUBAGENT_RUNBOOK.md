@@ -79,12 +79,24 @@ supervisor returns a mechanical wait, completion, analysis boundary, or stop con
 and replication never overlap; structural jobs retain their separate six-job cap.
 
 Under frontier executor contract v6, a successful supervisor-owned training or checkpoint-evaluation
-child on `main` normally queues the next supervisor transition automatically. Before any manual
+child bound to a verified `frontier-supervisor-<run-id>` tag normally queues the next supervisor
+transition automatically. The automatic supervisor must prove that the retained tag SHA equals the
+child head SHA before reconstruction. Before any manual
 `advance`, an Executor must query the supervisor workflow and refuse to race a queued or running
-automatic transition. Failed, cancelled, validation-only, non-dispatch, and non-`main` child runs do
+automatic transition. Failed, cancelled, validation-only, non-dispatch, and unrecognized-ref child runs do
 not auto-advance; they remain stops for primary review. The automatic trigger grants the Executor no
 new authority and does not bypass reconstruction, provider snapshotting, convergence, the global
 lock, one-time authorization, or any scientific or budget gate.
+
+Frontier executor contract v7 additionally requires every supervisor child to run from a retained,
+run-specific `frontier-supervisor-<run-id>` tag verified at the supervisor's immutable commit SHA,
+never a moving branch ref. Tag creation or verification failure is a stop, and an Executor may not
+move, replace, or delete the tag. Before merging a frontier control-plane change, query live
+supervisor runs and do not assume a previously observed idle state remains current.
+The exact 34 failed children from supervisor `31985313255` are primary-audited pre-authorization
+shells: reconstruction verifies their head, title, failed authorization step, skipped provider and
+training steps, and source-mismatch log before assigning zero spend and zero scientific weight. A
+subagent may not add another ID to that registry or generalize the exception.
 
 The clean-path research design and campaign engineering are complete. Remaining clean-path work is
 operational: invoke one frozen supervisor transition at a time, monitor remotely owned jobs, audit

@@ -260,15 +260,45 @@ unchanged. The same prospective continuation policy is used for every continuati
 v6, irrespective of cohort or scientific outcome.
 
 Contract v6 also removes avoidable idle time without introducing a scheduler or polling loop. A
-successful, supervisor-owned frontier training or checkpoint-evaluation workflow on `main` triggers
-one new supervisor reconstruction in `advance` mode. The existing campaign-global concurrency lock
+successful, supervisor-owned frontier training or checkpoint-evaluation workflow bound to a verified
+`frontier-supervisor-<run-id>` tag triggers one new supervisor reconstruction in `advance` mode. The
+automatic supervisor resolves the originating supervisor ID from the child title and requires the
+retained tag SHA to equal the child's head SHA before checkout or reconstruction. The existing
+campaign-global concurrency lock
 coalesces simultaneous completion events. The triggered supervisor still reconstructs all audited
 artifacts, captures a fresh sanitized provider snapshot, converges the active inventory, computes
 one action type, publishes a one-time authorization, and enforces every existing ownership,
 lineage, capacity, cohort, and budget gate before dispatch. There is no cron trigger. Failed,
-cancelled, non-`main`, non-dispatch, and validation-only child runs cannot auto-advance; they stop the
+cancelled, unrecognized-ref, non-dispatch, and validation-only child runs cannot auto-advance; they stop the
 automatic chain for review. Manual `status` and `advance` remain available, but an operator must not
 race an already queued or running automatic supervisor.
+
+### Immutable supervisor-source amendment
+
+Executor contract v7 was frozen on August 16, 2026 after a source-ref race, without inspecting any
+scientific outcome. Supervisor `31985313255` began on commit `cf5741589fe87e49cd370c9e0dd688144782bf55`
+and published authorization
+`c6d2e26b54d8daacf5be110a651ca1ad3d1835493f10a40cb9c636827e674435` immediately before executor
+v6 merged. Its dispatcher selected child workflows through moving ref `main`. One child,
+`31985920144`, resolved the old commit, passed the exact authorization, and retained ordinary
+continuation status. The remaining 34 resolved merge commit
+`8367e36a9d6a17c372807bf5b18987453b4c7bde` and failed at the source-commit authorization guard.
+For all 34, provider access and the supervised training step were skipped. They incurred zero Tinker
+spend, created no provider owner or scientific observation, consume no semantic dispatch claim, and
+are not runs or replicates.
+
+Contract v7 creates a run-specific lightweight tag `frontier-supervisor-<run-id>` at the supervisor
+workflow's immutable `GITHUB_SHA`, verifies that tag through the GitHub API, and dispatches every
+training and evaluation child from it; a branch movement can no longer change code between
+authorization and dispatch. Tag creation requires the supervisor's narrowly scoped repository-
+contents write permission. Failure to create the tag, an existing tag at another commit, or a
+read-back mismatch stops before child dispatch. The tag is retained as audit evidence. The 34
+historical pre-authorization shells are listed by exact Actions ID and expected run key in the
+executor. Reconstruction accepts them only after re-querying their immutable job steps and failed
+log, proving the declared source mismatch and proving that training remained skipped. Any different
+head, title, conclusion, job, step conclusion, or error message fails closed. Their sanitized
+operational receipts contain no scientific values and never enter lineage, endpoints, spend, or
+analysis.
 
 ## Prospective interpretation tree (primary-only, never operational)
 
