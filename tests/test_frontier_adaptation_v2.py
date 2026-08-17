@@ -1355,6 +1355,30 @@ def test_frontier_resume_worker_restores_inside_the_immutable_run_directory() ->
     )
 
 
+def test_frontier_dataset_restore_does_not_use_the_installation_api() -> None:
+    workflow_paths = (
+        ".github/workflows/frontier-adaptation-v2-supervisor.yml",
+        ".github/workflows/frontier-adaptation-v2.yml",
+        ".github/workflows/frontier-adaptation-v2-checkpoint-evaluation.yml",
+        ".github/workflows/frontier-adaptation-v2-structural-supervisor.yml",
+    )
+    expected_digest = (
+        "ffad79ec8e104bf06979882e186290ea4d94b87531e48b111e954b6c09e8e962"
+    )
+    for workflow_path in workflow_paths:
+        workflow = (ROOT / workflow_path).read_text()
+        assert 'gh release download "$DATA_RELEASE_TAG"' not in workflow
+        assert "curl --fail --location --silent --show-error" in workflow
+        assert "--retry 5 --retry-all-errors --retry-delay 2" in workflow
+        assert "--connect-timeout 20 --max-time 300" in workflow
+        assert (
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/"
+            "${DATA_RELEASE_TAG}/${DATA_ARCHIVE}"
+        ) in workflow
+        assert expected_digest in workflow
+        assert "sha256sum --check --strict" in workflow
+
+
 def test_frontier_preauthorization_failure_is_exact_zero_spend_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

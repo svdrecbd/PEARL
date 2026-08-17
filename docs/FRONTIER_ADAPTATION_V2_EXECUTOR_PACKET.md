@@ -66,6 +66,17 @@ exact GraphQL qualified-ref lookup, verifies the tag before publishing authoriza
 the dispatch receipt before requesting the first child. Executors must not replace this with parsing
 human-readable REST error text.
 
+Interim supervisor `31990831560` stopped during reconstruction on a transient read-only Actions
+metadata failure; provider snapshotting, authorization, and dispatch were skipped. The manager may
+retry only allowlisted GitHub reads with bounded backoff and must fail closed afterward. It never
+retries workflow dispatches or other writes.
+
+Supervisor `31991478845` stopped before reconstruction because its installation token exhausted the
+GitHub release-asset API limit. It created no authorization, tag, child, provider run, spend, or
+scientific observation. Every frontier-v2 dataset restore now uses the public release URL with
+bounded transport retries and the unchanged strict SHA-256 verification, without calling the
+authenticated release API. Never remove or weaken the digest check.
+
 When explicitly assigned a transition, or assigned to carry the frozen clean path until a stop
 condition:
 

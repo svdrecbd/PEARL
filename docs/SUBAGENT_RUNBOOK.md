@@ -107,6 +107,20 @@ generalize the incident. The repaired supervisor resolves the exact qualified re
 verifies the tag before publishing authorization, and initializes a zero-child receipt before the
 dispatch loop. Do not replace the exact query with human-readable error-body matching.
 
+Supervisor `31990831560` stopped during reconstruction when a read-only Actions metadata query
+transiently returned nonzero. Provider snapshotting, authorization, and dispatch were skipped. The
+manager may retry only its explicit allowlist of read-only GitHub JSON queries, for at most five
+attempts with bounded backoff. It must never retry a workflow dispatch or other mutation; exhausting
+the read bound is still a stop.
+
+Supervisor `31991478845` failed before reconstruction when its workflow installation token exhausted
+the GitHub release-asset API limit. No provider, authorization, tag, child, spend, or scientific
+observation was created. Frontier-v2 dataset restoration must use the public release download URL,
+not `gh release download`; it may retry transport failures only within the frozen bound and must
+strictly verify the unchanged archive SHA-256 before extraction. This applies to original and
+replication training, checkpoint evaluation, and structural supervision as well as the campaign
+supervisor.
+
 The clean-path research design and campaign engineering are complete. Remaining clean-path work is
 operational: invoke one frozen supervisor transition at a time, monitor remotely owned jobs, audit
 their immutable artifacts, execute the frozen analyses, and hand the validated outputs to the

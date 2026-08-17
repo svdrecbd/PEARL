@@ -317,6 +317,24 @@ then initializes an empty dispatch receipt before the first child request so any
 failure retains an exact prefix. These changes alter only control-plane provenance and failure
 accounting; all frozen plans, cohorts, endpoints, widths, budgets, and plan hashes are unchanged.
 
+Supervisor `31990831560`, launched against the interim tag hotfix, stopped during artifact
+reconstruction before provider snapshotting or authorization when one read-only Actions metadata
+query transiently returned nonzero. The same immutable run was immediately readable afterward and
+the GitHub API quota was healthy. The manager therefore retries only its explicit allowlist of
+read-only GitHub JSON commands up to five times with bounded backoff, reports the terminal error,
+and refuses workflow dispatch or any other mutation through that retry path.
+
+Supervisor `31991478845` then stopped while restoring the frozen dataset because its workflow
+installation token had exhausted GitHub's release-asset API limit. Reconstruction, provider
+snapshotting, authorization, tag creation, and dispatch were all skipped; it produced no campaign
+artifact, spend, or scientific observation. The release is public and the archive remains bound to
+the same frozen SHA-256 digest. Every frontier-v2 path that restores the dataset—supervisor,
+original or replication training, checkpoint evaluation, and structural supervision—now uses the
+public release download URL without an authenticated release-API call, retries only transport
+failures within a fixed bound, and requires the unchanged strict SHA-256 check before extraction.
+HTTP failure, retry exhaustion, or checksum mismatch remains fatal. This changes transport only,
+not the dataset or any scientific contract.
+
 ## Prospective interpretation tree (primary-only, never operational)
 
 This tree creates no gate, exclusion, relaunch, or permission. Executors remain result-blind.
