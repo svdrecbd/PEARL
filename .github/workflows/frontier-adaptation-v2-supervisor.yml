@@ -131,8 +131,8 @@ jobs:
         if: env.DISPATCH_ALLOWED == 'true'
         run: |
           dispatch_ref="frontier-supervisor-${GITHUB_RUN_ID}"
-          existing=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${dispatch_ref}" --jq .object.sha 2>/dev/null || true)
-          if [[ -z "$existing" ]]; then
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${dispatch_ref}" --jq .object.sha 2>/dev/null || echo "")
+          if [[ -z "$existing" || "$existing" == *"Not Found"* || "$existing" == "null" ]]; then
             gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
               -f ref="refs/tags/${dispatch_ref}" -f sha="$GITHUB_SHA" >/dev/null
           else
