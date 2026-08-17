@@ -78,6 +78,14 @@ returns. A campaign-carry assignment may invoke successive `advance` transitions
 supervisor returns a mechanical wait, completion, analysis boundary, or stop condition. Original
 and replication never overlap; structural jobs retain their separate six-job cap.
 
+Under frontier executor contract v6, a successful supervisor-owned training or checkpoint-evaluation
+child on `main` normally queues the next supervisor transition automatically. Before any manual
+`advance`, an Executor must query the supervisor workflow and refuse to race a queued or running
+automatic transition. Failed, cancelled, validation-only, non-dispatch, and non-`main` child runs do
+not auto-advance; they remain stops for primary review. The automatic trigger grants the Executor no
+new authority and does not bypass reconstruction, provider snapshotting, convergence, the global
+lock, one-time authorization, or any scientific or budget gate.
+
 The clean-path research design and campaign engineering are complete. Remaining clean-path work is
 operational: invoke one frozen supervisor transition at a time, monitor remotely owned jobs, audit
 their immutable artifacts, execute the frozen analyses, and hand the validated outputs to the

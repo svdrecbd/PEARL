@@ -38,6 +38,13 @@ Status is result-blind and no-spend:
 gh workflow run frontier-adaptation-v2-supervisor.yml --ref main -f mode=status
 ```
 
+Executor contract v6 normally refills capacity automatically. Each successful supervisor-owned
+frontier training or checkpoint-evaluation child on `main` triggers one result-blind supervisor
+`advance`; simultaneous events coalesce behind the existing campaign-global lock. Before invoking a
+manual transition, query the supervisor runs and do not proceed while an automatic supervisor is
+queued or in progress. There is no time-based schedule. A failed, cancelled, validation-only,
+non-dispatch, or non-`main` child does not auto-advance and remains a stop for review.
+
 When explicitly assigned a transition, or assigned to carry the frozen clean path until a stop
 condition:
 
@@ -62,8 +69,12 @@ kind, or exhaustion of that finite bound fails closed. This internal convergence
 Executor's authority or permit an Executor to rerun a failed supervisor.
 
 Every frontier model is deliberately segmented because the frozen smoke timings provide inadequate
-headroom to promise a 2,250-update core inside that window. Segment sizes are frozen by model in the
-protocol and controller; the Executor never selects them. A continuation is not a relaunch: it
+headroom to promise a 2,250-update core inside that window. Current initial/continuation widths are
+150/500 for Inkling Small, 100/300 for Inkling, 250/800 for Nano, 150/500 for Super, 100/250 for
+Ultra, 250/800 for Lightning, 300/900 for GPT-OSS 20B, and 250/800 for GPT-OSS 120B. These v6
+continuation-only increases were frozen prospectively from result-blind Actions timing; prior
+segment authorizations remain immutable. Segment sizes are selected only by the protocol and
+controller; the Executor never selects them. A continuation is not a relaunch: it
 restores the predecessor artifact and exact optimizer/model state, retains the run key, contract,
 seed, data order, cached reference margins, provider owner, and ordered batch history, and advances
 to one absolute step authorized in the receipt. The pre-segmentation Ultra Actions run `31554744343`
@@ -145,8 +156,9 @@ scientific wave; only the ordinary continuation audit does.
 That prospective comparison is now complete and mechanically valid; it showed about 1.8x observed
 end-to-end throughput for the candidate segment. It grants no Executor authority and requires no
 repeat. Executor contract v4 added bounded segmentation for all models and the rolling-capacity
-queue. Executor contract v5 adds only the prospective result-blind capacity ramp. Neither changes
-any scientific identity or total planned spend.
+queue. Executor contract v5 added only the prospective result-blind capacity ramp. Executor contract
+v6 widens future continuation boundaries and adds completion-triggered supervisor refills using only
+sanitized operational evidence. None changes any scientific identity or total planned spend.
 
 For local no-spend reconstruction:
 

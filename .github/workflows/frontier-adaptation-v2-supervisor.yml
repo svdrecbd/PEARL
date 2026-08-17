@@ -1,5 +1,5 @@
 name: Frontier adaptation v2 — validate and dispatch one exact wave
-run-name: Frontier supervisor ${{ github.run_id }} ${{ inputs.mode }}
+run-name: Frontier supervisor ${{ github.run_id }} ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'auto-advance' }}
 
 on:
   workflow_dispatch:
@@ -12,6 +12,12 @@ on:
         options:
           - status
           - advance
+  workflow_run:
+    workflows:
+      - Frontier adaptation v2 — one immutable run
+      - Frontier adaptation v2 — one immutable checkpoint evaluation
+    types:
+      - completed
 
 permissions:
   contents: read
@@ -23,6 +29,12 @@ concurrency:
 
 jobs:
   reconcile-and-dispatch:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'workflow_dispatch' &&
+       !endsWith(github.event.workflow_run.display_title, 'supervisor-validate'))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -31,6 +43,7 @@ jobs:
       DATA_ARCHIVE: pearl-scaling-paradox-v1-data-v2.tar.gz
       DATA_ARCHIVE_SHA256: ffad79ec8e104bf06979882e186290ea4d94b87531e48b111e954b6c09e8e962
       STATE_DIR: supervisor/state
+      SUPERVISOR_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'advance' }}
     steps:
       - name: Check out the exact supervisor commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -80,7 +93,7 @@ jobs:
             --output supervisor/authorization.json
           action=$(jq -r .action supervisor/authorization.json)
           printf 'CAMPAIGN_ACTION=%s\n' "$action" >> "$GITHUB_ENV"
-          if [[ "$action" == dispatch_* && "${{ inputs.mode }}" == advance ]]; then
+          if [[ "$action" == dispatch_* && "$SUPERVISOR_MODE" == advance ]]; then
             printf 'DISPATCH_ALLOWED=true\n' >> "$GITHUB_ENV"
           else
             printf 'DISPATCH_ALLOWED=false\n' >> "$GITHUB_ENV"
