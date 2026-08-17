@@ -27,6 +27,71 @@ def load_script(name: str):
     return module
 
 
+def test_local_controller_ledger_is_mirrored_and_hash_chained(tmp_path: Path) -> None:
+    controller = load_script("manage_frontier_local_wave.py")
+    state_dir = tmp_path / "state"
+    mirror_dir = tmp_path / "mirror"
+
+    first = controller.append_ledger(state_dir, mirror_dir, "prepared", {"value": 1})
+    second = controller.append_ledger(state_dir, mirror_dir, "started", {"value": 2})
+
+    assert second["previous_event_sha256"] == first["event_sha256"]
+    assert controller.read_ledger(state_dir / "ledger.jsonl") == controller.read_ledger(
+        mirror_dir / "ledger.jsonl"
+    )
+
+    mirror = mirror_dir / "ledger.jsonl"
+    mirror.write_text(mirror.read_text().replace('"value":2', '"value":3'))
+    with pytest.raises(RuntimeError):
+        controller.append_ledger(state_dir, mirror_dir, "forbidden", {})
+
+
+def test_local_controller_refuses_non_resume_authorization() -> None:
+    controller = load_script("manage_frontier_local_wave.py")
+    authorization = {
+        "contract": "pearl.scaling-paradox-authorization/1",
+        "action": "dispatch_training_wave",
+    }
+    authorization["authorization_sha256"] = sha256_value(authorization)
+    executor = {"global_max_active_paid_cells": 47}
+    manager = type("Manager", (), {"build_plans": staticmethod(lambda _: {})})
+
+    with pytest.raises(RuntimeError, match="training-resume"):
+        controller.validate_authorization(
+            authorization,
+            executor=executor,
+            manager=manager,
+        )
+
+
+def test_local_controller_semantic_comparison_removes_only_snapshot_attestations() -> None:
+    controller = load_script("manage_frontier_local_wave.py")
+    first = {
+        "authorization_sha256": "a" * 64,
+        "capacity_gate_sha256": "b" * 64,
+        "authorized_run_keys": ["cell-a"],
+        "segment_end_steps": {"cell-a": 900},
+        "capacity_gate": {
+            "gate_sha256": "c" * 64,
+            "provider_snapshot_sha256": "d" * 64,
+            "operational_evidence": [{"run_key": "cell-a", "completed_steps": 100}],
+        },
+    }
+    second = json.loads(json.dumps(first))
+    second["authorization_sha256"] = "e" * 64
+    second["capacity_gate_sha256"] = "f" * 64
+    second["capacity_gate"]["gate_sha256"] = "0" * 64
+    second["capacity_gate"]["provider_snapshot_sha256"] = "1" * 64
+
+    assert controller.semantic_authorization_payload(first) == (
+        controller.semantic_authorization_payload(second)
+    )
+    second["segment_end_steps"]["cell-a"] = 901
+    assert controller.semantic_authorization_payload(first) != (
+        controller.semantic_authorization_payload(second)
+    )
+
+
 def test_frontier_plans_freeze_96_unique_confirmatory_cells_and_renderers() -> None:
     manager = load_script("manage_scaling_paradox_campaign.py")
     executor = json.loads(

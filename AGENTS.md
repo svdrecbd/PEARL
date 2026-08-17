@@ -21,8 +21,11 @@ context-limited agent working under a primary or supervisor.
    assignment described in the runbook.
    Within that assignment, the low-stakes FAQ permits autonomous read-only, reversible, zero-spend,
    scientifically inert choices without asking the primary about every command.
-5. Never launch paid training from a laptop process or directly invoke a paid worker workflow. Use
-   the campaign supervisor, which authorizes one exact frozen wave and dispatches one key per worker.
+5. Paid training normally runs through the campaign supervisor. A primary agent may move an exact,
+   already-computed authorization to the versioned frontier local controller only after a prospective
+   operational amendment, explicit user approval, a result-blind live provider audit, exclusive
+   ownership transfer, immutable source-artifact restoration, and manual disabling of the competing
+   GitHub supervisor. Subagents may never initiate, repair, retry, or broaden a local paid wave.
 6. Never treat duplicate runs as replicates, invent missing observations, hand-select endpoint
    candidates, or combine pilot and confirmatory cohorts.
 7. The cross-repository `HANDOFF.md` is private operational context and is ignored at the PEARL

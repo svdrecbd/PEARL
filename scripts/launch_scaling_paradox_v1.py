@@ -303,8 +303,12 @@ def resolve_tinker_cli() -> str:
 
 def provider_runs() -> list[dict[str, Any]]:
     cli = resolve_tinker_cli()
+    limit_text = os.environ.get("TINKER_RUN_LIST_LIMIT", "0").strip()
+    if not limit_text.isdigit():
+        raise RuntimeError("TINKER_RUN_LIST_LIMIT must be a nonnegative integer")
+    limit = int(limit_text)
     result = subprocess.run(
-        [cli, "-f", "json", "run", "list", "--limit=0"],
+        [cli, "-f", "json", "run", "list", f"--limit={limit}"],
         cwd=ROOT,
         check=True,
         capture_output=True,
@@ -314,6 +318,11 @@ def provider_runs() -> list[dict[str, Any]]:
     rows = payload.get("runs", [])
     if not isinstance(rows, list):
         raise RuntimeError("provider run listing has an invalid shape")
+    if limit and len(rows) >= limit:
+        raise RuntimeError(
+            "bounded provider run listing is not exhaustive; increase "
+            "TINKER_RUN_LIST_LIMIT"
+        )
     return [dict(row) for row in rows if isinstance(row, dict)]
 
 

@@ -335,6 +335,21 @@ failures within a fixed bound, and requires the unchanged strict SHA-256 check b
 HTTP failure, retry exhaustion, or checksum mismatch remains fatal. This changes transport only,
 not the dataset or any scientific contract.
 
+### Prospective local-orchestration amendment
+
+On August 16, 2026, after repeated GitHub installation-token quota failures and without inspecting
+scientific outcomes, the user authorized an exclusive local control-plane takeover for one exact
+frontier continuation authorization. The complete contract is recorded in
+`docs/frontier_adaptation_v2_local_orchestration_amendment_20260816.md`. Tinker remains the remote
+compute provider; only request submission and supervision move locally. This changes no scientific
+identity, update, endpoint, analysis, cohort boundary, plan hash, concurrency cap, or budget.
+
+Local execution is valid only through the hash-chained controller, after the competing GitHub
+supervisor is disabled and live GitHub/provider ownership is proven idle and unambiguous. A partial
+dispatch is an immutable prefix and never authorizes a retry. The GitHub supervisor cannot be
+re-enabled until locally started segments are terminal, audited, and incorporated into versioned
+state.
+
 ## Prospective interpretation tree (primary-only, never operational)
 
 This tree creates no gate, exclusion, relaunch, or permission. Executors remain result-blind.

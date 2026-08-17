@@ -121,6 +121,13 @@ strictly verify the unchanged archive SHA-256 before extraction. This applies to
 replication training, checkpoint evaluation, and structural supervision as well as the campaign
 supervisor.
 
+The August 16 local-orchestration amendment is a primary-only emergency ownership transfer, not a
+new Executor path. A subagent must never run `scripts/manage_frontier_local_wave.py prepare`,
+`launch`, or `_run`; start a laptop trainer; enable or disable the frontier supervisor; repair the
+local ledger; or fill a partial local launch prefix. Even an apparently obvious missing PID or
+unstarted authorized key is an ownership incident. The only subagent-safe local-controller action is
+read-only `status` under an exact monitoring assignment.
+
 The clean-path research design and campaign engineering are complete. Remaining clean-path work is
 operational: invoke one frozen supervisor transition at a time, monitor remotely owned jobs, audit
 their immutable artifacts, execute the frozen analyses, and hand the validated outputs to the
