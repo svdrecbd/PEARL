@@ -69,9 +69,11 @@ jobs:
 
       - name: Restore and verify the frozen dataset
         run: |
-          if ! gh release download "$DATA_RELEASE_TAG" --pattern "$DATA_ARCHIVE" 2>/dev/null; then
-            curl -sSL -o "$DATA_ARCHIVE" "https://github.com/${GITHUB_REPOSITORY}/releases/download/${DATA_RELEASE_TAG}/${DATA_ARCHIVE}"
-          fi
+          curl --fail --location --silent --show-error \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            --connect-timeout 20 --max-time 300 \
+            --output "$DATA_ARCHIVE" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${DATA_RELEASE_TAG}/${DATA_ARCHIVE}"
           printf '%s  %s\n' "$DATA_ARCHIVE_SHA256" "$DATA_ARCHIVE" | sha256sum --check --strict
           tar -xzf "$DATA_ARCHIVE"
 
