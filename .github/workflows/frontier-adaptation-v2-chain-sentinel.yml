@@ -1,0 +1,66 @@
+name: Frontier adaptation v2 — one-shot validated sentinel chain
+run-name: Chain validated original completion to the replication sentinel
+
+on:
+  workflow_run:
+    workflows:
+      - Frontier adaptation v2 — validate and dispatch one exact wave
+    types:
+      - completed
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-one-fresh-advance:
+    if: >-
+      format('{0}', github.event.workflow_run.id) == '32117237902' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      github.event.workflow_run.head_sha == 'ca7569afe86976e52703c249cfc1d1440df27f2a'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN_ID: "32117237902"
+      SOURCE_HEAD_SHA: ca7569afe86976e52703c249cfc1d1440df27f2a
+      EXPECTED_SENTINEL: core-fixed-rank-nemotron3-ultra-true-seed520620-8751f7ee9f
+      EXPECTED_PLAN_SHA: 85660f7b99193e34a546f9eb50dfe18ff10fe42d3127232686be9b5ee7fd2593
+    steps:
+      - name: Verify the exact successful no-spend source run
+        run: |
+          source_run=$(gh run view "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --json status,conclusion,event,headSha,workflowName)
+          test "$(jq -r .status <<<"$source_run")" = completed
+          test "$(jq -r .conclusion <<<"$source_run")" = success
+          test "$(jq -r .event <<<"$source_run")" = workflow_dispatch
+          test "$(jq -r .headSha <<<"$source_run")" = "$SOURCE_HEAD_SHA"
+          test "$(jq -r .workflowName <<<"$source_run")" = \
+            "Frontier adaptation v2 — validate and dispatch one exact wave"
+
+      - name: Verify status authorized only the frozen replication sentinel
+        run: |
+          mkdir source-state
+          gh run download "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "frontier-adaptation-v2-supervisor-state-$SOURCE_RUN_ID" \
+            --dir source-state
+          mapfile -t authorizations < <(find source-state -type f -name authorization.json)
+          test "${#authorizations[@]}" = 1
+          authorization="${authorizations[0]}"
+          test "$(jq -r .action "$authorization")" = dispatch_training_wave
+          test "$(jq -r .campaign "$authorization")" = replication
+          test "$(jq -r .stage "$authorization")" = core
+          test "$(jq -r .phase "$authorization")" = replication:core
+          test "$(jq -r .plan_sha "$authorization")" = "$EXPECTED_PLAN_SHA"
+          test "$(jq '.authorized_run_keys | length' "$authorization")" = 1
+          test "$(jq -r '.authorized_run_keys[0]' "$authorization")" = "$EXPECTED_SENTINEL"
+          test "$(jq -r .max_active_after_dispatch "$authorization")" = 1
+          test "$(jq -r '.segment_end_steps | keys | length' "$authorization")" = 1
+          test "$(jq -r --arg key "$EXPECTED_SENTINEL" '.segment_end_steps[$key] > 0' \
+            "$authorization")" = true
+
+      - name: Dispatch one fresh supervisor advance
+        run: |
+          gh workflow run frontier-adaptation-v2-supervisor.yml \
+            --repo "$GITHUB_REPOSITORY" --ref main -f mode=advance
