@@ -5,6 +5,9 @@ import importlib.util
 import json
 from argparse import Namespace
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,6 +114,37 @@ def test_launcher_resolves_tinker_cli_portably(tmp_path, monkeypatch) -> None:
     assert launcher.resolve_tinker_cli() == str(fake_cli)
     source = (ROOT / "scripts" / "launch_scaling_paradox_v1.py").read_text()
     assert 'command = [\n        sys.executable,' in source
+
+
+def test_provider_listing_can_use_a_proven_exhaustive_local_bound(monkeypatch) -> None:
+    launcher = load_script("launch_scaling_paradox_v1.py")
+    monkeypatch.setenv("TINKER_RUN_LIST_LIMIT", "1000")
+    monkeypatch.setattr(launcher, "resolve_tinker_cli", lambda: "/fake/tinker")
+    monkeypatch.setattr(
+        launcher.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            stdout=json.dumps({"runs": [{"id": "one"}, {"id": "two"}]})
+        ),
+    )
+
+    assert [row["id"] for row in launcher.provider_runs()] == ["one", "two"]
+
+
+def test_provider_listing_rejects_a_saturated_local_bound(monkeypatch) -> None:
+    launcher = load_script("launch_scaling_paradox_v1.py")
+    monkeypatch.setenv("TINKER_RUN_LIST_LIMIT", "2")
+    monkeypatch.setattr(launcher, "resolve_tinker_cli", lambda: "/fake/tinker")
+    monkeypatch.setattr(
+        launcher.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            stdout=json.dumps({"runs": [{"id": "one"}, {"id": "two"}]})
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="not exhaustive"):
+        launcher.provider_runs()
 
 
 def test_checkpoint_lineage_is_durable_ordered_and_idempotent() -> None:

@@ -11,6 +11,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
+ORIGINAL_CORE_PLAN_SHA = "ce4fd33d9f5f8d62d42a4ddc383222adc18c48ba1399920073beaf44879842c6"
+REPLICATION_CORE_PLAN_SHA = "85660f7b99193e34a546f9eb50dfe18ff10fe42d3127232686be9b5ee7fd2593"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
@@ -25,6 +27,71 @@ def load_script(name: str):
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def test_local_controller_ledger_is_mirrored_and_hash_chained(tmp_path: Path) -> None:
+    controller = load_script("manage_frontier_local_wave.py")
+    state_dir = tmp_path / "state"
+    mirror_dir = tmp_path / "mirror"
+
+    first = controller.append_ledger(state_dir, mirror_dir, "prepared", {"value": 1})
+    second = controller.append_ledger(state_dir, mirror_dir, "started", {"value": 2})
+
+    assert second["previous_event_sha256"] == first["event_sha256"]
+    assert controller.read_ledger(state_dir / "ledger.jsonl") == controller.read_ledger(
+        mirror_dir / "ledger.jsonl"
+    )
+
+    mirror = mirror_dir / "ledger.jsonl"
+    mirror.write_text(mirror.read_text().replace('"value":2', '"value":3'))
+    with pytest.raises(RuntimeError):
+        controller.append_ledger(state_dir, mirror_dir, "forbidden", {})
+
+
+def test_local_controller_refuses_non_resume_authorization() -> None:
+    controller = load_script("manage_frontier_local_wave.py")
+    authorization = {
+        "contract": "pearl.scaling-paradox-authorization/1",
+        "action": "dispatch_training_wave",
+    }
+    authorization["authorization_sha256"] = sha256_value(authorization)
+    executor = {"global_max_active_paid_cells": 47}
+    manager = type("Manager", (), {"build_plans": staticmethod(lambda _: {})})
+
+    with pytest.raises(RuntimeError, match="training-resume"):
+        controller.validate_authorization(
+            authorization,
+            executor=executor,
+            manager=manager,
+        )
+
+
+def test_local_controller_semantic_comparison_removes_only_snapshot_attestations() -> None:
+    controller = load_script("manage_frontier_local_wave.py")
+    first = {
+        "authorization_sha256": "a" * 64,
+        "capacity_gate_sha256": "b" * 64,
+        "authorized_run_keys": ["cell-a"],
+        "segment_end_steps": {"cell-a": 900},
+        "capacity_gate": {
+            "gate_sha256": "c" * 64,
+            "provider_snapshot_sha256": "d" * 64,
+            "operational_evidence": [{"run_key": "cell-a", "completed_steps": 100}],
+        },
+    }
+    second = json.loads(json.dumps(first))
+    second["authorization_sha256"] = "e" * 64
+    second["capacity_gate_sha256"] = "f" * 64
+    second["capacity_gate"]["gate_sha256"] = "0" * 64
+    second["capacity_gate"]["provider_snapshot_sha256"] = "1" * 64
+
+    assert controller.semantic_authorization_payload(first) == (
+        controller.semantic_authorization_payload(second)
+    )
+    second["segment_end_steps"]["cell-a"] = 901
+    assert controller.semantic_authorization_payload(first) != (
+        controller.semantic_authorization_payload(second)
+    )
 
 
 def test_frontier_plans_freeze_96_unique_confirmatory_cells_and_renderers() -> None:
@@ -82,7 +149,26 @@ def test_frontier_manifest_budget_and_smoke_transition_are_fail_closed(
     )
     manifest = manager.build_manifest(executor)
     assert len(manifest["phases"]) == 3
-    assert manifest["executor_contract"] == "pearl.frontier-adaptation-executor/7"
+    assert manifest["executor_contract"] == "pearl.frontier-adaptation-executor/8"
+    assert executor["charon_replication_controller"] == {
+        "contract": "pearl.frontier-charon-controller/1",
+        "frozen_date": "2026-08-18",
+        "created_before_replication_training_started": True,
+        "scientific_values_consulted": False,
+        "original_plan_sha256": ORIGINAL_CORE_PLAN_SHA,
+        "replication_plan_sha256": REPLICATION_CORE_PLAN_SHA,
+        "sentinel_execution_order": 1,
+        "github_post_sentinel_hold": "charon_local_takeover",
+        "post_sentinel_training_count": 47,
+        "capacity_tier_prefixes": [12, 24, 47],
+        "capacity_observation_minutes": 20,
+        "max_provider_staleness_minutes": 15,
+        "post_sentinel_terminal_step": 2250,
+        "execution_host": "dedicated_x86_64_windows_wsl2_ubuntu",
+        "training_provider": "tinker_remote",
+        "analysis_authorized": False,
+        "structural_authorized": False,
+    }
     assert executor["operational_amendment"] == {
         "contract": "pearl.frontier-operational-amendment/1",
         "frozen_date": "2026-08-16",
@@ -651,6 +737,106 @@ def test_frontier_capacity_ramp_is_twelve_then_twenty_four_then_remaining_cohort
     )
     assert full_wait["action"] == "wait"
     assert full_wait["reason"] == "global_paid_cell_cap_is_full"
+
+
+def test_frontier_replication_sentinel_hard_holds_for_charon(tmp_path: Path) -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    manifest = ramped_manifest()
+    phase = manifest["phases"][0]
+    phase["campaign"] = "replication"
+    phase["campaign_id"] = "pearl-frontier-adaptation-v2-replication"
+    phase["phase"] = "replication:core"
+    phase["scheduling"]["post_sentinel_hold"] = "charon_local_takeover"
+    write_terminal_pair(tmp_path, "sentinel")
+
+    authorization = manager.next_authorization(
+        manifest=manifest,
+        state_dir=tmp_path,
+        active_paid_cells=0,
+        active_runs=[],
+        provider_snapshot=provider_snapshot([]),
+    )
+    assert authorization["action"] == "wait"
+    assert authorization["reason"] == "replication_sentinel_complete_pending_charon_takeover"
+    assert authorization["authorized_run_keys"] == []
+    assert authorization["post_sentinel_hold"] == "charon_local_takeover"
+
+
+def test_external_original_completion_handoff_imports_exact_receipts(tmp_path: Path) -> None:
+    manager = load_script("manage_scaling_paradox_campaign.py")
+    run_keys = ["a", "b"]
+    plan = {
+        "launch_plan_contract_sha": "plan",
+        "runs": [
+            {
+                "run_key": key,
+                "run_contract_sha": f"contract-{key}",
+            }
+            for key in run_keys
+        ],
+    }
+    receipts: dict[str, dict[str, dict]] = {"training": {}, "evaluation": {}}
+    for kind, valid_field in (
+        ("training", "training_terminal_valid"),
+        ("evaluation", "evaluation_terminal_valid"),
+    ):
+        for key in run_keys:
+            receipt = {
+                "contract": f"test-{kind}",
+                "campaign_id": "pearl-frontier-adaptation-v2-original",
+                "run_key": key,
+                "run_contract_sha": f"contract-{key}",
+                valid_field: True,
+                "scientific_values_omitted": True,
+            }
+            receipt["receipt_sha256"] = manager.sha256_value(receipt)
+            receipts[kind][key] = receipt
+    gate = {
+        "contract": "pearl.scaling-paradox-wave-gate/1",
+        "campaign_id": "pearl-frontier-adaptation-v2-original",
+        "wave": "frontier-v2-original-complete",
+        "run_keys": run_keys,
+        "training_receipt_shas": [receipts["training"][key]["receipt_sha256"] for key in run_keys],
+        "evaluation_receipt_shas": [receipts["evaluation"][key]["receipt_sha256"] for key in run_keys],
+        "terminal_valid": True,
+        "scientific_values_omitted": True,
+    }
+    gate["gate_sha256"] = manager.sha256_value(gate)
+    handoff = {
+        "contract": "pearl.frontier-original-completion-handoff/1",
+        "campaign_id": "pearl-frontier-adaptation-v2-original",
+        "plan_sha": "plan",
+        "run_keys": run_keys,
+        "completion_gate": gate,
+        "training_receipts": receipts["training"],
+        "evaluation_receipts": receipts["evaluation"],
+        "scientific_values_omitted": True,
+        "replication_started": False,
+        "analysis_started": False,
+    }
+    handoff["handoff_sha256"] = manager.sha256_value(handoff)
+    handoff_path = tmp_path / "handoff.json"
+    handoff_path.write_text(json.dumps(handoff, indent=2, sort_keys=True) + "\n")
+    executor = {
+        "external_completion_handoff": {
+            "contract": "pearl.frontier-external-completion-handoff-source/1",
+            "path": str(handoff_path),
+            "sha256": manager.sha256_file(handoff_path),
+        }
+    }
+    state = tmp_path / "state"
+    counts = manager.import_external_completion_handoff(
+        executor=executor,
+        plans={("original", "core"): plan},
+        state_dir=state,
+    )
+    assert counts == {"training": 2, "evaluation": 2}
+    assert manager.read_json(state / "receipts" / "training" / "a.json") == receipts["training"]["a"]
+    assert manager.import_external_completion_handoff(
+        executor=executor,
+        plans={("original", "core"): plan},
+        state_dir=state,
+    ) == {"training": 0, "evaluation": 0}
 
 
 def test_frontier_capacity_ramp_revalidates_gate_after_completed_cells_refill_slots(

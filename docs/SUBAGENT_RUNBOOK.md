@@ -121,6 +121,20 @@ strictly verify the unchanged archive SHA-256 before extraction. This applies to
 replication training, checkpoint evaluation, and structural supervision as well as the campaign
 supervisor.
 
+The August 16 local-orchestration amendment is a primary-only emergency ownership transfer, not a
+new Executor path. A subagent must never run `scripts/manage_frontier_local_wave.py` or
+`scripts/manage_frontier_original_completion.py`; start a laptop trainer or evaluator; enable or
+disable the frontier supervisor; repair the local ledger; or fill a partial local launch prefix. Even
+an apparently obvious missing PID or unstarted authorized key is an ownership incident. The only
+subagent-safe local-controller action is
+read-only `status` under an exact monitoring assignment.
+
+The August 18 Charon amendment is also primary-only. A subagent must never build the USB package;
+prepare, arm, restart, repair, or replace Charon; supply credentials; change its service; enable or
+disable the GitHub supervisor; or fill a missing training or evaluation prefix. The only safe Charon
+assignment is exact read-only status reporting. An ambiguous launch intent, blocked event, service
+restart, or host interruption is an ownership incident for the primary, not permission to retry.
+
 The clean-path research design and campaign engineering are complete. Remaining clean-path work is
 operational: invoke one frozen supervisor transition at a time, monitor remotely owned jobs, audit
 their immutable artifacts, execute the frozen analyses, and hand the validated outputs to the

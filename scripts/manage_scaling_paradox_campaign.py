@@ -76,6 +76,105 @@ def build_plans(executor: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any
     return plans
 
 
+def import_external_completion_handoff(
+    *,
+    executor: dict[str, Any],
+    plans: dict[tuple[str, str], dict[str, Any]],
+    state_dir: Path,
+) -> dict[str, int]:
+    """Import one immutable, result-blind local completion handoff.
+
+    The handoff is versioned with the supervisor source.  It contains only audited
+    receipts and their hashes; endpoint values and reports are deliberately absent.
+    Existing identical receipts are accepted, while any conflicting owner stops.
+    """
+
+    specification = executor.get("external_completion_handoff")
+    if specification is None:
+        return {"training": 0, "evaluation": 0}
+    if specification.get("contract") != "pearl.frontier-external-completion-handoff-source/1":
+        raise RuntimeError("external completion handoff source contract is unknown")
+    handoff_path = repo_path(str(specification.get("path") or ""))
+    if not handoff_path.is_file():
+        raise RuntimeError("external completion handoff is absent")
+    if sha256_file(handoff_path) != specification.get("sha256"):
+        raise RuntimeError("external completion handoff file SHA mismatch")
+    handoff = read_json(handoff_path)
+    supplied_handoff_sha = str(handoff.get("handoff_sha256") or "")
+    if supplied_handoff_sha != sha256_value(
+        {key: value for key, value in handoff.items() if key != "handoff_sha256"}
+    ):
+        raise RuntimeError("external completion handoff canonical SHA mismatch")
+    if handoff.get("contract") != "pearl.frontier-original-completion-handoff/1":
+        raise RuntimeError("external completion handoff contract is unknown")
+
+    plan = plans[("original", "core")]
+    entries = {str(row["run_key"]): row for row in plan["runs"]}
+    ordered_keys = [str(row["run_key"]) for row in plan["runs"]]
+    if (
+        handoff.get("campaign_id") != "pearl-frontier-adaptation-v2-original"
+        or handoff.get("plan_sha") != plan["launch_plan_contract_sha"]
+        or handoff.get("run_keys") != ordered_keys
+        or handoff.get("scientific_values_omitted") is not True
+        or handoff.get("replication_started") is not False
+        or handoff.get("analysis_started") is not False
+    ):
+        raise RuntimeError("external completion handoff differs from the frozen original cohort")
+
+    gate = handoff.get("completion_gate")
+    if not isinstance(gate, dict):
+        raise RuntimeError("external completion handoff lacks its completion gate")
+    if gate.get("gate_sha256") != sha256_value(
+        {key: value for key, value in gate.items() if key != "gate_sha256"}
+    ):
+        raise RuntimeError("external completion gate SHA mismatch")
+    if (
+        gate.get("contract") != "pearl.scaling-paradox-wave-gate/1"
+        or gate.get("campaign_id") != handoff["campaign_id"]
+        or gate.get("run_keys") != ordered_keys
+        or gate.get("terminal_valid") is not True
+        or gate.get("scientific_values_omitted") is not True
+    ):
+        raise RuntimeError("external completion gate differs from the frozen original cohort")
+
+    imported: dict[str, int] = {"training": 0, "evaluation": 0}
+    for kind, valid_field in (
+        ("training", "training_terminal_valid"),
+        ("evaluation", "evaluation_terminal_valid"),
+    ):
+        receipts = handoff.get(f"{kind}_receipts")
+        if not isinstance(receipts, dict) or set(receipts) != set(ordered_keys):
+            raise RuntimeError(f"external {kind} receipts do not exactly cover original core")
+        gate_shas = gate[f"{kind}_receipt_shas"]
+        if gate_shas != [receipts[key].get("receipt_sha256") for key in ordered_keys]:
+            raise RuntimeError(f"external {kind} receipts differ from the completion gate")
+        for run_key in ordered_keys:
+            receipt = receipts[run_key]
+            if not isinstance(receipt, dict):
+                raise RuntimeError(f"external {kind} receipt has invalid shape")
+            if receipt.get("receipt_sha256") != sha256_value(
+                {key: value for key, value in receipt.items() if key != "receipt_sha256"}
+            ):
+                raise RuntimeError(f"external {kind} receipt SHA mismatch for {run_key}")
+            expected = entries[run_key]
+            if (
+                receipt.get("run_key") != run_key
+                or receipt.get("campaign_id") != handoff["campaign_id"]
+                or receipt.get("run_contract_sha") != expected["run_contract_sha"]
+                or receipt.get(valid_field) is not True
+                or receipt.get("scientific_values_omitted") is not True
+            ):
+                raise RuntimeError(f"external {kind} receipt is invalid for {run_key}")
+            destination = receipt_path(state_dir, kind, run_key)
+            if destination.is_file():
+                if read_json(destination) != receipt:
+                    raise RuntimeError(f"external {kind} receipt conflicts with prior owner: {run_key}")
+                continue
+            write_json(destination, receipt)
+            imported[kind] += 1
+    return imported
+
+
 def build_provider_snapshot(
     plans: dict[tuple[str, str], dict[str, Any]],
 ) -> dict[str, Any]:
@@ -2318,6 +2417,20 @@ def rolling_authorization(
             "rolling schedule references an unknown sentinel execution order"
         )
     sentinel_complete = all(training[key] and evaluation[key] for key in sentinel_keys)
+    post_sentinel_hold = scheduling.get("post_sentinel_hold")
+    if sentinel_complete and post_sentinel_hold is not None:
+        if post_sentinel_hold != "charon_local_takeover":
+            raise RuntimeError("rolling schedule has an unknown post-sentinel hold")
+        if active_phase:
+            raise RuntimeError("post-sentinel Charon hold conflicts with active phase ownership")
+        return {
+            "contract": "pearl.scaling-paradox-authorization/1",
+            "action": "wait",
+            "reason": "replication_sentinel_complete_pending_charon_takeover",
+            "active_paid_cells": active_paid_cells,
+            "authorized_run_keys": [],
+            "post_sentinel_hold": post_sentinel_hold,
+        }
     eligible_keys = phase_keys if sentinel_complete else sentinel_keys
     maximum, capacity_tier, capacity_gate = rolling_capacity_limit(
         manifest=manifest,
@@ -2892,6 +3005,8 @@ def main() -> None:
         collect_parser.add_argument("--state-dir", required=True)
     sync_parser = subparsers.add_parser("sync-github")
     sync_parser.add_argument("--state-dir", required=True)
+    import_parser = subparsers.add_parser("import-external-completion")
+    import_parser.add_argument("--state-dir", required=True)
 
     args = parser.parse_args()
     executor = read_json(repo_path(args.executor_config))
@@ -3000,6 +3115,13 @@ def main() -> None:
                 }
             )
         )
+    elif args.command == "import-external-completion":
+        counts = import_external_completion_handoff(
+            executor=executor,
+            plans=plans,
+            state_dir=repo_path(args.state_dir),
+        )
+        print(json.dumps({"external_completion_import": "complete", **counts}))
     else:
         counts = sync_github_state(
             executor=executor,
