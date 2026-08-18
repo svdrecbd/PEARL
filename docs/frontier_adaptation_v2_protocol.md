@@ -362,6 +362,20 @@ execution to the unchanged terminal endpoint. The frozen 500-update scientific c
 intact. Charon completes the frozen endpoint evaluations, writes the replication 48/48 gate, and
 hard-stops before analysis or structural work.
 
+### Result-blind replication-sentinel relay amendment
+
+On August 18, 2026, after successful replication-sentinel training children `32151460370` and
+`32174564429` each failed to create the expected downstream supervisor transition, the user
+authorized the dated operational repair in
+`docs/frontier_adaptation_v2_sentinel_relay_amendment_20260818.md`. The repair was specified without
+inspecting scientific outcomes.
+
+The versioned ten-minute relay is hard-coded to the exact replication sentinel, contains no provider
+credential, and may request only the existing supervisor's `advance` mode. It does not dispatch a
+worker or alter any scientific identity, hyperparameter, checkpoint width, endpoint, analysis,
+cohort boundary, concurrency cap, or budget. It hard-fails on unrecognized or contradictory state,
+and it must be disabled with the supervisor after the existing post-sentinel hold.
+
 ## Prospective interpretation tree (primary-only, never operational)
 
 This tree creates no gate, exclusion, relaunch, or permission. Executors remain result-blind.
