@@ -44,7 +44,37 @@ def test_evaluation_worker_requires_original_only_hard_stop(tmp_path: Path) -> N
     unsigned.pop("authorization_sha256")
     payload["authorization_sha256"] = worker.sha256_value(unsigned)
     path.write_text(worker.json.dumps(payload), encoding="utf-8")
-    with pytest.raises(RuntimeError, match="bounded original-only"):
+    with pytest.raises(RuntimeError, match="bounded frontier"):
+        worker.validate_authorization(path, "key")
+
+
+def test_evaluation_worker_accepts_only_exact_charon_replication_authorization(
+    tmp_path: Path,
+) -> None:
+    worker = load_script("run_frontier_local_evaluation.py")
+    payload = {
+        "contract": "pearl.frontier-local-evaluation-authorization/1",
+        "action": "evaluate_charon_replication_endpoints",
+        "campaign": "replication",
+        "stage": "core",
+        "authorized_run_keys": ["key"],
+        "run_contract_shas": {"key": "sha"},
+        "replication_authorized": True,
+        "analysis_authorized": False,
+        "evaluator_sha256": worker.sha256_file(ROOT / "scripts" / "evaluate_scaling_paradox_checkpoint.py"),
+        "evaluation_worker_sha256": worker.sha256_file(ROOT / "scripts" / "run_frontier_local_evaluation.py"),
+    }
+    payload["authorization_sha256"] = worker.sha256_value(payload)
+    path = tmp_path / "authorization.json"
+    path.write_text(worker.json.dumps(payload), encoding="utf-8")
+    assert worker.validate_authorization(path, "key")["campaign"] == "replication"
+
+    payload["action"] = "evaluate_missing_original_endpoints"
+    unsigned = dict(payload)
+    unsigned.pop("authorization_sha256")
+    payload["authorization_sha256"] = worker.sha256_value(unsigned)
+    path.write_text(worker.json.dumps(payload), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="bounded frontier"):
         worker.validate_authorization(path, "key")
 
 

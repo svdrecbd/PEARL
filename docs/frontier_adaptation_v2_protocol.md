@@ -350,6 +350,18 @@ dispatch is an immutable prefix and never authorizes a retry. The GitHub supervi
 re-enabled until locally started segments are terminal, audited, and incorporated into versioned
 state.
 
+### Prospective Charon replication amendment
+
+Executor contract v8 was frozen on August 18, 2026 before replication training began and without
+inspecting scientific values. Its complete contract is
+`docs/frontier_adaptation_v2_charon_amendment_20260818.md`. After the original 48/48 hard stop,
+GitHub owns and evaluates only the replication sentinel. The supervisor then enters an explicit
+post-sentinel hold. A dedicated Windows/WSL2 Charon host may take exclusive control-plane ownership
+of the 47 remaining cells, using the unchanged result-blind 12 → 24 → 47 capacity ramp and direct
+execution to the unchanged terminal endpoint. The frozen 500-update scientific checkpoints remain
+intact. Charon completes the frozen endpoint evaluations, writes the replication 48/48 gate, and
+hard-stops before analysis or structural work.
+
 ## Prospective interpretation tree (primary-only, never operational)
 
 This tree creates no gate, exclusion, relaunch, or permission. Executors remain result-blind.

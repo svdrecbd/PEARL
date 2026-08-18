@@ -79,6 +79,7 @@ jobs:
 
       - name: Reconstruct authoritative campaign state from Actions artifacts
         run: |
+          python scripts/manage_scaling_paradox_campaign.py --executor-config configs/experiments/frontier_adaptation_v2_executor.json import-external-completion --state-dir "$STATE_DIR"
           python scripts/manage_scaling_paradox_campaign.py --executor-config configs/experiments/frontier_adaptation_v2_executor.json sync-github --state-dir "$STATE_DIR"
           python scripts/manage_scaling_paradox_campaign.py --executor-config configs/experiments/frontier_adaptation_v2_executor.json write-manifest \
             --output "$STATE_DIR/campaign_manifest.json"

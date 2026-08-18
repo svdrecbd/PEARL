@@ -36,16 +36,28 @@ def validate_authorization(path: Path, run_key: str) -> dict[str, Any]:
     observed = str(unsigned.pop("authorization_sha256", ""))
     if observed != sha256_value(unsigned):
         raise RuntimeError("evaluation authorization SHA is invalid")
+    campaign = str(authorization.get("campaign") or "")
+    expected_actions = {
+        "original": "evaluate_missing_original_endpoints",
+        "replication": "evaluate_charon_replication_endpoints",
+    }
     if (
         authorization.get("contract") != "pearl.frontier-local-evaluation-authorization/1"
-        or authorization.get("action") != "evaluate_missing_original_endpoints"
-        or authorization.get("campaign") != "original"
+        or campaign not in expected_actions
+        or authorization.get("action") != expected_actions.get(campaign)
         or authorization.get("stage") != "core"
         or run_key not in authorization.get("authorized_run_keys", [])
-        or authorization.get("replication_authorized") is not False
         or authorization.get("analysis_authorized") is not False
+        or (
+            campaign == "original"
+            and authorization.get("replication_authorized") is not False
+        )
+        or (
+            campaign == "replication"
+            and authorization.get("replication_authorized") is not True
+        )
     ):
-        raise RuntimeError("evaluation is outside the bounded original-only authorization")
+        raise RuntimeError("evaluation is outside its bounded frontier authorization")
     expected_files = {
         "evaluator_sha256": ROOT / "scripts" / "evaluate_scaling_paradox_checkpoint.py",
         "evaluation_worker_sha256": Path(__file__).resolve(),
@@ -71,14 +83,18 @@ def main() -> None:
     authorization_path = Path(args.authorization).resolve()
     authorization = validate_authorization(authorization_path, args.run_key)
     contract = read_json(Path(args.run_contract).resolve())
+    campaign_ids = {
+        "original": "pearl-frontier-adaptation-v2-original",
+        "replication": "pearl-frontier-adaptation-v2-replication",
+    }
     if (
         contract.get("run_key") != args.run_key
-        or contract.get("campaign_id") != "pearl-frontier-adaptation-v2-original"
+        or contract.get("campaign_id") != campaign_ids[authorization["campaign"]]
         or contract.get("stage") != "core"
         or contract.get("run_contract_sha")
         != authorization["run_contract_shas"][args.run_key]
     ):
-        raise RuntimeError("evaluation source differs from the frozen original plan")
+        raise RuntimeError("evaluation source differs from the frozen frontier plan")
 
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)

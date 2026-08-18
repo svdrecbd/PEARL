@@ -42,6 +42,15 @@ training/evaluation receipt coverage and may not enter replication or analysis. 
 partial prefix, process failure, or ledger mismatch is a stop; never rerun the controller or re-enable
 GitHub to fill the remainder.
 
+Executor contract v8 adds the distinct Charon handoff in
+`docs/frontier_adaptation_v2_charon_amendment_20260818.md`. GitHub must run and evaluate the
+replication sentinel, then return the exact Charon hold without dispatching later replication keys.
+Only the primary may build, verify, prepare, or arm the secret-free Charon package. Charon owns
+exactly the 47 remaining frozen run keys through the unchanged 12 → 24 → 47 result-blind ramp,
+evaluates them, writes the replication 48/48 gate, and stops before analysis. Setup may involve
+supervised WSL installation and credential entry; no setup convenience step can weaken a hash,
+ownership, lineage, or exact-once check.
+
 Status is result-blind and no-spend:
 
 ```bash

@@ -1,0 +1,21 @@
+[Unit]
+Description=PEARL Frontier v2 Charon replication controller
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=900
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=@CHARON_USER@
+WorkingDirectory=@REPO_ROOT@
+EnvironmentFile=@ENV_FILE@
+Environment=TINKER_RUN_LIST_LIMIT=1000
+ExecStart=@PYTHON@ @REPO_ROOT@/scripts/manage_frontier_charon_replication.py --executor-config @REPO_ROOT@/configs/experiments/frontier_adaptation_v2_executor.json _run --state-dir @STATE_ROOT@ --mirror-dir @MIRROR_ROOT@ --bootstrap-dir @BOOTSTRAP_ROOT@
+Restart=on-failure
+RestartSec=60
+TimeoutStopSec=15
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

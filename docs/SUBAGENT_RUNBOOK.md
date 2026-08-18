@@ -129,6 +129,12 @@ an apparently obvious missing PID or unstarted authorized key is an ownership in
 subagent-safe local-controller action is
 read-only `status` under an exact monitoring assignment.
 
+The August 18 Charon amendment is also primary-only. A subagent must never build the USB package;
+prepare, arm, restart, repair, or replace Charon; supply credentials; change its service; enable or
+disable the GitHub supervisor; or fill a missing training or evaluation prefix. The only safe Charon
+assignment is exact read-only status reporting. An ambiguous launch intent, blocked event, service
+restart, or host interruption is an ownership incident for the primary, not permission to retry.
+
 The clean-path research design and campaign engineering are complete. Remaining clean-path work is
 operational: invoke one frozen supervisor transition at a time, monitor remotely owned jobs, audit
 their immutable artifacts, execute the frozen analyses, and hand the validated outputs to the

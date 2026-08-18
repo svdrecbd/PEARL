@@ -1,5 +1,5 @@
 {
-  "contract": "pearl.frontier-adaptation-executor/7",
+  "contract": "pearl.frontier-adaptation-executor/8",
   "created_before_any_v2_outcome_review": true,
   "operational_amendment": {
     "contract": "pearl.frontier-operational-amendment/1",
@@ -18,6 +18,25 @@
     "applies_only_to_future_continuation_authorizations": true,
     "automatic_refill_trigger": "successful_supervisor_owned_training_or_evaluation_workflow_run_bound_to_immutable_supervisor_tag",
     "time_based_schedule": false
+  },
+  "charon_replication_controller": {
+    "contract": "pearl.frontier-charon-controller/1",
+    "frozen_date": "2026-08-18",
+    "created_before_replication_training_started": true,
+    "scientific_values_consulted": false,
+    "original_plan_sha256": "ce4fd33d9f5f8d62d42a4ddc383222adc18c48ba1399920073beaf44879842c6",
+    "replication_plan_sha256": "85660f7b99193e34a546f9eb50dfe18ff10fe42d3127232686be9b5ee7fd2593",
+    "sentinel_execution_order": 1,
+    "github_post_sentinel_hold": "charon_local_takeover",
+    "post_sentinel_training_count": 47,
+    "capacity_tier_prefixes": [12, 24, 47],
+    "capacity_observation_minutes": 20,
+    "max_provider_staleness_minutes": 15,
+    "post_sentinel_terminal_step": 2250,
+    "execution_host": "dedicated_x86_64_windows_wsl2_ubuntu",
+    "training_provider": "tinker_remote",
+    "analysis_authorized": false,
+    "structural_authorized": false
   },
   "preauthorization_failure_quarantine": {
     "contract": "pearl.frontier-preauthorization-failure-quarantine/1",
@@ -311,6 +330,7 @@
             "mode": "rolling_ordered",
             "sentinel_execution_orders": [1],
             "open_after_sentinel_evaluation": true,
+            "post_sentinel_hold": "charon_local_takeover",
             "preserve_execution_order": true,
             "capacity_ramp": {
               "contract": "pearl.frontier-capacity-ramp/1",

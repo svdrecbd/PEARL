@@ -9,8 +9,9 @@ context-limited agent working under a primary or supervisor.
    For campaign execution, also read `docs/SCALING_PARADOX_EXECUTOR_PACKET.md`; it supersedes older
    manual paid-dispatch examples.
    If frontier adaptation v2 is in scope, also read `docs/frontier_adaptation_v2_protocol.md` and
-   `docs/FRONTIER_ADAPTATION_V2_EXECUTOR_PACKET.md`; these supersede v1 execution instructions for
-   the contemporary-model campaign but do not alter or absorb v1 evidence.
+   `docs/FRONTIER_ADAPTATION_V2_EXECUTOR_PACKET.md`; when the Charon handoff is in scope, also read
+   `docs/frontier_adaptation_v2_charon_amendment_20260818.md`. These supersede v1 execution
+   instructions for the contemporary-model campaign but do not alter or absorb v1 evidence.
 2. The primary agent owns engineering and research judgment within the user's authority. It may
    design, investigate, interpret, and make versioned decisions. It may not silently rewrite a frozen
    contract after data collection begins.
@@ -26,7 +27,9 @@ context-limited agent working under a primary or supervisor.
    result-blind live provider audit, exclusive ownership transfer, immutable source-artifact
    restoration, and manual disabling of the competing GitHub supervisor. The August 16 completion
    controller may finish and evaluate the frozen original cohort but must hard-stop before replication
-   or analysis. Subagents may never initiate, repair, retry, or broaden local paid execution.
+   or analysis. The August 18 Charon controller may own only the 47 post-sentinel replication cells
+   after an exact GitHub sentinel hold and must hard-stop at an audited replication 48/48 gate.
+   Subagents may never initiate, repair, retry, or broaden local paid execution.
 6. Never treat duplicate runs as replicates, invent missing observations, hand-select endpoint
    candidates, or combine pilot and confirmatory cohorts.
 7. The cross-repository `HANDOFF.md` is private operational context and is ignored at the PEARL
