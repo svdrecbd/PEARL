@@ -38,6 +38,11 @@
     "analysis_authorized": false,
     "structural_authorized": false
   },
+  "external_completion_handoff": {
+    "contract": "pearl.frontier-external-completion-handoff-source/1",
+    "path": "configs/experiments/frontier_adaptation_v2_original_completion_handoff.json",
+    "sha256": "52a764a0b26203257b9b7a206cac91d89a933e4be8dc942d0bc98c33c8406269"
+  },
   "preauthorization_failure_quarantine": {
     "contract": "pearl.frontier-preauthorization-failure-quarantine/1",
     "source_supervisor_actions_run_id": 31985313255,
