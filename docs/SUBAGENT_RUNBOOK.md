@@ -135,6 +135,11 @@ disable the GitHub supervisor; or fill a missing training or evaluation prefix. 
 assignment is exact read-only status reporting. An ambiguous launch intent, blocked event, service
 restart, or host interruption is an ownership incident for the primary, not permission to retry.
 
+The August 18 replication-sentinel relay is another primary-owned protected control-plane surface.
+A subagent may report its exact status under a bounded read-only assignment, but must never edit,
+enable, disable, manually invoke, repair, or broaden the relay. A relay stop or failure is an
+ownership incident for the primary, not permission to advance the supervisor or dispatch a worker.
+
 The clean-path research design and campaign engineering are complete. Remaining clean-path work is
 operational: invoke one frozen supervisor transition at a time, monitor remotely owned jobs, audit
 their immutable artifacts, execute the frozen analyses, and hand the validated outputs to the

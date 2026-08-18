@@ -66,6 +66,13 @@ manual transition, query the supervisor runs and do not proceed while an automat
 queued or in progress. There is no time-based schedule. A failed, cancelled, validation-only,
 non-dispatch, or unrecognized-ref child does not auto-advance and remains a stop for review.
 
+The dated result-blind sentinel-relay amendment in
+`docs/frontier_adaptation_v2_sentinel_relay_amendment_20260818.md` supersedes that no-schedule
+statement only for the one exact replication sentinel. The relay may invoke only the existing
+supervisor in `advance` mode and has neither a Tinker credential nor authority to dispatch a worker.
+It must be disabled with the supervisor after the post-sentinel hold; it cannot launch the remaining
+47 replication keys.
+
 Executor contract v7 creates and verifies immutable tag `frontier-supervisor-<run-id>` at the exact
 supervisor commit and dispatches every child from that tag rather than moving `main`. Tag creation,
 collision, or read-back failure stops before child dispatch. This prevents an in-flight authorization

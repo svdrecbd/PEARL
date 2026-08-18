@@ -1,0 +1,159 @@
+name: Frontier adaptation v2 — sentinel supervisor relay
+run-name: Frontier sentinel relay ${{ github.run_id }} ${{ github.event_name }}
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: frontier-adaptation-v2-campaign-supervisor
+  cancel-in-progress: false
+
+jobs:
+  relay-one-supervisor-transition:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SENTINEL_RUN_KEY: core-fixed-rank-nemotron3-ultra-true-seed520620-8751f7ee9f
+    steps:
+      - name: Check out the exact relay commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Capture result-blind Actions state
+        run: |
+          mkdir -p relay-state/initial
+          gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow frontier-adaptation-v2-supervisor.yml --limit 100 \
+            --json databaseId,displayTitle,event,status,conclusion,headSha,createdAt,updatedAt,url \
+            > relay-state/initial/supervisor.json
+          gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow frontier-adaptation-v2.yml --limit 100 \
+            --json databaseId,displayTitle,event,status,conclusion,headSha,createdAt,updatedAt,url \
+            > relay-state/initial/training.json
+          gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow frontier-adaptation-v2-checkpoint-evaluation.yml --limit 100 \
+            --json databaseId,displayTitle,event,status,conclusion,headSha,createdAt,updatedAt,url \
+            > relay-state/initial/evaluation.json
+
+      - name: Compute the no-spend relay decision
+        id: initial-decision
+        run: |
+          python scripts/decide_frontier_sentinel_relay.py \
+            --supervisor-runs relay-state/initial/supervisor.json \
+            --training-runs relay-state/initial/training.json \
+            --evaluation-runs relay-state/initial/evaluation.json \
+            --sentinel-run-key "$SENTINEL_RUN_KEY" \
+            --output relay-state/initial/decision.json
+          action=$(jq -r .action relay-state/initial/decision.json)
+          printf 'action=%s\n' "$action" >> "$GITHUB_OUTPUT"
+          if [[ "$action" == stop ]]; then
+            jq . relay-state/initial/decision.json
+            exit 1
+          fi
+
+      - name: Verify exact supervisor, tag, and dispatch receipt ownership
+        if: steps.initial-decision.outputs.action == 'dispatch'
+        run: |
+          decision=relay-state/initial/decision.json
+          source_supervisor=$(jq -r .source_supervisor_actions_run_id "$decision")
+          child_id=$(jq -r .child_actions_run_id "$decision")
+          child_kind=$(jq -r .child_kind "$decision")
+          child_head=$(jq -r .child_head_sha "$decision")
+
+          source_run=$(gh run view "$source_supervisor" --repo "$GITHUB_REPOSITORY" \
+            --json databaseId,status,conclusion,event,headSha,workflowName,displayTitle)
+          test "$(jq -r .databaseId <<<"$source_run")" = "$source_supervisor"
+          test "$(jq -r .status <<<"$source_run")" = completed
+          test "$(jq -r .conclusion <<<"$source_run")" = success
+          test "$(jq -r .headSha <<<"$source_run")" = "$child_head"
+          test "$(jq -r .workflowName <<<"$source_run")" = \
+            "Frontier adaptation v2 — validate and dispatch one exact wave"
+
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          dispatch_ref="frontier-supervisor-$source_supervisor"
+          observed=$(gh api graphql \
+            -f owner="$GITHUB_REPOSITORY_OWNER" \
+            -f name="$repository_name" \
+            -f qualifiedName="refs/tags/$dispatch_ref" \
+            -f query='query($owner: String!, $name: String!, $qualifiedName: String!) {
+              repository(owner: $owner, name: $name) {
+                ref(qualifiedName: $qualifiedName) { target { oid } }
+              }
+            }' \
+            --jq '.data.repository.ref.target.oid // ""')
+          test "$observed" = "$child_head"
+
+          mkdir -p relay-state/source-dispatch
+          gh run download "$source_supervisor" --repo "$GITHUB_REPOSITORY" \
+            --name "frontier-adaptation-v2-dispatch-$source_supervisor" \
+            --dir relay-state/source-dispatch
+          mapfile -t receipts < <(find relay-state/source-dispatch -type f -name dispatch_receipt.json)
+          test "${#receipts[@]}" = 1
+          receipt="${receipts[0]}"
+          matches=$(jq --argjson child "$child_id" --arg key "$SENTINEL_RUN_KEY" \
+            '[.dispatches[] | select(.child_actions_run_id == $child and .run_key == $key)]' \
+            "$receipt")
+          test "$(jq 'length' <<<"$matches")" = 1
+          receipt_action=$(jq -r '.[0].action' <<<"$matches")
+          if [[ "$child_kind" == training ]]; then
+            [[ "$receipt_action" == dispatch_training_wave || \
+               "$receipt_action" == dispatch_training_resume ]]
+          else
+            test "$child_kind" = evaluation
+            test "$receipt_action" = dispatch_evaluation_wave
+          fi
+
+      - name: Recheck immediately before the only mutation
+        if: steps.initial-decision.outputs.action == 'dispatch'
+        run: |
+          mkdir -p relay-state/final
+          gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow frontier-adaptation-v2-supervisor.yml --limit 100 \
+            --json databaseId,displayTitle,event,status,conclusion,headSha,createdAt,updatedAt,url \
+            > relay-state/final/supervisor.json
+          gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow frontier-adaptation-v2.yml --limit 100 \
+            --json databaseId,displayTitle,event,status,conclusion,headSha,createdAt,updatedAt,url \
+            > relay-state/final/training.json
+          gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow frontier-adaptation-v2-checkpoint-evaluation.yml --limit 100 \
+            --json databaseId,displayTitle,event,status,conclusion,headSha,createdAt,updatedAt,url \
+            > relay-state/final/evaluation.json
+          python scripts/decide_frontier_sentinel_relay.py \
+            --supervisor-runs relay-state/final/supervisor.json \
+            --training-runs relay-state/final/training.json \
+            --evaluation-runs relay-state/final/evaluation.json \
+            --sentinel-run-key "$SENTINEL_RUN_KEY" \
+            --output relay-state/final/decision.json
+          action=$(jq -r .action relay-state/final/decision.json)
+          if [[ "$action" == stop ]]; then
+            jq . relay-state/final/decision.json
+            exit 1
+          fi
+          if [[ "$action" == dispatch ]]; then
+            echo 'DISPATCH_ALLOWED=true' >> "$GITHUB_ENV"
+          else
+            echo 'DISPATCH_ALLOWED=false' >> "$GITHUB_ENV"
+          fi
+
+      - name: Dispatch one existing supervisor advance
+        if: env.DISPATCH_ALLOWED == 'true'
+        run: |
+          gh workflow run frontier-adaptation-v2-supervisor.yml \
+            --repo "$GITHUB_REPOSITORY" --ref main -f mode=advance
+
+      - name: Preserve the result-blind relay receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontier-adaptation-v2-sentinel-relay-${{ github.run_id }}
+          path: relay-state/
+          if-no-files-found: error
+          retention-days: 90
