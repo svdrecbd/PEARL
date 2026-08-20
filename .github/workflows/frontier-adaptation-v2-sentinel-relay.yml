@@ -2,8 +2,6 @@ name: Frontier adaptation v2 — sentinel supervisor relay
 run-name: Frontier sentinel relay ${{ github.run_id }} ${{ github.event_name }}
 
 on:
-  schedule:
-    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:

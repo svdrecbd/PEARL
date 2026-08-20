@@ -19,8 +19,9 @@ budget, or stage boundary.
 
 ## Relay contract
 
-`.github/workflows/frontier-adaptation-v2-sentinel-relay.yml` runs every ten minutes and may also be
-started manually for validation. It is hard-coded to the one exact replication-sentinel run key.
+`.github/workflows/frontier-adaptation-v2-sentinel-relay.yml` was initially scheduled every ten
+minutes and could also be started manually for validation. It is hard-coded to the one exact
+replication-sentinel run key.
 It has no Tinker credential and cannot dispatch a paid worker directly. Its only permitted mutation
 is requesting `frontier-adaptation-v2-supervisor.yml` on `main` with `mode=advance`.
 
@@ -55,3 +56,18 @@ launch any of the remaining 47 replication runs.
 Subagents remain read-only for this control-plane surface. Any relay stop or failure, missing receipt,
 tag mismatch, duplicate provider contract, unclear ownership, or unexpected action is a primary-agent
 stop for review.
+
+## 2026-08-19 liveness closeout
+
+The scheduled relay is retired. A transient GitHub artifact-download failure caused supervisor run
+`32218023816` to fail during result-blind reconstruction. The relay correctly refused to mask that
+failure, but its ten-minute schedule then repeated the same terminal stop without creating new
+evidence or a recovery transition. A later manual `status` reconciliation, run `32330913152`,
+successfully reconstructed the same campaign state and reproduced one exact next authorization.
+This established that the source artifact and checkpoint were intact and that the failure was in
+the hosted transport/control plane.
+
+The workflow now has `workflow_dispatch` only and is disabled in GitHub. It remains available as a
+readable diagnostic artifact, but it is no longer a campaign clock and may not be re-enabled as a
+schedule. Further sentinel work must use an explicit, result-blind supervisor transition or a
+separately frozen local-takeover contract. This changes no scientific or paid-execution field.

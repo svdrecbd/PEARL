@@ -167,7 +167,9 @@ def test_relay_workflow_is_sentinel_only_and_has_no_direct_paid_authority() -> N
     workflow = (
         ROOT / ".github/workflows/frontier-adaptation-v2-sentinel-relay.yml"
     ).read_text(encoding="utf-8")
-    assert 'cron: "*/10 * * * *"' in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "schedule:" not in workflow
+    assert "cron:" not in workflow
     assert "group: frontier-adaptation-v2-campaign-supervisor" in workflow
     assert "actions: write" in workflow
     assert "contents: read" in workflow
