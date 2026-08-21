@@ -8,8 +8,14 @@ fi
 
 output_archive="$1"
 git_ref="${2:-HEAD}"
+repo_root="$(git rev-parse --show-toplevel)"
+records_source="$repo_root/data/petase_family_expanded/petase_records.jsonl"
 if [[ -e "$output_archive" ]]; then
   echo "refusing to overwrite existing context archive: $output_archive" >&2
+  exit 2
+fi
+if [[ ! -s "$records_source" ]]; then
+  echo "frozen natural-reference records are missing or empty: $records_source" >&2
   exit 2
 fi
 
@@ -22,9 +28,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$context_root/input"
+mkdir -p "$context_root/input" "$context_root/data/petase_family_expanded"
 git archive --format=tar "$git_ref" | tar -xf - -C "$context_root"
 printf '{}\n' > "$context_root/input/generation_report.json"
+cp "$records_source" "$context_root/data/petase_family_expanded/petase_records.jsonl"
 cp "$context_root/deploy/frontier_adaptation_v2/Dockerfile.esmfold2" "$context_root/Dockerfile"
 tar -cf - -C "$context_root" . | zstd -T0 -10 -o "$output_archive"
 shasum -a 256 "$output_archive"

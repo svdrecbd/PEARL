@@ -68,6 +68,11 @@ def test_frontier_context_builders_publish_the_provider_default_dockerfile() -> 
         script = (ROOT / "deploy/frontier_adaptation_v2" / builder).read_text()
         assert '"$context_root/Dockerfile"' in script
         assert '"$context_root/Dockerfile.esmfold2"' not in script
+        assert 'records_source="$repo_root/data/petase_family_expanded/petase_records.jsonl"' in script
+        assert (
+            'cp "$records_source" '
+            '"$context_root/data/petase_family_expanded/petase_records.jsonl"'
+        ) in script
 
 
 def test_pending_calibration_hard_blocks_production() -> None:
