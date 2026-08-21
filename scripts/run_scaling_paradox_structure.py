@@ -8,6 +8,7 @@ import hashlib
 import importlib.metadata
 import json
 import os
+import platform
 import sys
 from pathlib import Path
 from typing import Any
@@ -19,8 +20,14 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from pearl.io_utils import atomic_write_json  # noqa: E402
+from pearl.esmfold2_contract import (  # noqa: E402
+    folding_identity,
+    validate_complete_calibration,
+    validate_folding_gate,
+)
 from pearl.structure_gate import (  # noqa: E402
     EsmFoldLocalBackend,
+    EsmFold2LocalBackend,
     StructurePrediction,
     gate_prediction,
     parse_pdb,
@@ -80,6 +87,12 @@ def build_contract(config_path: Path, config: dict[str, Any], generation: dict[s
         "evaluator_sha256": sha256_file(Path(__file__).resolve()),
         "structure_gate_library_sha256": sha256_file(ROOT / "src" / "pearl" / "structure_gate.py"),
     }
+    if gate["backend"] == "esmfold2":
+        identity["esmfold2_folding_identity"] = folding_identity(gate)
+        identity["runtime_lock_sha256"] = sha256_file(repo_path(gate["runtime_lock"]))
+        identity["esmfold2_contract_library_sha256"] = sha256_file(
+            ROOT / "src" / "pearl" / "esmfold2_contract.py"
+        )
     identity["fold_contract_sha"] = sha256_value(identity)
     return identity
 
@@ -93,8 +106,25 @@ def validate_environment(contract: dict[str, Any]) -> None:
         "transformers": str(contract["transformers_version"]),
         "torch": str(contract["torch_version"]),
     }
+    if contract["backend"] == "esmfold2":
+        observed["esm"] = package_version("esm")
+        expected["esm"] = str(contract["esmfold2_folding_identity"]["esm_package_version"])
     if observed != expected:
         raise RuntimeError(f"structural environment mismatch: observed={observed}, expected={expected}")
+    if contract["backend"] == "esmfold2":
+        observed_python = ".".join(platform.python_version_tuple()[:2])
+        expected_python = str(contract["esmfold2_folding_identity"]["python_version"])
+        if observed_python != expected_python:
+            raise RuntimeError(
+                f"structural Python mismatch: observed={observed_python}, expected={expected_python}"
+            )
+
+
+def validate_calibration(gate: dict[str, Any]) -> None:
+    calibration = read_json(repo_path(gate["calibration"]))
+    if gate["backend"] == "esmfold2":
+        validate_folding_gate(gate, read_json(repo_path(gate["runtime_lock"])))
+        validate_complete_calibration(calibration, gate)
 
 
 def report_payload(contract: dict[str, Any], results: list[dict[str, Any]], *, status: str) -> dict[str, Any]:
@@ -156,14 +186,34 @@ def main() -> None:
         print(json.dumps({key: value for key, value in payload.items() if key != "results"}, indent=2))
         return
 
-    validate_environment(contract)
     gate = config["structure_gate"]
+    validate_environment(contract)
+    validate_calibration(gate)
     os.environ["STRUCTURE_GATE_CALIBRATION_PATH"] = str(repo_path(gate["calibration"]))
-    backend = EsmFoldLocalBackend(
-        model_name=str(gate["model_name"]),
-        revision=str(gate["model_revision"]),
-        device=os.environ.get("ESMFOLD_DEVICE") or None,
-    )
+    if gate["backend"] == "esmfold2":
+        inference = gate["inference"]
+        backend = EsmFold2LocalBackend(
+            model_name=str(gate["model_name"]),
+            model_revision=str(gate["model_revision"]),
+            esmc_model_name=str(gate["esmc_model_name"]),
+            esmc_model_revision=str(gate["esmc_model_revision"]),
+            num_loops=int(inference["num_loops"]),
+            num_sampling_steps=int(inference["num_sampling_steps"]),
+            num_diffusion_samples=int(inference["num_diffusion_samples"]),
+            inference_seed=int(inference["inference_seed"]),
+            esmc_precision=str(inference["esmc_precision"]),
+            kernel_backend=inference["kernel_backend"],
+            chunk_size=inference["chunk_size"],
+            device=os.environ.get("ESMFOLD_DEVICE") or None,
+        )
+    elif gate["backend"] == "esmfold":
+        backend = EsmFoldLocalBackend(
+            model_name=str(gate["model_name"]),
+            revision=str(gate["model_revision"]),
+            device=os.environ.get("ESMFOLD_DEVICE") or None,
+        )
+    else:
+        raise RuntimeError(f"unsupported frozen local structural backend: {gate['backend']}")
     completed = {str(row["candidate_id"]) for row in results}
     for candidate in generation["candidates"]:
         cid = str(candidate["candidate_id"])

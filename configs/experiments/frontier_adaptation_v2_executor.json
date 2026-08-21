@@ -1,6 +1,17 @@
 {
   "contract": "pearl.frontier-adaptation-executor/8",
   "created_before_any_v2_outcome_review": true,
+  "structural_amendment": {
+    "contract": "pearl.frontier-structural-amendment/1",
+    "frozen_date": "2026-08-21",
+    "prospective_result_blind": true,
+    "structural_generation_started_at_freeze": false,
+    "optimization_outcomes_consulted": false,
+    "candidate_slots_per_cell": 384,
+    "folding_backend": "full_esmfold2_single_sequence_no_msa",
+    "paid_production_folding_requires_separate_preflight_approval": true,
+    "source": "docs/frontier_adaptation_v2_structural_amendment_20260821.md"
+  },
   "operational_amendment": {
     "contract": "pearl.frontier-operational-amendment/1",
     "frozen_date": "2026-08-16",
@@ -108,16 +119,19 @@
   "observed_givemeanode_credit_at_freeze_usd": 481.83,
   "givemeanode_max_active_jobs": 6,
   "givemeanode_hardware": "NVIDIA H100",
-  "givemeanode_entrypoint": "deploy/scaling_paradox_v1/run_esmf_job.sh",
-  "givemeanode_anchor_ref": "frontier-adaptation-v2-executor-v1.0.1",
+  "givemeanode_entrypoint": "deploy/frontier_adaptation_v2/run_esmfold2_job.sh",
+  "givemeanode_dockerfile": "deploy/frontier_adaptation_v2/Dockerfile.esmfold2",
+  "givemeanode_context_builder": "deploy/frontier_adaptation_v2/build_esmfold2_context.sh",
+  "givemeanode_calibration_context_builder": "deploy/frontier_adaptation_v2/build_esmfold2_calibration_context.sh",
+  "givemeanode_anchor_ref": "frontier-adaptation-v2-structural-v3.0.0",
   "supervisor_workflow_name": "Frontier adaptation v2 — validate and dispatch one exact wave",
   "planned_training_ceiling_usd": 1910.27,
   "planned_checkpoint_evaluation_ceiling_usd": 139.12,
   "planned_pre_structural_tinker_ceiling_usd": 2049.39,
-  "planned_structural_sampling_ceiling_usd": 10.0,
-  "planned_total_tinker_ceiling_usd": 2059.39,
+  "planned_structural_sampling_ceiling_usd": 40.0,
+  "planned_total_tinker_ceiling_usd": 2089.39,
   "max_continuation_recovery_overhead_usd": 25.0,
-  "planned_total_with_recovery_ceiling_usd": 2084.39,
+  "planned_total_with_recovery_ceiling_usd": 2114.39,
   "training_slicing": {
     "contract": "pearl.frontier-training-slicing/3",
     "scientific_contract_unchanged": true,
@@ -399,7 +413,7 @@
     "original_core_terminal_cells": 48,
     "replication_core_terminal_cells": 48,
     "total_structural_cells": 104,
-    "candidates_per_cell": 96,
+    "candidates_per_cell": 384,
     "checkpoint_trajectory": "terminal_only"
   },
   "stop_conditions": [

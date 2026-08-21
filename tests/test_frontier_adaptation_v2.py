@@ -205,7 +205,7 @@ def test_frontier_manifest_budget_and_smoke_transition_are_fail_closed(
     assert observed_training <= executor["planned_training_ceiling_usd"]
     assert manifest["observed_continuation_recovery_overhead_usd"] == 6.5524
     assert manifest["preauthorization_failure_quarantine_count"] == 34
-    assert manifest["planned_total_with_recovery_ceiling_usd"] == 2084.39
+    assert manifest["planned_total_with_recovery_ceiling_usd"] == 2114.39
     assert (
         manifest["planned_total_with_recovery_ceiling_usd"]
         < executor["max_authorized_tinker_usd"]
@@ -1762,16 +1762,17 @@ def test_frontier_structural_manifest_is_terminal_only_104_cells(
     assert manifest["job_count"] == len(manifest["jobs"]) == 104
     assert {row["checkpoint_step"] for row in manifest["jobs"]} == {0, 2250}
     assert sum(row["checkpoint_step"] == 0 for row in manifest["jobs"]) == 8
-    assert manifest["estimated_sampling_cost_usd"] == 8.97
+    assert manifest["candidate_slots_per_job"] == 384
+    assert manifest["estimated_sampling_cost_usd"] == 35.86
 
 
 def test_frontier_gmn_contract_requires_104_unique_jobs() -> None:
     manager = load_script("manage_frontier_adaptation_gmn.py")
     manifest = {
-        "contract": "pearl.frontier-adaptation-gmn-manifest/2",
+        "contract": "pearl.frontier-adaptation-gmn-manifest/3",
         "max_active_jobs": 6,
         "source_commit_sha": "a" * 40,
-        "anchor_ref": "frontier-adaptation-v2-executor-v1.0.1",
+        "anchor_ref": "frontier-adaptation-v2-structural-v3.0.0",
         "jobs": [{"job_key": f"job-{index}"} for index in range(104)],
     }
     manifest["gmn_manifest_sha"] = sha256_value(manifest)

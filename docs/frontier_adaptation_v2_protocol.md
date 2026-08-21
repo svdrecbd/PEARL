@@ -69,19 +69,23 @@ six-seed cohorts with a t interval, sign counts, and an exact two-sided seed-lev
 There is no outcome-dependent p-value gate, rescue stage, model substitution, seed replacement, or
 post-hoc family pooling in v2.
 
-The biological endpoint is terminal full structural-gate yield. The exact scope is eight shared base
-cells plus 48 original and 48 replication terminal adapters: 104 cells × 96 fixed candidate slots.
+The biological endpoint is terminal full structural-gate yield. Under the prospective, result-blind
+August 21 structural amendment, the exact scope is eight shared base cells plus 48 original and 48
+replication terminal adapters: 104 cells × 384 fixed candidate slots.
 Invalid or duplicate generations remain denominator failures; infrastructure failures remain
-unobserved and block completion. Fold outputs use the frozen ESMFold revision, calibration, pLDDT
+unobserved and block completion. Fold outputs use the frozen full ESMFold2 and ESMC revisions in
+single-sequence/no-MSA mode, the prospective natural-reference calibration, the unchanged pLDDT
 threshold, and side-chain catalytic-triad geometry. Rare-event cell intervals are exact
 Clopper–Pearson intervals. Family contrasts again operate on seed-level true-minus-shuffled yields.
+The full amendment and its result-blind timing are recorded in
+`docs/frontier_adaptation_v2_structural_amendment_20260821.md`.
 
 ## Budget and execution envelope
 
 At freeze, the user reported $3,200.42 Tinker credit and $481.83 GiveMeANode credit. The immutable
 plan contains $1,910.27 training and $139.12 endpoint evaluation, a $2,049.39 pre-structural ceiling.
-Structural sampling is capped at $10.00 (estimated $8.97), for a $2,059.39 Tinker ceiling. The hard
-plan plus the $25.00 continuation-recovery allowance is capped at $2,084.39. The hard authorization
+Structural sampling is capped at $40.00 (estimated $35.86), for a $2,089.39 Tinker ceiling. The hard
+plan plus the $25.00 continuation-recovery allowance is capped at $2,114.39. The hard authorization
 envelope remains $2,300.00. GiveMeANode is capped at $481.83 and six active H100 jobs.
 
 All paid execution is remote and supervisor-owned. Frontier optimization uses the prospective
@@ -132,7 +136,8 @@ artifact, requires monotonic completed steps and the same immutable run contract
 authorizes one exact next absolute segment boundary. A timeout without a complete auditable segment,
 a non-advancing checkpoint, or any lineage disagreement remains a stop condition. The 330-minute
 circuit breaker is retained to preserve artifact-upload time; it is not extended toward the hosted-job
-ceiling. The recovery-overhead allowance is $25, yielding a maximum Tinker ceiling of $2,084.39,
+ceiling. After the prospective structural amendment, the recovery-overhead allowance is $25,
+yielding a maximum Tinker ceiling of $2,114.39,
 still inside the unchanged $2,300 authorization envelope.
 
 Tinker represents each restored segment as a new provider training record. This is valid only when
@@ -231,7 +236,7 @@ can approach roughly three to five days combined instead of two weeks; adding en
 and the separately six-job structural phase gives a best clean-path estimate of roughly six to nine
 days. This is an estimate, not a completion promise.
 
-The ramp changes neither the `$2,084.39` total Tinker ceiling nor any model, arm, seed, renderer,
+The ramp changes neither training nor any model, arm, seed, renderer,
 pair order, adapter, optimizer update, checkpoint, endpoint, analysis, or cohort label. It may expose
 more of the already-authorized cohort budget concurrently. The replication sentinel and its ramp
 remain blocked until every original cell and evaluation is terminal-valid.
@@ -406,6 +411,6 @@ This tree creates no gate, exclusion, relaunch, or permission. Executors remain 
 ## Stop rules
 
 Stop before advancing on any renderer failure, plan/hash mismatch, duplicate provider owner,
-ambiguous checkpoint lineage, missing endpoint partition, incomplete 96-slot generation/fold cell,
+ambiguous checkpoint lineage, missing endpoint partition, incomplete 384-slot generation/fold cell,
 unplanned spend, active-count uncertainty, source-commit mismatch, or request to change a frozen
 scientific choice. A primary may diagnose and version a repair; an executor may not improvise one.

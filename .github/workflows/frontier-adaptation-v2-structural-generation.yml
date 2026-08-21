@@ -110,7 +110,7 @@ jobs:
           Path("source_paths.json").write_text(json.dumps(paths))
           PY
 
-      - name: Generate all 96 frozen candidate slots
+      - name: Generate all 384 frozen candidate slots
         env:
           TINKER_API_KEY: ${{ secrets.TINKER_API_KEY }}
         run: |
@@ -147,8 +147,17 @@ jobs:
           report = json.load(open(reports[0]))
           if report.get("status") != "complete" or not report.get("complete"):
               raise SystemExit("generation report is incomplete")
-          if report.get("expected_candidate_count") != 96 or report.get("completed_candidate_count") != 96:
-              raise SystemExit("generation report does not preserve all 96 candidate slots")
+          job = json.load(open("job.json"))
+          config = json.load(open(job["structural_config"]))
+          expected = int(config["prompt_count"]) * len(config["sampling"]["sample_seeds"])
+          if expected != 384:
+              raise SystemExit("frontier structural contract does not contain exactly 384 slots")
+          if (
+              report.get("expected_candidate_count") != expected
+              or report.get("completed_candidate_count") != expected
+              or len(report.get("candidates", [])) != expected
+          ):
+              raise SystemExit("generation report does not preserve all 384 candidate slots")
           PY
 
       - name: Preserve generation artifact

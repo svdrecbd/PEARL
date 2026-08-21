@@ -1,0 +1,44 @@
+FROM docker.io/nvidia/cuda:13.0.2-cudnn-runtime-ubuntu24.04@sha256:14d94b039cb94bbd5da559f303b46bc4b0d5d6c24ab1a9d7b186e566ed3400dc
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONUNBUFFERED=1 \
+    HF_HOME=/opt/huggingface \
+    ESMFOLD_DEVICE=cuda
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends python3 python3-pip python3-venv ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY configs/esmfold2_runtime_lock.json /opt/pearl/esmfold2_runtime_lock.json
+RUN python3 -m pip install --break-system-packages "torch==2.11.0" \
+    && git init /opt/src/transformers \
+    && git -C /opt/src/transformers remote add origin https://github.com/Biohub/transformers.git \
+    && git -C /opt/src/transformers fetch --depth 1 origin ef32577f55da19a4989cd7b22e004dc43a4998cb \
+    && git -C /opt/src/transformers checkout --detach FETCH_HEAD \
+    && python3 -m pip install --break-system-packages /opt/src/transformers \
+    && git init /opt/src/esm \
+    && git -C /opt/src/esm remote add origin https://github.com/Biohub/esm.git \
+    && git -C /opt/src/esm fetch --depth 1 origin 9b9078cadf4e08bd02e9715ba99313fc5127379a \
+    && git -C /opt/src/esm checkout --detach FETCH_HEAD \
+    && sed -i 's#transformers @ git+https://github.com/Biohub/transformers.git@main#transformers==4.57.6#' /opt/src/esm/pyproject.toml \
+    && python3 -m pip install --break-system-packages /opt/src/esm \
+    && python3 -m pip freeze --all > /opt/pearl/pip-freeze.txt
+
+RUN python3 -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='biohub/ESMFold2', revision='8fc3ff471022fdce52c77030685eb775de0c00a3'); snapshot_download(repo_id='biohub/ESMC-6B', revision='45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a')"
+
+WORKDIR /workspace/pearl
+COPY src ./src
+COPY scripts/run_scaling_paradox_structure.py ./scripts/run_scaling_paradox_structure.py
+COPY scripts/calibrate_frontier_esmfold2.py ./scripts/calibrate_frontier_esmfold2.py
+COPY configs/esmfold2_runtime_lock.json ./configs/esmfold2_runtime_lock.json
+COPY configs/structure_gate_calibration.esmfold2.json ./configs/structure_gate_calibration.esmfold2.json
+COPY configs/experiments/frontier_adaptation_structural_v2_original.json ./configs/experiments/frontier_adaptation_structural_v2_original.json
+COPY configs/experiments/frontier_adaptation_structural_v2_replication.json ./configs/experiments/frontier_adaptation_structural_v2_replication.json
+COPY data/petase_family_expanded/petase_records.jsonl ./data/petase_family_expanded/petase_records.jsonl
+COPY deploy/frontier_adaptation_v2/run_esmfold2_job.sh ./deploy/frontier_adaptation_v2/run_esmfold2_job.sh
+COPY input/generation_report.json /workspace/input/generation_report.json
+RUN chmod 0755 ./deploy/frontier_adaptation_v2/run_esmfold2_job.sh \
+    && python3 -c "import esm, torch, transformers; assert esm.__version__ == '4.0.0'; assert torch.__version__.split('+')[0] == '2.11.0'; assert transformers.__version__ == '4.57.6'"
+
+ENTRYPOINT ["/workspace/pearl/deploy/frontier_adaptation_v2/run_esmfold2_job.sh"]

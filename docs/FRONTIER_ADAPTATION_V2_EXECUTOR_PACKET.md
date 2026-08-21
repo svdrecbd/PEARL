@@ -24,9 +24,10 @@ The complete order is fixed:
 
 Frontier optimization follows the machine-enforced 12-to-24-to-47 capacity ramp below. Original and
 replication never overlap. Structural generation and GiveMeANode folding remain capped at six active
-jobs. Tinker pre-structure is capped at $2,049.39; planned total Tinker is
-$2,059.39, with a separately bounded $25 continuation-recovery allowance and a combined $2,084.39
-ceiling inside the $2,300 authorization envelope. GiveMeANode is capped at $481.83. Hash mismatch,
+jobs. Tinker pre-structure is capped at $2,049.39; after the prospective August 21 structural
+amendment, planned total Tinker is $2,089.39, with a separately bounded $25 continuation-recovery
+allowance and a combined $2,114.39 ceiling inside the $2,300 authorization envelope. GiveMeANode is
+capped at $481.83. Hash mismatch,
 duplicate ownership, missing lineage, partial artifact, unknown active count, renderer failure,
 unplanned spend, or an unhandled state means stop and escalate.
 
@@ -252,10 +253,10 @@ gh workflow run frontier-adaptation-v2-structural-supervisor.yml --ref main -f m
 
 The supervisor refuses to build the 104-cell manifest until all required training and evaluation
 receipts are terminal-valid. It dispatches at most six exact generation jobs and retains every one of
-the 96 candidate slots per cell.
+the 384 candidate slots per cell frozen by the August 21 result-blind structural amendment.
 
 After all generation artifacts exist, build the exact GMN manifest from a clean checkout at the
-frozen `frontier-adaptation-v2-executor-v1.0.1` executor tag:
+prospective `frontier-adaptation-v2-structural-v3.0.0` structural executor tag:
 
 ```bash
 python scripts/build_frontier_adaptation_gmn_manifest.py \

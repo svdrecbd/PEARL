@@ -9,6 +9,9 @@ expensive/manual ColabFold step. Folding backends are pluggable:
   ``scripts/fold_phase7_subset.py`` pattern). Best for low-volume gating.
 - ``esmfold``: local ``transformers`` ``EsmForProteinFolding`` (offline, reproducible,
   needs the ~2.8 GB ``facebook/esmfold_v1`` weights).
+- ``esmfold2``: local full 48-layer Biohub ESMFold2 in single-sequence mode. Its
+  model and ESMC backbone revisions, sampler, precision, and kernels are supplied
+  explicitly by the prospective structural contract.
 
 An ESM3 backend can be added behind the same ``FoldingBackend`` protocol once the
 ``esm`` package and (non-commercial) open weights are installed.
@@ -274,7 +277,9 @@ def _ca_fallback_triad(
 
 def _calibration_key(backend_name: str) -> str:
     # esmfold and esmatlas are the same ESMFold model -> shared structural distribution.
-    return "esm3" if backend_name == "esm3" else "esmfold"
+    if backend_name in {"esmfold2", "esm3"}:
+        return backend_name
+    return "esmfold"
 
 
 def _structure_calibration_path(backend_name: str) -> Path:
@@ -455,13 +460,100 @@ class EsmFoldLocalBackend:
             return model.infer_pdb(sequence)
 
 
+class EsmFold2LocalBackend:
+    """Fold with a revision-pinned full Biohub ESMFold2 + ESMC backbone.
+
+    This intentionally uses the protein-only convenience path: one chain, no MSA,
+    and one diffusion sample. The caller must provide every inference setting so a
+    package default cannot silently change the scientific contract.
+    """
+
+    name = "esmfold2"
+
+    def __init__(
+        self,
+        *,
+        model_name: str,
+        model_revision: str,
+        esmc_model_name: str,
+        esmc_model_revision: str,
+        num_loops: int,
+        num_sampling_steps: int,
+        num_diffusion_samples: int,
+        inference_seed: int,
+        esmc_precision: str,
+        kernel_backend: str | None,
+        chunk_size: int | None,
+        device: str | None = None,
+    ) -> None:
+        if num_diffusion_samples != 1:
+            raise ValueError("the PEARL ESMFold2 contract requires exactly one diffusion sample")
+        self.model_name = model_name
+        self.model_revision = model_revision
+        self.esmc_model_name = esmc_model_name
+        self.esmc_model_revision = esmc_model_revision
+        self.num_loops = int(num_loops)
+        self.num_sampling_steps = int(num_sampling_steps)
+        self.num_diffusion_samples = int(num_diffusion_samples)
+        self.inference_seed = int(inference_seed)
+        self.esmc_precision = esmc_precision
+        self.kernel_backend = kernel_backend
+        self.chunk_size = chunk_size
+        self.device = device or os.environ.get("ESMFOLD_DEVICE", "cuda")
+        self._model = None
+
+    def _load(self):
+        if self._model is not None:
+            return self._model
+        import torch
+        from huggingface_hub import snapshot_download
+        from transformers import ESMFold2Model
+
+        device = torch.device(self.device)
+        if device.type != "cuda" or not torch.cuda.is_available():
+            raise RuntimeError("the frozen ESMFold2 production contract requires a CUDA GPU")
+        model_path = snapshot_download(repo_id=self.model_name, revision=self.model_revision)
+        esmc_path = snapshot_download(
+            repo_id=self.esmc_model_name, revision=self.esmc_model_revision
+        )
+        model = ESMFold2Model.from_pretrained(
+            model_path,
+            load_esmc=False,
+            dtype=torch.bfloat16,
+        )
+        model = model.to(device)
+        model.load_esmc(esmc_path, precision=self.esmc_precision)
+        model.set_kernel_backend(self.kernel_backend)
+        model.set_chunk_size(self.chunk_size)
+        model.eval()
+        self._device = device
+        self._torch = torch
+        self._model = model
+        return model
+
+    def fold(self, sequence: str) -> str:
+        model = self._load()
+        self._torch.manual_seed(self.inference_seed)
+        self._torch.cuda.manual_seed_all(self.inference_seed)
+        with self._torch.inference_mode():
+            return model.infer_protein_as_pdb(
+                sequence,
+                num_loops=self.num_loops,
+                num_sampling_steps=self.num_sampling_steps,
+                num_diffusion_samples=self.num_diffusion_samples,
+            )
+
+
 def get_backend(name: str | None = None) -> FoldingBackend:
     resolved = (name or os.environ.get("STRUCTURE_GATE_BACKEND", "esmfold")).strip().lower()
     if resolved == "esmatlas":
         return EsmAtlasBackend()
     if resolved == "esmfold":
         return EsmFoldLocalBackend()
-    raise ValueError(f"Unknown structure-gate backend: {resolved!r} (expected 'esmfold' or 'esmatlas')")
+    raise ValueError(
+        f"Unknown structure-gate backend: {resolved!r} "
+        "(expected a fully configured 'esmfold2', 'esmfold', or 'esmatlas')"
+    )
 
 
 def fold_and_gate(

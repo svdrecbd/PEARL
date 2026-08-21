@@ -18,6 +18,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from pearl.esmfold2_contract import folding_identity  # noqa: E402
 from pearl.model_rendering import RendererContract  # noqa: E402
 
 
@@ -88,7 +89,8 @@ def expected_fold_contract(job: dict[str, Any], generation: dict[str, Any]) -> d
         "structural_config_sha256": sha256_file(config_path),
         "generation_contract_sha": generation["generation_contract_sha"],
         "generation_run_key": generation["run_key"],
-        "expected_candidate_count": 96,
+        "expected_candidate_count": int(config["prompt_count"])
+        * len(config["sampling"]["sample_seeds"]),
         "backend": gate["backend"],
         "model_name": gate["model_name"],
         "model_revision": gate["model_revision"],
@@ -101,6 +103,12 @@ def expected_fold_contract(job: dict[str, Any], generation: dict[str, Any]) -> d
         "evaluator_sha256": sha256_file(ROOT / "scripts/run_scaling_paradox_structure.py"),
         "structure_gate_library_sha256": sha256_file(ROOT / "src/pearl/structure_gate.py"),
     }
+    if gate["backend"] == "esmfold2":
+        identity["esmfold2_folding_identity"] = folding_identity(gate)
+        identity["runtime_lock_sha256"] = sha256_file(ROOT / gate["runtime_lock"])
+        identity["esmfold2_contract_library_sha256"] = sha256_file(
+            ROOT / "src/pearl/esmfold2_contract.py"
+        )
     identity["fold_contract_sha"] = sha256_value(identity)
     return identity
 
@@ -132,6 +140,12 @@ def main() -> None:
         raise RuntimeError("structural manifest self-hash mismatch")
     if manifest.get("source_commit_sha") != args.git_ref:
         raise RuntimeError("GMN source commit differs from the structural supervisor commit")
+    candidate_slots = int(manifest["candidate_slots_per_job"])
+    if (
+        manifest.get("contract") != "pearl.frontier-adaptation-structural-manifest/3"
+        or candidate_slots != 384
+    ):
+        raise RuntimeError("GMN build requires the frozen 384-slot frontier structural manifest")
     reports = list(Path(args.generation_root).rglob("generation_report.json"))
     jobs_by_identity: dict[tuple[Any, ...], dict[str, Any]] = {}
     for job in manifest["jobs"]:
@@ -158,9 +172,9 @@ def main() -> None:
         if (
             report.get("status") != "complete"
             or not report.get("complete")
-            or int(report.get("expected_candidate_count", -1)) != 96
-            or int(report.get("completed_candidate_count", -1)) != 96
-            or len(report.get("candidates", [])) != 96
+            or int(report.get("expected_candidate_count", -1)) != candidate_slots
+            or int(report.get("completed_candidate_count", -1)) != candidate_slots
+            or len(report.get("candidates", [])) != candidate_slots
         ):
             raise RuntimeError(f"incomplete generation report for {job_key}")
         if contract != expected_generation_contract(jobs_by_identity[key]):
@@ -180,7 +194,7 @@ def main() -> None:
     ).stdout.strip()
     if anchor_commit != args.git_ref:
         raise RuntimeError("frozen GMN anchor tag does not resolve to the source commit")
-    dockerfile = ROOT / "deploy/scaling_paradox_v1/Dockerfile.esmfold"
+    dockerfile = ROOT / executor["givemeanode_dockerfile"]
     entrypoint = ROOT / executor["givemeanode_entrypoint"]
     source_paths = subprocess.run(
         ["git", "ls-tree", "-r", "--name-only", args.git_ref, "--", "src"],
@@ -194,19 +208,22 @@ def main() -> None:
         {str(read_json(ROOT / path)["training_config"]) for path in structural_config_paths}
     )
     runtime_paths = [
-        "requirements.txt",
         "scripts/run_scaling_paradox_structure.py",
-        "configs/structure_gate_calibration.esmfold.json",
+        "scripts/calibrate_frontier_esmfold2.py",
+        "configs/esmfold2_runtime_lock.json",
+        "configs/structure_gate_calibration.esmfold2.json",
+        "data/petase_family_expanded/petase_records.jsonl",
         *structural_config_paths,
         *training_config_paths,
         "configs/experiments/scaling_paradox_structural_panel_v1.jsonl",
         executor["givemeanode_entrypoint"],
+        executor["givemeanode_context_builder"],
         *source_paths,
     ]
     runtime_member_sha256s = {
         f"./{path}": sha256_file(ROOT / path) for path in runtime_paths
     }
-    runtime_member_sha256s["./Dockerfile.esmfold"] = sha256_file(dockerfile)
+    runtime_member_sha256s["./Dockerfile.esmfold2"] = sha256_file(dockerfile)
     for job in manifest["jobs"]:
         job_key = job["job_key"]
         report_path = observed[job_key]
@@ -219,11 +236,11 @@ def main() -> None:
                 "generation_report_sha256": sha256_file(report_path),
                 "context_archive": str(archive),
                 "build_command": [
-                    "deploy/scaling_paradox_v1/build_esmf_context.sh",
+                    executor["givemeanode_context_builder"],
                     str(report_path), str(archive), args.git_ref,
                 ],
                 "expected_gmn_result_contract": "pearl.scaling-paradox-structural-job/1",
-                "candidate_slots": 96,
+                "candidate_slots": candidate_slots,
                 "generation_contract_sha": generation_contract["generation_contract_sha"],
                 "generation_run_key": generation_contract["run_key"],
                 "expected_fold_contract": expected_fold_contract(job, generation_contract),
@@ -231,7 +248,7 @@ def main() -> None:
                 "execution": {
                     "source_commit_sha": args.git_ref,
                     "hardware": executor["givemeanode_hardware"],
-                    "dockerfile": "deploy/scaling_paradox_v1/Dockerfile.esmfold",
+                    "dockerfile": executor["givemeanode_dockerfile"],
                     "dockerfile_sha256": sha256_file(dockerfile),
                     "entrypoint": executor["givemeanode_entrypoint"],
                     "entrypoint_sha256": sha256_file(entrypoint),
@@ -253,7 +270,7 @@ def main() -> None:
             }
         )
     payload = {
-        "contract": "pearl.frontier-adaptation-gmn-manifest/2",
+        "contract": "pearl.frontier-adaptation-gmn-manifest/3",
         "source_structural_manifest_sha": manifest["structural_manifest_sha"],
         "source_structural_manifest_file_sha256": sha256_file(manifest_path),
         "git_ref": args.git_ref,

@@ -1,0 +1,14 @@
+{
+  "contract": "pearl.esmfold2-natural-reference-calibration/1",
+  "status": "pending",
+  "backend": "esmfold2",
+  "records_path": "data/petase_family_expanded/petase_records.jsonl",
+  "selection_seed": 41,
+  "expected_count": 80,
+  "acceptance": {
+    "completed_fraction": 1.0,
+    "minimum_plddt_pass_fraction_at_frozen_gate": 0.85,
+    "minimum_sidechain_triad_observed_fraction": 0.45
+  },
+  "note": "Fail-closed prospective placeholder. Production folding is prohibited until the exact pinned container produces and validates the complete natural-reference calibration."
+}
