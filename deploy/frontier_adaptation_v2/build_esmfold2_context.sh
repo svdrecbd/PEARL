@@ -9,12 +9,18 @@ fi
 generation_report="$1"
 output_archive="$2"
 git_ref="${3:-HEAD}"
+repo_root="$(git rev-parse --show-toplevel)"
+records_source="$repo_root/data/petase_family_expanded/petase_records.jsonl"
 if [[ ! -s "$generation_report" ]]; then
   echo "generation report is missing or empty: $generation_report" >&2
   exit 2
 fi
 if [[ -e "$output_archive" ]]; then
   echo "refusing to overwrite existing context archive: $output_archive" >&2
+  exit 2
+fi
+if [[ ! -s "$records_source" ]]; then
+  echo "frozen natural-reference records are missing or empty: $records_source" >&2
   exit 2
 fi
 
@@ -41,9 +47,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$context_root/input"
+mkdir -p "$context_root/input" "$context_root/data/petase_family_expanded"
 git archive --format=tar "$git_ref" | tar -xf - -C "$context_root"
 cp "$generation_report" "$context_root/input/generation_report.json"
+cp "$records_source" "$context_root/data/petase_family_expanded/petase_records.jsonl"
 cp "$context_root/deploy/frontier_adaptation_v2/Dockerfile.esmfold2" "$context_root/Dockerfile"
 tar -cf - -C "$context_root" . | zstd -T0 -10 -o "$output_archive"
 shasum -a 256 "$output_archive"
