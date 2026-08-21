@@ -560,6 +560,17 @@ lineage. A replication cell cannot replace, repair, or count as a missing v1 cel
 The 64-control ESMFold calibration must pass before frozen endpoint prompts are generated or folded.
 The controls are methodological only and are excluded from endpoint analysis.
 
+For frontier adaptation v2, the prospective August 21 amendment supersedes the legacy paragraph
+below without altering scaling-paradox v1. Frontier v2 requires 384 slots per cell and the full,
+revision-pinned ESMFold2/ESMC single-sequence container in
+`deploy/frontier_adaptation_v2/Dockerfile.esmfold2`. The pending
+`configs/structure_gate_calibration.esmfold2.json` is a deliberate hard stop, not a missing file to
+repair. No agent may generate frontier endpoint candidates, substitute ESMFold v1/Fast/Atlas, mark
+that calibration complete, create the final structural tag, or launch paid folding without the
+exact approved v3 preflight described in
+`docs/frontier_adaptation_v2_structural_amendment_20260821.md`. A legacy 96-slot artifact or
+`deploy/scaling_paradox_v1/build_esmf_context.sh` is categorically invalid for frontier v2.
+
 After calibration:
 
 - base-model generation may run concurrently across the three model cells;

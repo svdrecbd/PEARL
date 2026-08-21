@@ -10,11 +10,18 @@ import json
 import math
 import random
 import statistics
+import sys
 from pathlib import Path
 from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from pearl.esmfold2_contract import folding_identity  # noqa: E402
+
 DEFAULT_CONFIG = ROOT / "configs" / "experiments" / "frontier_adaptation_structural_v2_original.json"
 
 
@@ -248,13 +255,16 @@ def validate_matrix(
         expected_config = base_config if source.get("arm") == "base" else config
         expected_config_path = base_config_path if source.get("arm") == "base" else config_path
         gate = expected_config["structure_gate"]
+        expected_candidate_count = int(expected_config["prompt_count"]) * len(
+            expected_config["sampling"]["sample_seeds"]
+        )
         expected_fold = {
             "campaign_id": expected_config["campaign_id"],
             "structural_contract": expected_config["contract"],
             "structural_config_sha256": sha256_file(expected_config_path),
             "generation_contract_sha": source["generation_contract_sha"],
             "generation_run_key": source["run_key"],
-            "expected_candidate_count": 96,
+            "expected_candidate_count": expected_candidate_count,
             "backend": gate["backend"],
             "model_name": gate["model_name"],
             "model_revision": gate["model_revision"],
@@ -267,6 +277,12 @@ def validate_matrix(
             "evaluator_sha256": sha256_file(ROOT / "scripts/run_scaling_paradox_structure.py"),
             "structure_gate_library_sha256": sha256_file(ROOT / "src/pearl/structure_gate.py"),
         }
+        if gate["backend"] == "esmfold2":
+            expected_fold["esmfold2_folding_identity"] = folding_identity(gate)
+            expected_fold["runtime_lock_sha256"] = sha256_file(repo_path(gate["runtime_lock"]))
+            expected_fold["esmfold2_contract_library_sha256"] = sha256_file(
+                ROOT / "src/pearl/esmfold2_contract.py"
+            )
         expected_fold["fold_contract_sha"] = sha256_value(expected_fold)
         if (
             source.get("prompt_panel_sha256")
@@ -277,7 +293,7 @@ def validate_matrix(
             raise RuntimeError("fold contract differs from the frozen structural contract")
         results = cell["report"].get("results", [])
         if (
-            len(results) != 96
+            len(results) != expected_candidate_count
             or int(cell["report"].get("full_structural_gate_passes", -1))
             != sum(bool(row.get("full_structural_gate_pass")) for row in results)
         ):
@@ -363,7 +379,7 @@ def main() -> None:
     base_config_path = repo_path(config.get("shared_base_config", args.config))
     base_config = read_json(base_config_path)
     structural_manifest = read_json(repo_path(args.structural_manifest))
-    if structural_manifest.get("contract") != "pearl.frontier-adaptation-structural-manifest/2":
+    if structural_manifest.get("contract") != "pearl.frontier-adaptation-structural-manifest/3":
         raise RuntimeError("structural analysis requires the frozen structural manifest")
     if structural_manifest.get("structural_manifest_sha") != sha256_value(
         {

@@ -116,7 +116,13 @@ jobs:
                       }
                       if any(observed_source.get(a) != source[b] for a, b in bindings.items()):
                           raise SystemExit(f"generation source file hashes differ from manifest: {job_key}")
-                  if report.get("status") != "complete" or report.get("completed_candidate_count") != 96:
+                  if (
+                      report.get("status") != "complete"
+                      or report.get("complete") is not True
+                      or report.get("expected_candidate_count") != manifest["candidate_slots_per_job"]
+                      or report.get("completed_candidate_count") != manifest["candidate_slots_per_job"]
+                      or len(report.get("candidates", [])) != manifest["candidate_slots_per_job"]
+                  ):
                       raise SystemExit(f"generation cell is incomplete: {job_key}")
               completed.add(job_key)
           action = {"action": "complete", "job_keys": []}

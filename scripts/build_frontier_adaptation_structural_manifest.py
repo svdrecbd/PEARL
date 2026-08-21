@@ -60,9 +60,24 @@ def main() -> None:
         "replication": ROOT / "configs/experiments/frontier_adaptation_structural_v2_replication.json",
     }
     original_structural = read_json(structural_configs["original"])
+    replication_structural = read_json(structural_configs["replication"])
+    if (
+        original_structural.get("contract") != "pearl.frontier-adaptation-structural/3"
+        or replication_structural.get("contract") != "pearl.frontier-adaptation-structural/3"
+    ):
+        raise RuntimeError("frontier structural configs must use the v3 amendment contract")
+    shared_keys = ("prompt_panel", "prompt_count", "sampling", "structure_gate")
+    if any(
+        original_structural[key] != replication_structural[key] for key in shared_keys
+    ):
+        raise RuntimeError("original and replication structural methods must remain identical")
     panel_path = ROOT / original_structural["prompt_panel"]
     panel = [json.loads(line) for line in panel_path.read_text().splitlines() if line.strip()]
+    if len(panel) != int(original_structural["prompt_count"]):
+        raise RuntimeError("structural prompt panel count differs from its frozen config")
     sample_seeds = [int(value) for value in original_structural["sampling"]["sample_seeds"]]
+    if len(panel) * len(sample_seeds) != int(executor["structural_scope"]["candidates_per_cell"]):
+        raise RuntimeError("structural candidate count differs from the frozen executor")
     max_tokens = int(original_structural["sampling"]["max_tokens"])
     jobs: list[dict[str, Any]] = []
 
@@ -144,7 +159,7 @@ def main() -> None:
         for index in range(0, len(jobs), 6)
     ]
     payload = {
-        "contract": "pearl.frontier-adaptation-structural-manifest/2",
+        "contract": "pearl.frontier-adaptation-structural-manifest/3",
         "source_commit_sha": subprocess.run(
             ["git", "rev-parse", "HEAD"],
             check=True,

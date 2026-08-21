@@ -53,7 +53,7 @@ def write_json(path: Path, value: Any) -> None:
 
 
 def validate_manifest(manifest: dict[str, Any]) -> None:
-    if manifest.get("contract") != "pearl.frontier-adaptation-gmn-manifest/2":
+    if manifest.get("contract") != "pearl.frontier-adaptation-gmn-manifest/3":
         raise RuntimeError("wrong GMN manifest contract")
     supplied = manifest.get("gmn_manifest_sha")
     unsigned = {key: value for key, value in manifest.items() if key != "gmn_manifest_sha"}

@@ -1,0 +1,14 @@
+{
+  "contract": "pearl.esmfold2-runtime-lock/1",
+  "python_version": "3.12",
+  "torch_version": "2.11.0",
+  "esm_package_version": "4.0.0",
+  "esm_source_revision": "9b9078cadf4e08bd02e9715ba99313fc5127379a",
+  "transformers_version": "4.57.6",
+  "transformers_source_revision": "ef32577f55da19a4989cd7b22e004dc43a4998cb",
+  "model_name": "biohub/ESMFold2",
+  "model_revision": "8fc3ff471022fdce52c77030685eb775de0c00a3",
+  "esmc_model_name": "biohub/ESMC-6B",
+  "esmc_model_revision": "45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a",
+  "cuda_base_image": "docker.io/nvidia/cuda:13.0.2-cudnn-runtime-ubuntu24.04@sha256:14d94b039cb94bbd5da559f303b46bc4b0d5d6c24ab1a9d7b186e566ed3400dc"
+}
