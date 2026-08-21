@@ -123,7 +123,7 @@
   "givemeanode_dockerfile": "deploy/frontier_adaptation_v2/Dockerfile.esmfold2",
   "givemeanode_context_builder": "deploy/frontier_adaptation_v2/build_esmfold2_context.sh",
   "givemeanode_calibration_context_builder": "deploy/frontier_adaptation_v2/build_esmfold2_calibration_context.sh",
-  "givemeanode_anchor_ref": "frontier-adaptation-v2-structural-v3.0.0",
+  "givemeanode_anchor_ref": "frontier-adaptation-v2-structural-v3.0.1",
   "supervisor_workflow_name": "Frontier adaptation v2 — validate and dispatch one exact wave",
   "planned_training_ceiling_usd": 1910.27,
   "planned_checkpoint_evaluation_ceiling_usd": 139.12,
