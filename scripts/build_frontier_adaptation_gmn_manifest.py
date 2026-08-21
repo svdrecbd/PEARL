@@ -223,7 +223,7 @@ def main() -> None:
     runtime_member_sha256s = {
         f"./{path}": sha256_file(ROOT / path) for path in runtime_paths
     }
-    runtime_member_sha256s["./Dockerfile.esmfold2"] = sha256_file(dockerfile)
+    runtime_member_sha256s["./Dockerfile"] = sha256_file(dockerfile)
     for job in manifest["jobs"]:
         job_key = job["job_key"]
         report_path = observed[job_key]

@@ -60,6 +60,16 @@ def test_frontier_container_pins_sources_and_cannot_fall_back_to_v1_or_fast() ->
     assert "ESMFold2-Fast" not in dockerfile
 
 
+def test_frontier_context_builders_publish_the_provider_default_dockerfile() -> None:
+    for builder in (
+        "build_esmfold2_context.sh",
+        "build_esmfold2_calibration_context.sh",
+    ):
+        script = (ROOT / "deploy/frontier_adaptation_v2" / builder).read_text()
+        assert '"$context_root/Dockerfile"' in script
+        assert '"$context_root/Dockerfile.esmfold2"' not in script
+
+
 def test_pending_calibration_hard_blocks_production() -> None:
     config, _ = config_and_lock()
     gate = config["structure_gate"]

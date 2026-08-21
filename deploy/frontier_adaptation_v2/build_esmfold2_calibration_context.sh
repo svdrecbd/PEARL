@@ -25,6 +25,6 @@ trap cleanup EXIT
 mkdir -p "$context_root/input"
 git archive --format=tar "$git_ref" | tar -xf - -C "$context_root"
 printf '{}\n' > "$context_root/input/generation_report.json"
-cp "$context_root/deploy/frontier_adaptation_v2/Dockerfile.esmfold2" "$context_root/Dockerfile.esmfold2"
+cp "$context_root/deploy/frontier_adaptation_v2/Dockerfile.esmfold2" "$context_root/Dockerfile"
 tar -cf - -C "$context_root" . | zstd -T0 -10 -o "$output_archive"
 shasum -a 256 "$output_archive"
