@@ -507,7 +507,7 @@ class EsmFold2LocalBackend:
             return self._model
         import torch
         from huggingface_hub import snapshot_download
-        from transformers import ESMFold2Model
+        from transformers.models.esmfold2 import ESMFold2Model
 
         device = torch.device(self.device)
         if device.type != "cuda" or not torch.cuda.is_available():

@@ -39,6 +39,6 @@ COPY data/petase_family_expanded/petase_records.jsonl ./data/petase_family_expan
 COPY deploy/frontier_adaptation_v2/run_esmfold2_job.sh ./deploy/frontier_adaptation_v2/run_esmfold2_job.sh
 COPY input/generation_report.json /workspace/input/generation_report.json
 RUN chmod 0755 ./deploy/frontier_adaptation_v2/run_esmfold2_job.sh \
-    && python3 -c "import esm, torch, transformers; assert esm.__version__ == '4.0.0'; assert torch.__version__.split('+')[0] == '2.11.0'; assert transformers.__version__ == '4.57.6'"
+    && python3 -c "import esm, torch, transformers; from transformers.models.esmfold2 import ESMFold2Model; assert ESMFold2Model is not None; assert esm.__version__ == '4.0.0'; assert torch.__version__.split('+')[0] == '2.11.0'; assert transformers.__version__ == '4.57.6'"
 
 ENTRYPOINT ["/workspace/pearl/deploy/frontier_adaptation_v2/run_esmfold2_job.sh"]
