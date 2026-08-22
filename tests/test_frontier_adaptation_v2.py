@@ -1732,28 +1732,35 @@ def test_frontier_structural_manifest_is_terminal_only_104_cells(
     state = tmp_path / "state"
     for cohort in ("original", "replication"):
         for row in plans[(cohort, "core")]["runs"]:
-            write_json(
-                state / "receipts/training" / f"{row['run_key']}.json",
-                {
-                    "training_terminal_valid": True,
-                    "source_actions_run_id": 1,
-                    "source_artifact_name": "artifact",
-                    "run_contract_file_sha256": "a" * 64,
-                    "training_report_file_sha256": "b" * 64,
-                    "checkpoint_lineage_file_sha256": "c" * 64,
-                    "checkpoint_lineage": [
-                        {
-                            "step": 2250,
-                            "state_path": f"tinker://{row['run_key']}",
-                            "terminal": True,
-                        }
-                    ],
-                },
-            )
-            write_json(
-                state / "receipts/evaluation" / f"{row['run_key']}.json",
-                {"evaluation_terminal_valid": True},
-            )
+            training = {
+                "campaign_id": plans[(cohort, "core")]["campaign_id"],
+                "run_key": row["run_key"],
+                "run_contract_sha": row["run_contract_sha"],
+                "scientific_values_omitted": True,
+                "training_terminal_valid": True,
+                "source_actions_run_id": None,
+                "run_contract_file_sha256": "a" * 64,
+                "training_report_file_sha256": "b" * 64,
+                "checkpoint_lineage_file_sha256": "c" * 64,
+                "checkpoint_lineage": [
+                    {
+                        "step": 2250,
+                        "state_path": f"tinker://{row['run_key']}",
+                        "terminal": True,
+                    }
+                ],
+            }
+            training["receipt_sha256"] = sha256_value(training)
+            write_json(state / "receipts/training" / f"{row['run_key']}.json", training)
+            evaluation = {
+                "campaign_id": plans[(cohort, "core")]["campaign_id"],
+                "run_key": row["run_key"],
+                "run_contract_sha": row["run_contract_sha"],
+                "scientific_values_omitted": True,
+                "evaluation_terminal_valid": True,
+            }
+            evaluation["receipt_sha256"] = sha256_value(evaluation)
+            write_json(state / "receipts/evaluation" / f"{row['run_key']}.json", evaluation)
     output = tmp_path / "structural_manifest.json"
     subprocess.run(
         [
@@ -1773,6 +1780,12 @@ def test_frontier_structural_manifest_is_terminal_only_104_cells(
     assert sum(row["checkpoint_step"] == 0 for row in manifest["jobs"]) == 8
     assert manifest["candidate_slots_per_job"] == 384
     assert manifest["estimated_sampling_cost_usd"] == 35.86
+    assert all(
+        row["source_training"]["actions_run_id"] is None
+        and row["source_training"]["artifact_name"] is None
+        for row in manifest["jobs"]
+        if row["source_training"] is not None
+    )
 
 
 def test_frontier_gmn_contract_requires_104_unique_jobs() -> None:

@@ -88,13 +88,20 @@ Structural sampling is capped at $40.00 (estimated $35.86), for a $2,089.39 Tink
 plan plus the $25.00 continuation-recovery allowance is capped at $2,114.39. The hard authorization
 envelope remains $2,300.00. GiveMeANode is capped at $481.83 and six active H100 jobs.
 
-All paid execution is remote and supervisor-owned. Frontier optimization uses the prospective
+All paid compute is remote and supervisor-owned. Frontier optimization uses the prospective
 capacity ramp below, with at most 47 paid cells active inside one cohort. Original and replication
 remain mutually exclusive. Structural generation and GiveMeANode folding retain their separate
 six-job limits.
 Closing or disconnecting the laptop does not stop a dispatched GitHub/Tinker worker or remote H100
 job. The laptop is required only to invoke the next transition or perform the mechanically specified
 manual GiveMeANode submission boundary.
+
+After both optimization cohorts became terminal and before structural generation began, the
+prospective August 22 local structural execution amendment transferred structural supervision from
+GitHub Actions to the exact local controller. Tinker sampling and GiveMeANode folding remain remote;
+the local machine owns only contract validation, dispatch, resumable receipts, and artifact capture.
+Both GitHub structural workflows remain disabled, and the existing calibration and explicit paid
+approval gates remain unchanged.
 
 ### Operational continuation amendment
 

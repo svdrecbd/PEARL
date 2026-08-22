@@ -10,7 +10,9 @@ context-limited agent working under a primary or supervisor.
    manual paid-dispatch examples.
    If frontier adaptation v2 is in scope, also read `docs/frontier_adaptation_v2_protocol.md` and
    `docs/FRONTIER_ADAPTATION_V2_EXECUTOR_PACKET.md`; when the Charon handoff is in scope, also read
-   `docs/frontier_adaptation_v2_charon_amendment_20260818.md`. These supersede v1 execution
+   `docs/frontier_adaptation_v2_charon_amendment_20260818.md`; when frontier structural execution is
+   in scope, also read `docs/frontier_adaptation_v2_structural_amendment_20260821.md` and
+   `docs/frontier_adaptation_v2_local_structural_execution_amendment_20260822.md`. These supersede v1 execution
    instructions for the contemporary-model campaign but do not alter or absorb v1 evidence.
 2. The primary agent owns engineering and research judgment within the user's authority. It may
    design, investigate, interpret, and make versioned decisions. It may not silently rewrite a frozen
@@ -38,6 +40,10 @@ context-limited agent working under a primary or supervisor.
 8. A primary agent may delegate bounded tasks. A subagent must never delegate or spawn another agent.
 9. Stop and escalate on any hash mismatch, duplicate provider contract, unclear run ownership,
    missing checkpoint lineage, incomplete artifact, unplanned spend, or proposed conditional stage.
+10. Frontier structural execution is locally supervised after the August 22 ownership transfer.
+    The two GitHub structural workflows must remain disabled. Only the exact local authority packet
+    and controller may be used, and paid generation remains blocked until calibration and its final
+    preflight receive the explicit approvals required by the structural amendment.
 
 The runbook is the operational source of truth. Live provider state must always be queried; status
 examples and IDs in documentation are restart aids, not evidence that a run is still active.

@@ -1,4 +1,6 @@
 import json
+import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -10,9 +12,19 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from pearl.esmfold2_contract import (  # noqa: E402
     folding_contract_sha,
+    sha256_value,
     validate_complete_calibration,
     validate_folding_gate,
 )
+
+
+def load_script(name: str):
+    path = ROOT / "scripts" / name
+    spec = importlib.util.spec_from_file_location(name.removesuffix(".py"), path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def config_and_lock():
@@ -128,6 +140,20 @@ def test_frontier_stock_image_bootstrap_preserves_exact_runtime_contract() -> No
     assert "run_esmfold2_job.sh" in bootstrap
 
 
+def test_frontier_stock_calibration_command_enters_bash_before_pipefail() -> None:
+    builder = load_script("build_frontier_esmfold2_stock_calibration_approval.py")
+    command = builder.provider_command("a" * 40)
+    assert command.startswith("exec /usr/bin/env bash -lc ")
+    assert not command.startswith("set -euo pipefail")
+    subprocess.run(["/bin/sh", "-n"], input=command, text=True, check=True)
+    payload = builder.packet("a" * 40, replacement_job_id="job-failed")
+    assert payload["provider_command_posix_syntax_valid"] is True
+    assert payload["scientific_contract_changes"] == []
+    assert payload["packet_sha256"] == sha256_value(
+        {key: value for key, value in payload.items() if key != "packet_sha256"}
+    )
+
+
 def test_pending_calibration_hard_blocks_production() -> None:
     config, _ = config_and_lock()
     gate = config["structure_gate"]
@@ -142,7 +168,6 @@ def test_complete_calibration_must_bind_runtime_and_pass_prospective_gates() -> 
     count = 80
     selected = [{"sequence_sha256": f"{index:064x}"} for index in range(count)]
     calibration_contract = {"selected": selected}
-    from pearl.esmfold2_contract import sha256_value
     calibration_contract["calibration_contract_sha"] = sha256_value(calibration_contract)
     calibration = {
         "contract": "pearl.esmfold2-natural-reference-calibration/1",

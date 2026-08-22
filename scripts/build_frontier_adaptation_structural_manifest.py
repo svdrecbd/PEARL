@@ -46,6 +46,34 @@ def structural_cost(model: str, panel: list[dict[str, Any]], sample_seeds: list[
     )
 
 
+def validate_terminal_receipt(
+    receipt: dict[str, Any],
+    *,
+    cohort: str,
+    campaign_id: str,
+    run_key: str,
+    run_contract_sha: str,
+    kind: str,
+) -> None:
+    if receipt.get(f"{kind}_terminal_valid") is not True:
+        raise RuntimeError(f"structural source is not terminal-valid: {run_key}")
+    expected = {
+        "campaign_id": campaign_id,
+        "run_key": run_key,
+        "run_contract_sha": run_contract_sha,
+        "scientific_values_omitted": True,
+    }
+    if any(receipt.get(key) != value for key, value in expected.items()):
+        raise RuntimeError(
+            f"structural {kind} receipt differs from the frozen {cohort} cell: {run_key}"
+        )
+    supplied_sha = receipt.get("receipt_sha256")
+    if supplied_sha != sha256_value(
+        {key: value for key, value in receipt.items() if key != "receipt_sha256"}
+    ):
+        raise RuntimeError(f"structural {kind} receipt hash mismatch: {run_key}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state-dir", required=True)
@@ -113,8 +141,23 @@ def main() -> None:
                 raise RuntimeError(f"structural manifest requires audited core cell {run_key}")
             training = read_json(training_path)
             evaluation = read_json(evaluation_path)
-            if not training.get("training_terminal_valid") or not evaluation.get("evaluation_terminal_valid"):
-                raise RuntimeError(f"structural source is not terminal-valid: {run_key}")
+            campaign_id = str(plan["campaign_id"])
+            validate_terminal_receipt(
+                training,
+                cohort=cohort,
+                campaign_id=campaign_id,
+                run_key=run_key,
+                run_contract_sha=str(entry["run_contract_sha"]),
+                kind="training",
+            )
+            validate_terminal_receipt(
+                evaluation,
+                cohort=cohort,
+                campaign_id=campaign_id,
+                run_key=run_key,
+                run_contract_sha=str(entry["run_contract_sha"]),
+                kind="evaluation",
+            )
             lineage = {int(row["step"]): row for row in training["checkpoint_lineage"]}
             for step in schedules[cohort]:
                 if step not in lineage:
@@ -131,8 +174,8 @@ def main() -> None:
                     "source_training": {
                         "run_key": run_key,
                         "run_contract_sha": entry["run_contract_sha"],
-                        "actions_run_id": training["source_actions_run_id"],
-                        "artifact_name": training["source_artifact_name"],
+                        "actions_run_id": training.get("source_actions_run_id"),
+                        "artifact_name": training.get("source_artifact_name"),
                         "run_contract_file_sha256": training["run_contract_file_sha256"],
                         "training_report_file_sha256": training["training_report_file_sha256"],
                         "checkpoint_lineage_file_sha256": training[
