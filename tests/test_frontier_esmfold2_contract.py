@@ -52,8 +52,6 @@ def test_frontier_container_pins_sources_and_cannot_fall_back_to_v1_or_fast() ->
         lock["cuda_base_image"],
         lock["esm_source_revision"],
         lock["transformers_source_revision"],
-        lock["model_revision"],
-        lock["esmc_model_revision"],
     ):
         assert value in dockerfile
     assert "facebook/esmfold_v1" not in dockerfile
@@ -70,6 +68,22 @@ def test_frontier_container_pins_sources_and_cannot_fall_back_to_v1_or_fast() ->
     assert model_import in backend_source
     assert "from transformers import ESMFold2Model" not in backend_source
     assert "from transformers.models.esmfold2 import ESMFold2Model" not in backend_source
+
+
+def test_frontier_container_keeps_weights_out_of_buildkit_and_uses_pinned_runtime_cache() -> None:
+    config, lock = config_and_lock()
+    dockerfile = (
+        ROOT / "deploy/frontier_adaptation_v2/Dockerfile.esmfold2"
+    ).read_text()
+    backend_source = (ROOT / "src/pearl/structure_gate.py").read_text()
+
+    assert "snapshot_download" not in dockerfile
+    assert "--no-cache-dir" in dockerfile
+    assert "rm -rf /opt/src /root/.cache/pip" in dockerfile
+    assert "snapshot_download(repo_id=self.model_name, revision=self.model_revision)" in backend_source
+    assert "repo_id=self.esmc_model_name, revision=self.esmc_model_revision" in backend_source
+    assert config["structure_gate"]["model_revision"] == lock["model_revision"]
+    assert config["structure_gate"]["esmc_model_revision"] == lock["esmc_model_revision"]
 
 
 def test_frontier_context_builders_publish_the_provider_default_dockerfile() -> None:
