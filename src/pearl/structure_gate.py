@@ -519,10 +519,10 @@ class EsmFold2LocalBackend:
         model = ESMFold2Model.from_pretrained(
             model_path,
             load_esmc=False,
-            dtype=torch.bfloat16,
+            dtype=torch.float32,
         )
         model = model.to(device)
-        model.load_esmc(esmc_path, precision=self.esmc_precision)
+        model.load_esmc(esmc_path, precision="fp32")
         model.set_kernel_backend(self.kernel_backend)
         model.set_chunk_size(self.chunk_size)
         model.eval()
@@ -536,29 +536,12 @@ class EsmFold2LocalBackend:
         self._torch.manual_seed(self.inference_seed)
         self._torch.cuda.manual_seed_all(self.inference_seed)
         with self._torch.inference_mode():
-            from transformers.models.esmfold2.protein_utils import (
-                OUTPUT_TO_PDB_FEATURE_KEYS,
-                prepare_protein_features,
-            )
-
-            features = prepare_protein_features(sequence)
-            features = {
-                key: (
-                    value.to(self._device, dtype=self._torch.bfloat16)
-                    if value.is_floating_point()
-                    else value.to(self._device)
-                )
-                for key, value in features.items()
-            }
-            output = model(
-                **features,
+            return model.infer_protein_as_pdb(
+                sequence,
                 num_loops=self.num_loops,
                 num_sampling_steps=self.num_sampling_steps,
                 num_diffusion_samples=self.num_diffusion_samples,
             )
-            for key in OUTPUT_TO_PDB_FEATURE_KEYS:
-                output[key] = features[key]
-            return model.output_to_pdb(output)
 
 
 def get_backend(name: str | None = None) -> FoldingBackend:
