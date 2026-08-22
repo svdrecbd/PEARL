@@ -34,6 +34,9 @@ reports/*
 !reports/poster_figures/
 !reports/poster_figures/**
 data/
+!data/petase_family_expanded/
+data/petase_family_expanded/*
+!data/petase_family_expanded/petase_records.jsonl
 archive/
 *.log
 *.tmp
