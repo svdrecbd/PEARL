@@ -48,13 +48,8 @@ jobs:
             --executor-config configs/experiments/frontier_adaptation_v2_executor.json \
             sync-github --state-dir "$STATE_DIR"
 
-      - name: Verify optimization campaign completion and build exact structural manifest
+      - name: Build exact structural manifest from terminal receipts
         run: |
-          python scripts/manage_scaling_paradox_campaign.py \
-            --executor-config configs/experiments/frontier_adaptation_v2_executor.json next \
-            --state-dir "$STATE_DIR" --active-paid-cells 0 --output supervisor/training_state.json
-          test "$(jq -r .action supervisor/training_state.json)" = training_and_checkpoint_evaluation_complete \
-            || { echo "optimization campaign is not complete"; exit 1; }
           python scripts/build_frontier_adaptation_structural_manifest.py \
             --state-dir "$STATE_DIR" --output supervisor/structural_manifest.json
 

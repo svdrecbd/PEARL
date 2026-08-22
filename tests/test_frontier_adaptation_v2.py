@@ -1565,6 +1565,15 @@ def test_frontier_dataset_restore_does_not_use_the_installation_api() -> None:
         assert "sha256sum --check --strict" in workflow
 
 
+def test_frontier_structural_manifest_assembly_does_not_reenter_training_capacity_gate() -> None:
+    workflow = (
+        ROOT / ".github/workflows/frontier-adaptation-v2-structural-supervisor.yml"
+    ).read_text()
+    assert "build_frontier_adaptation_structural_manifest.py" in workflow
+    assert "--active-paid-cells" not in workflow
+    assert "training_and_checkpoint_evaluation_complete" not in workflow
+
+
 def test_frontier_preauthorization_failure_is_exact_zero_spend_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -110,6 +110,24 @@ def test_frontier_calibration_mode_uses_provider_output_capture() -> None:
     assert "esmfold2-natural-reference-calibration.json" in entrypoint
 
 
+def test_frontier_stock_image_bootstrap_preserves_exact_runtime_contract() -> None:
+    bootstrap = (
+        ROOT / "deploy/frontier_adaptation_v2/bootstrap_esmfold2_stock_image.sh"
+    ).read_text()
+    _, lock = config_and_lock()
+    for value in (
+        lock["esm_source_revision"],
+        lock["transformers_source_revision"],
+        lock["torch_version"],
+    ):
+        assert value in bootstrap
+    assert "PEARL_SOURCE_COMMIT" in bootstrap
+    assert "git rev-parse HEAD" in bootstrap
+    assert "--no-cache-dir" in bootstrap
+    assert "ESMFOLD2_CALIBRATION=1" in bootstrap
+    assert "run_esmfold2_job.sh" in bootstrap
+
+
 def test_pending_calibration_hard_blocks_production() -> None:
     config, _ = config_and_lock()
     gate = config["structure_gate"]
