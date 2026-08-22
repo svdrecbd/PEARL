@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ -n "${ESMFOLD2_CALIBRATION_OUTPUT:-}" ]]; then
+calibration_output="${ESMFOLD2_CALIBRATION_OUTPUT:-}"
+if [[ "${ESMFOLD2_CALIBRATION:-0}" == "1" ]]; then
+  calibration_output="${GMN_OUTPUT_DIR:?GMN_OUTPUT_DIR is required}/esmfold2-natural-reference-calibration.json"
+fi
+if [[ -n "$calibration_output" ]]; then
   python3 scripts/calibrate_frontier_esmfold2.py \
     --config configs/experiments/frontier_adaptation_structural_v2_original.json \
-    --output "$ESMFOLD2_CALIBRATION_OUTPUT"
+    --output "$calibration_output"
   exit 0
 fi
 
