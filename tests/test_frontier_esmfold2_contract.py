@@ -101,6 +101,15 @@ def test_frontier_context_builders_publish_the_provider_default_dockerfile() -> 
         ) in script
 
 
+def test_frontier_calibration_mode_uses_provider_output_capture() -> None:
+    entrypoint = (
+        ROOT / "deploy/frontier_adaptation_v2/run_esmfold2_job.sh"
+    ).read_text()
+    assert '"${ESMFOLD2_CALIBRATION:-0}" == "1"' in entrypoint
+    assert '${GMN_OUTPUT_DIR:?GMN_OUTPUT_DIR is required}' in entrypoint
+    assert "esmfold2-natural-reference-calibration.json" in entrypoint
+
+
 def test_pending_calibration_hard_blocks_production() -> None:
     config, _ = config_and_lock()
     gate = config["structure_gate"]
