@@ -321,11 +321,36 @@ def summarize_cell(cell: dict[str, Any]) -> dict[str, Any]:
         "passes": passes,
         "yield": passes / total,
         "yield_exact_binomial_95ci": clopper_pearson_interval(passes, total),
+        "stratified_by_length_bin": stratify_by_field(results, "length_bin"),
+        "stratified_by_prompt": stratify_by_prompt(results),
         "invalid_generations": sum(not bool(row.get("valid_generation")) for row in results),
         "duplicate_generations": sum(bool(row.get("duplicate_sequence")) for row in results),
         "source_report": cell["path"],
         "source_report_sha256": sha256_file(Path(cell["path"])),
     }
+
+
+def stratify_by_field(
+    results: list[dict[str, Any]], field: str
+) -> dict[str, dict[str, Any]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in results:
+        key = str(row.get(field, "unknown"))
+        groups.setdefault(key, []).append(row)
+    output = {}
+    for key, rows in sorted(groups.items()):
+        total = len(rows)
+        passes = sum(bool(row.get("full_structural_gate_pass", row.get("valid_sequence"))) for row in rows)
+        output[key] = {
+            "total": total,
+            "passes": passes,
+            "yield": passes / total if total else 0.0,
+        }
+    return output
+
+
+def stratify_by_prompt(results: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return stratify_by_field(results, "prompt_id")
 
 
 def hierarchical_seed_bootstrap(
