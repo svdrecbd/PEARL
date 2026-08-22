@@ -261,9 +261,6 @@ def main() -> None:
     for prompt_row in panel:
         prompt_input, renderer = build_generation_input(str(prompt_row["prompt"]), tokenizer, renderer_contract)
         for sample_seed in sample_seeds:
-            cid = candidate_id(str(contract["generation_contract_sha"]), str(prompt_row["prompt_id"]), sample_seed)
-            if cid in completed:
-                continue
             sampling_params = types.SamplingParams(
                 max_tokens=int(config["sampling"]["max_tokens"]),
                 seed=sample_seed,
@@ -272,37 +269,68 @@ def main() -> None:
                 top_k=int(config["sampling"]["top_k"]),
                 stop=renderer.get_stop_sequences() if renderer is not None else (["\n"] if config["sampling"]["stop_on_newline"] else []),
             )
+            samples_per_request = int(config.get("samples_per_request", 1))
             response = sampling_client.sample(
                 prompt=prompt_input,
-                num_samples=1,
+                num_samples=samples_per_request,
                 sampling_params=sampling_params,
             ).result()
-            sampled = response.sequences[0]
-            if renderer is not None:
-                parsed, termination = renderer.parse_response(sampled.tokens)
-                raw_text = message_text(parsed).strip()
-                termination_reason = str(termination)
-            else:
-                raw_text = tokenizer.decode(sampled.tokens, skip_special_tokens=False).strip()
-                termination_reason = "raw"
-            inspection = inspect_raw_sequence_text(raw_text)
-            sequence = str(inspection.get("sequence") or "")
-            duplicate = bool(sequence and sequence in observed_sequences)
-            valid = bool(sequence and not inspection.get("error") and not duplicate)
-            row = {
-                "candidate_id": cid,
-                "prompt_id": prompt_row["prompt_id"],
-                "target_length": prompt_row["target_length"],
-                "length_bin": prompt_row["length_bin"],
-                "sample_seed": sample_seed,
-                "raw_text": raw_text,
-                "sequence": sequence,
-                "sequence_sha256": hashlib.sha256(sequence.encode("ascii")).hexdigest() if sequence else None,
-                "sequence_length": len(sequence),
-                "generation_error": inspection.get("error"),
-                "duplicate_sequence": duplicate,
-                "valid_sequence": valid,
-                "termination_reason": termination_reason,
+
+            for sample_index in range(samples_per_request):
+                cid = f"{candidate_id(str(contract['generation_contract_sha']), str(prompt_row['prompt_id']), sample_seed)}_s{sample_index}"
+                if cid in completed:
+                    continue
+                sampled = response.sequences[sample_index]
+                if renderer is not None:
+                    parsed, termination = renderer.parse_response(sampled.tokens)
+                    raw_text = message_text(parsed).strip()
+                    termination_reason = str(termination)
+                else:
+                    raw_text = tokenizer.decode(sampled.tokens, skip_special_tokens=False).strip()
+                    termination_reason = "raw"
+                inspection = inspect_raw_sequence_text(raw_text)
+                sequence = str(inspection.get("sequence") or "")
+                duplicate = bool(sequence and sequence in observed_sequences)
+                valid = bool(sequence and not inspection.get("error") and not duplicate)
+                cohort = "confirmatory" if sample_index == 0 else "discovery"
+                row = {
+                    "candidate_id": cid,
+                    "prompt_id": prompt_row["prompt_id"],
+                    "target_length": prompt_row["target_length"],
+                    "length_bin": prompt_row["length_bin"],
+                    "sample_seed": sample_seed,
+                    "sample_index": sample_index,
+                    "cohort": cohort,
+                    "raw_text": raw_text,
+                    "sequence": sequence,
+                    "sequence_sha256": hashlib.sha256(sequence.encode("ascii")).hexdigest() if sequence else None,
+                    "sequence_length": len(sequence),
+                    "generation_error": inspection.get("error"),
+                    "duplicate_sequence": duplicate,
+                    "valid_sequence": valid,
+                    "termination_reason": termination_reason,
+                }
+                candidates.append(row)
+                completed.add(cid)
+                if sequence:
+                    observed_sequences.add(sequence)
+                atomic_write_json(
+                    report_path,
+                    report_payload(
+                        contract=contract,
+                        panel=panel,
+                        sample_seeds=sample_seeds,
+                        candidates=candidates,
+                        status="running",
+                    ),
+                )
+                print(json.dumps({
+                    "candidate_id": cid,
+                    "cohort": cohort,
+                    "sample_index": sample_index,
+                    "valid": valid,
+                    "completed": len(candidates),
+                }), flush=True)
             }
             candidates.append(row)
             completed.add(cid)
