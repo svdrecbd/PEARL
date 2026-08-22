@@ -59,6 +59,7 @@ def test_frontier_container_pins_sources_and_cannot_fall_back_to_v1_or_fast() ->
     assert "facebook/esmfold_v1" not in dockerfile
     assert "ESMFold2-Fast" not in dockerfile
     assert "build-essential" in dockerfile
+    assert "python3-dev" in dockerfile
 
 
 def test_frontier_context_builders_publish_the_provider_default_dockerfile() -> None:
