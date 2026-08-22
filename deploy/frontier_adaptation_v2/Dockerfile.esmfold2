@@ -11,21 +11,20 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY configs/esmfold2_runtime_lock.json /opt/pearl/esmfold2_runtime_lock.json
-RUN python3 -m pip install --break-system-packages "torch==2.11.0" \
+RUN python3 -m pip install --no-cache-dir --break-system-packages "torch==2.11.0" \
     && git init /opt/src/transformers \
     && git -C /opt/src/transformers remote add origin https://github.com/Biohub/transformers.git \
     && git -C /opt/src/transformers fetch --depth 1 origin ef32577f55da19a4989cd7b22e004dc43a4998cb \
     && git -C /opt/src/transformers checkout --detach FETCH_HEAD \
-    && python3 -m pip install --break-system-packages /opt/src/transformers \
+    && python3 -m pip install --no-cache-dir --break-system-packages /opt/src/transformers \
     && git init /opt/src/esm \
     && git -C /opt/src/esm remote add origin https://github.com/Biohub/esm.git \
     && git -C /opt/src/esm fetch --depth 1 origin 9b9078cadf4e08bd02e9715ba99313fc5127379a \
     && git -C /opt/src/esm checkout --detach FETCH_HEAD \
     && sed -i 's#transformers @ git+https://github.com/Biohub/transformers.git@main#transformers==4.57.6#' /opt/src/esm/pyproject.toml \
-    && python3 -m pip install --break-system-packages /opt/src/esm \
-    && python3 -m pip freeze --all > /opt/pearl/pip-freeze.txt
-
-RUN python3 -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='biohub/ESMFold2', revision='8fc3ff471022fdce52c77030685eb775de0c00a3'); snapshot_download(repo_id='biohub/ESMC-6B', revision='45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a')"
+    && python3 -m pip install --no-cache-dir --break-system-packages /opt/src/esm \
+    && python3 -m pip freeze --all > /opt/pearl/pip-freeze.txt \
+    && rm -rf /opt/src /root/.cache/pip
 
 WORKDIR /workspace/pearl
 COPY src ./src
