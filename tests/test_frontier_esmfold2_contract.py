@@ -60,11 +60,16 @@ def test_frontier_container_pins_sources_and_cannot_fall_back_to_v1_or_fast() ->
     assert "ESMFold2-Fast" not in dockerfile
     assert "build-essential" in dockerfile
     assert "python3-dev" in dockerfile
-    assert "from transformers.models.esmfold2 import ESMFold2Model" in dockerfile
+    model_import = (
+        "from transformers.models.esmfold2.modeling_esmfold2 "
+        "import ESMFold2Model"
+    )
+    assert model_import in dockerfile
 
     backend_source = (ROOT / "src/pearl/structure_gate.py").read_text()
-    assert "from transformers.models.esmfold2 import ESMFold2Model" in backend_source
+    assert model_import in backend_source
     assert "from transformers import ESMFold2Model" not in backend_source
+    assert "from transformers.models.esmfold2 import ESMFold2Model" not in backend_source
 
 
 def test_frontier_context_builders_publish_the_provider_default_dockerfile() -> None:
