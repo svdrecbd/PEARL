@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -271,62 +272,100 @@ def main() -> None:
     completed = {str(row["candidate_id"]) for row in candidates}
     observed_sequences = {str(row.get("sequence") or "") for row in candidates if row.get("sequence")}
 
-    for prompt_row in panel:
-        prompt_input, renderer = build_generation_input(str(prompt_row["prompt"]), tokenizer, renderer_contract)
-        for sample_seed in sample_seeds:
-            sampling_params = types.SamplingParams(
-                max_tokens=int(config["sampling"]["max_tokens"]),
-                seed=sample_seed,
-                temperature=float(config["sampling"]["temperature"]),
-                top_p=float(config["sampling"]["top_p"]),
-                top_k=int(config["sampling"]["top_k"]),
-                stop=renderer.get_stop_sequences() if renderer is not None else (["\n"] if config["sampling"]["stop_on_newline"] else []),
-            )
-            samples_per_request = int(config.get("samples_per_request", 1))
-            response = sampling_client.sample(
-                prompt=prompt_input,
-                num_samples=samples_per_request,
-                sampling_params=sampling_params,
-            ).result()
+    samples_per_request = int(config.get("samples_per_request", 1))
 
-            for sample_index in range(samples_per_request):
-                cid = f"{candidate_id(str(contract['generation_contract_sha']), str(prompt_row['prompt_id']), sample_seed)}_s{sample_index}"
-                if cid in completed:
-                    continue
-                sampled = response.sequences[sample_index]
-                if renderer is not None:
-                    parsed, termination = renderer.parse_response(sampled.tokens)
-                    raw_text = message_text(parsed).strip()
-                    termination_reason = str(termination)
-                else:
-                    raw_text = tokenizer.decode(sampled.tokens, skip_special_tokens=False).strip()
-                    termination_reason = "raw"
-                inspection = inspect_raw_sequence_text(raw_text)
-                sequence = str(inspection.get("sequence") or "")
-                duplicate = bool(sequence and sequence in observed_sequences)
-                valid = bool(sequence and not inspection.get("error") and not duplicate)
-                cohort = "confirmatory" if sample_index == 0 else "discovery"
-                row = {
-                    "candidate_id": cid,
-                    "prompt_id": prompt_row["prompt_id"],
-                    "target_length": prompt_row["target_length"],
-                    "length_bin": prompt_row["length_bin"],
-                    "sample_seed": sample_seed,
-                    "sample_index": sample_index,
-                    "cohort": cohort,
-                    "raw_text": raw_text,
-                    "sequence": sequence,
-                    "sequence_sha256": hashlib.sha256(sequence.encode("ascii")).hexdigest() if sequence else None,
-                    "sequence_length": len(sequence),
-                    "generation_error": inspection.get("error"),
-                    "duplicate_sequence": duplicate,
-                    "valid_sequence": valid,
-                    "termination_reason": termination_reason,
-                }
-                candidates.append(row)
-                completed.add(cid)
-                if sequence:
-                    observed_sequences.add(sequence)
+    def generate_one(prompt_row: dict[str, Any], sample_seed: int) -> list[dict[str, Any]]:
+        """Generate one batch of samples for a (prompt, seed) pair."""
+        prompt_input, _renderer = build_generation_input(str(prompt_row["prompt"]), tokenizer, renderer_contract)
+        sampling_params = types.SamplingParams(
+            max_tokens=int(config["sampling"]["max_tokens"]),
+            seed=sample_seed,
+            temperature=float(config["sampling"]["temperature"]),
+            top_p=float(config["sampling"]["top_p"]),
+            top_k=int(config["sampling"]["top_k"]),
+            stop=_renderer.get_stop_sequences() if _renderer is not None else (["\n"] if config["sampling"]["stop_on_newline"] else []),
+        )
+        response = sampling_client.sample(
+            prompt=prompt_input,
+                num_samples=samples_per_request,
+            sampling_params=sampling_params,
+        ).result()
+
+        rows = []
+        for sample_index in range(samples_per_request):
+            cid = f"{candidate_id(str(contract['generation_contract_sha']), str(prompt_row['prompt_id']), sample_seed)}_s{sample_index}"
+            sampled = response.sequences[sample_index]
+            if _renderer is not None:
+                parsed, termination = _renderer.parse_response(sampled.tokens)
+                raw_text = message_text(parsed).strip()
+                termination_reason = str(termination)
+            else:
+                raw_text = tokenizer.decode(sampled.tokens, skip_special_tokens=False).strip()
+                termination_reason = "raw"
+            inspection = inspect_raw_sequence_text(raw_text)
+            sequence = str(inspection.get("sequence") or "")
+            duplicate = bool(sequence and sequence in observed_sequences)
+            valid = bool(sequence and not inspection.get("error") and not duplicate)
+            cohort = "confirmatory" if sample_index == 0 else "discovery"
+            row = {
+                "candidate_id": cid,
+                "prompt_id": prompt_row["prompt_id"],
+                "target_length": prompt_row["target_length"],
+                "length_bin": prompt_row["length_bin"],
+                "sample_seed": sample_seed,
+                "sample_index": sample_index,
+                "cohort": cohort,
+                "raw_text": raw_text,
+                "sequence": sequence,
+                "sequence_sha256": hashlib.sha256(sequence.encode("ascii")).hexdigest() if sequence else None,
+                "sequence_length": len(sequence),
+                "generation_error": inspection.get("error"),
+                "duplicate_sequence": duplicate,
+                "valid_sequence": valid,
+                "termination_reason": termination_reason,
+            }
+            rows.append(row)
+        return rows
+
+    # Build all work items
+    work_items = []
+    for prompt_row in panel:
+        prompt_input, _renderer = build_generation_input(str(prompt_row["prompt"]), tokenizer, renderer_contract)
+        for sample_seed in sample_seeds:
+            base_cid = candidate_id(str(contract["generation_contract_sha"]), str(prompt_row["prompt_id"]), sample_seed)
+            if any(f"{base_cid}_s{i}" in completed for i in range(samples_per_request)):
+                continue
+            work_items.append((prompt_row, sample_seed))
+
+    if not work_items:
+        pass  # everything already done
+    else:
+        # Run concurrently with a bounded pool
+        max_concurrent = int(os.environ.get("PEARL_GEN_CONCURRENCY", "8"))
+        with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+            futures = {}
+            for prompt_row, sample_seed in work_items:
+                future = executor.submit(generate_one, prompt_row, sample_seed)
+                futures[future] = (prompt_row, sample_seed)
+
+            done_count = len(candidates)
+            for future in as_completed(futures):
+                try:
+                    new_rows = future.result()
+                except Exception as exc:
+                    prompt_row, sample_seed = futures[future]
+                    print(json.dumps({
+                        "error": str(exc),
+                        "prompt_id": prompt_row.get("prompt_id"),
+                        "sample_seed": sample_seed,
+                    }), flush=True)
+                    raise
+                candidates.extend(new_rows)
+                for row in new_rows:
+                    completed.add(row["candidate_id"])
+                    if row.get("sequence"):
+                        observed_sequences.add(row["sequence"])
+                done_count += len(new_rows)
                 atomic_write_json(
                     report_path,
                     report_payload(
@@ -338,11 +377,8 @@ def main() -> None:
                     ),
                 )
                 print(json.dumps({
-                    "candidate_id": cid,
-                    "cohort": cohort,
-                    "sample_index": sample_index,
-                    "valid": valid,
-                    "completed": len(candidates),
+                    "completed": done_count,
+                    "expected": len(panel) * len(sample_seeds) * samples_per_request,
                 }), flush=True)
 
     payload = report_payload(
