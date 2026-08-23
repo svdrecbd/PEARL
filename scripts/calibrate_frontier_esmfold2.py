@@ -131,6 +131,7 @@ def main() -> None:
         num_sampling_steps=inference["num_sampling_steps"],
         num_diffusion_samples=inference["num_diffusion_samples"],
         inference_seed=inference["inference_seed"],
+        model_dtype=inference["model_dtype"],
         esmc_precision=inference["esmc_precision"],
         kernel_backend=inference["kernel_backend"],
         chunk_size=inference["chunk_size"],

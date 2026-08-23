@@ -80,6 +80,12 @@ Clopper–Pearson intervals. Family contrasts again operate on seed-level true-m
 The full amendment and its result-blind timing are recorded in
 `docs/frontier_adaptation_v2_structural_amendment_20260821.md`.
 
+The prospective August 23 precision amendment supersedes only the bfloat16/bf16 folding precision:
+the pinned Biohub runtime uses float32 ESMFold2 weights and fp32 ESMC, with a new self-consistent
+natural-reference calibration required before endpoint folding. Existing generation contracts and
+candidate reports remain unchanged. See
+`docs/frontier_adaptation_v2_fp32_folding_amendment_20260823.md`.
+
 ## Budget and execution envelope
 
 At freeze, the user reported $3,200.42 Tinker credit and $481.83 GiveMeANode credit. The immutable

@@ -481,6 +481,7 @@ class EsmFold2LocalBackend:
         num_sampling_steps: int,
         num_diffusion_samples: int,
         inference_seed: int,
+        model_dtype: str,
         esmc_precision: str,
         kernel_backend: str | None,
         chunk_size: int | None,
@@ -496,6 +497,9 @@ class EsmFold2LocalBackend:
         self.num_sampling_steps = int(num_sampling_steps)
         self.num_diffusion_samples = int(num_diffusion_samples)
         self.inference_seed = int(inference_seed)
+        if model_dtype != "float32" or esmc_precision != "fp32":
+            raise ValueError("the amended PEARL ESMFold2 contract requires float32/fp32")
+        self.model_dtype = model_dtype
         self.esmc_precision = esmc_precision
         self.kernel_backend = kernel_backend
         self.chunk_size = chunk_size
@@ -522,7 +526,7 @@ class EsmFold2LocalBackend:
             dtype=torch.float32,
         )
         model = model.to(device)
-        model.load_esmc(esmc_path, precision="fp32")
+        model.load_esmc(esmc_path, precision=self.esmc_precision)
         model.set_kernel_backend(self.kernel_backend)
         model.set_chunk_size(self.chunk_size)
         model.eval()

@@ -57,8 +57,8 @@ def validate_folding_gate(gate: dict[str, Any], runtime_lock: dict[str, Any]) ->
     required = {
         "mode": "single_sequence_no_msa",
         "num_diffusion_samples": 1,
-        "model_dtype": "bfloat16",
-        "esmc_precision": "bf16",
+        "model_dtype": "float32",
+        "esmc_precision": "fp32",
         "kernel_backend": "fused",
         "chunk_size": None,
     }

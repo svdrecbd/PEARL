@@ -12,7 +12,9 @@ context-limited agent working under a primary or supervisor.
    `docs/FRONTIER_ADAPTATION_V2_EXECUTOR_PACKET.md`; when the Charon handoff is in scope, also read
    `docs/frontier_adaptation_v2_charon_amendment_20260818.md`; when frontier structural execution is
    in scope, also read `docs/frontier_adaptation_v2_structural_amendment_20260821.md` and
-   `docs/frontier_adaptation_v2_local_structural_execution_amendment_20260822.md`. These supersede v1 execution
+   `docs/frontier_adaptation_v2_local_structural_execution_amendment_20260822.md`; when ESMFold2
+   calibration or folding is in scope, also read
+   `docs/frontier_adaptation_v2_fp32_folding_amendment_20260823.md`. These supersede v1 execution
    instructions for the contemporary-model campaign but do not alter or absorb v1 evidence.
 2. The primary agent owns engineering and research judgment within the user's authority. It may
    design, investigate, interpret, and make versioned decisions. It may not silently rewrite a frozen

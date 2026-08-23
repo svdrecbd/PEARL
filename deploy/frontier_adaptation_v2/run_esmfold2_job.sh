@@ -6,8 +6,9 @@ if [[ "${ESMFOLD2_CALIBRATION:-0}" == "1" ]]; then
   calibration_output="${GMN_OUTPUT_DIR:?GMN_OUTPUT_DIR is required}/esmfold2-natural-reference-calibration.json"
 fi
 if [[ -n "$calibration_output" ]]; then
+  calibration_config="${ESMFOLD2_CALIBRATION_CONFIG:-configs/experiments/frontier_adaptation_v2_fp32_calibration.json}"
   python3 scripts/calibrate_frontier_esmfold2.py \
-    --config configs/experiments/frontier_adaptation_structural_v2_original.json \
+    --config "$calibration_config" \
     --output "$calibration_output"
   exit 0
 fi

@@ -26,6 +26,8 @@ STOCK_IMAGE = (
     "sha256:14d94b039cb94bbd5da559f303b46bc4b0d5d6c24ab1a9d7b186e566ed3400dc"
 )
 BOOTSTRAP = Path("deploy/frontier_adaptation_v2/bootstrap_esmfold2_stock_image.sh")
+DEFAULT_CONFIG = Path("configs/experiments/frontier_adaptation_v2_fp32_calibration.json")
+AMENDMENT = Path("docs/frontier_adaptation_v2_fp32_folding_amendment_20260823.md")
 
 
 def provider_command(source_commit: str) -> str:
@@ -51,8 +53,13 @@ def provider_command(source_commit: str) -> str:
     return f"exec /usr/bin/env bash -lc {shlex.quote(bash_program)}"
 
 
-def packet(source_commit: str, *, replacement_job_id: str) -> dict[str, Any]:
-    config_path = ROOT / "configs/experiments/frontier_adaptation_structural_v2_original.json"
+def packet(
+    source_commit: str,
+    *,
+    replacement_job_id: str,
+    config_path: Path = DEFAULT_CONFIG,
+) -> dict[str, Any]:
+    config_path = ROOT / config_path
     config = read_json(config_path)
     bootstrap_path = ROOT / BOOTSTRAP
     runtime_lock_path = ROOT / config["structure_gate"]["runtime_lock"]
@@ -60,13 +67,14 @@ def packet(source_commit: str, *, replacement_job_id: str) -> dict[str, Any]:
     command = provider_command(source_commit)
     subprocess.run(["/bin/sh", "-n"], input=command, text=True, check=True, cwd=ROOT)
     payload: dict[str, Any] = {
-        "contract": "pearl.frontier-esmfold2-stock-calibration-approval/2",
+        "contract": "pearl.frontier-esmfold2-stock-calibration-approval/3",
         "action": "approval_required_no_launch",
         "replacement_for_provider_job_id": replacement_job_id,
         "replacement_reason": (
-            "The prior stock-image command was interpreted by /bin/sh, which rejected "
-            "pipefail before bootstrap. This packet enters Bash explicitly and changes no "
-            "scientific setting."
+            "Feasibility job job-dnui9 executed float32/fp32 but copied the superseded "
+            "bfloat16/bf16 identity into its receipt. This packet reruns the unchanged "
+            "natural-reference calibration under the prospectively amended, self-consistent "
+            "float32/fp32 identity before any frontier endpoint fold."
         ),
         "source_commit_sha": source_commit,
         "stock_image": STOCK_IMAGE,
@@ -74,6 +82,8 @@ def packet(source_commit: str, *, replacement_job_id: str) -> dict[str, Any]:
         "bootstrap_sha256": sha256_file(bootstrap_path),
         "runtime_lock_sha256": sha256_file(runtime_lock_path),
         "structural_config_sha256": sha256_file(config_path),
+        "structural_config_path": str(config_path.relative_to(ROOT)),
+        "precision_amendment_sha256": sha256_file(ROOT / AMENDMENT),
         "pending_calibration_sha256": sha256_file(calibration_path),
         "provider_shell": "/bin/sh",
         "provider_command": command,
@@ -91,8 +101,14 @@ def packet(source_commit: str, *, replacement_job_id: str) -> dict[str, Any]:
             "effective_rate_per_min_usd": 0.04995,
             "provider_max_cost_usd": 14.985,
         },
-        "environment": {"PEARL_SOURCE_COMMIT": source_commit},
-        "scientific_contract_changes": [],
+        "environment": {
+            "PEARL_SOURCE_COMMIT": source_commit,
+            "ESMFOLD2_CALIBRATION_CONFIG": str(config_path.relative_to(ROOT)),
+        },
+        "scientific_contract_changes": [
+            "ESMFold2 model dtype bfloat16 -> float32",
+            "ESMC precision bf16 -> fp32",
+        ],
         "source_checkpoint_deletion_authorized": False,
         "endpoint_generation_started": False,
         "scientific_endpoint_inspection_performed": False,
@@ -105,6 +121,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--replacement-job-id", required=True)
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     observed_head = subprocess.run(
@@ -116,7 +133,11 @@ def main() -> None:
     ).stdout.strip()
     if args.source_commit != observed_head:
         raise RuntimeError("approval source commit must equal the checked-out commit")
-    payload = packet(args.source_commit, replacement_job_id=args.replacement_job_id)
+    payload = packet(
+        args.source_commit,
+        replacement_job_id=args.replacement_job_id,
+        config_path=Path(args.config),
+    )
     write_json(Path(args.output), payload)
     print(json.dumps(payload, indent=2))
 

@@ -246,6 +246,11 @@ An Executor runs it but does not open or interpret its output.
 
 ## Structural generation
 
+The August 23 FP32 folding amendment supersedes only the earlier bfloat16/bf16 runtime precision.
+Do not use feasibility calibration `job-dnui9` as the production calibration: its execution was
+float32/fp32 while its receipt copied the older identity. Production folding remains blocked until a
+new 80-reference calibration binds the corrected identity exactly.
+
 ```bash
 gh workflow run frontier-adaptation-v2-structural-supervisor.yml --ref main -f mode=status
 gh workflow run frontier-adaptation-v2-structural-supervisor.yml --ref main -f mode=advance

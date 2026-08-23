@@ -29,16 +29,17 @@ def load_script(name: str):
 
 def config_and_lock():
     config = json.loads(
-        (ROOT / "configs/experiments/frontier_adaptation_structural_v2_original.json").read_text()
+        (ROOT / "configs/experiments/frontier_adaptation_v2_fp32_calibration.json").read_text()
     )
     lock = json.loads((ROOT / config["structure_gate"]["runtime_lock"]).read_text())
     return config, lock
 
 
 def test_frontier_structural_amendment_has_384_fixed_slots_and_full_model() -> None:
-    config, lock = config_and_lock()
+    config = json.loads(
+        (ROOT / "configs/experiments/frontier_adaptation_structural_v2_original.json").read_text()
+    )
     gate = config["structure_gate"]
-    validate_folding_gate(gate, lock)
     assert config["contract"] == "pearl.frontier-adaptation-structural/3"
     assert config["prompt_count"] * len(config["sampling"]["sample_seeds"]) == 384
     assert gate["model_name"] == "biohub/ESMFold2"
@@ -53,6 +54,18 @@ def test_frontier_structural_amendment_has_384_fixed_slots_and_full_model() -> N
         "kernel_backend": "fused",
         "chunk_size": None,
     }
+
+
+def test_fp32_calibration_amendment_is_separate_and_runtime_exact() -> None:
+    config, lock = config_and_lock()
+    gate = config["structure_gate"]
+    validate_folding_gate(gate, lock)
+    assert config["contract"] == "pearl.frontier-esmfold2-calibration-config/2"
+    assert gate["inference"]["model_dtype"] == "float32"
+    assert gate["inference"]["esmc_precision"] == "fp32"
+    backend_source = (ROOT / "src/pearl/structure_gate.py").read_text()
+    assert 'model_dtype != "float32" or esmc_precision != "fp32"' in backend_source
+    assert "precision=self.esmc_precision" in backend_source
 
 
 def test_frontier_container_pins_sources_and_cannot_fall_back_to_v1_or_fast() -> None:
@@ -146,9 +159,16 @@ def test_frontier_stock_calibration_command_enters_bash_before_pipefail() -> Non
     assert command.startswith("exec /usr/bin/env bash -lc ")
     assert not command.startswith("set -euo pipefail")
     subprocess.run(["/bin/sh", "-n"], input=command, text=True, check=True)
-    payload = builder.packet("a" * 40, replacement_job_id="job-failed")
+    payload = builder.packet("a" * 40, replacement_job_id="job-dnui9")
     assert payload["provider_command_posix_syntax_valid"] is True
-    assert payload["scientific_contract_changes"] == []
+    assert payload["contract"] == "pearl.frontier-esmfold2-stock-calibration-approval/3"
+    assert payload["environment"]["ESMFOLD2_CALIBRATION_CONFIG"].endswith(
+        "frontier_adaptation_v2_fp32_calibration.json"
+    )
+    assert payload["scientific_contract_changes"] == [
+        "ESMFold2 model dtype bfloat16 -> float32",
+        "ESMC precision bf16 -> fp32",
+    ]
     assert payload["packet_sha256"] == sha256_value(
         {key: value for key, value in payload.items() if key != "packet_sha256"}
     )
