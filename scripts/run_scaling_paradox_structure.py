@@ -23,6 +23,7 @@ from pearl.io_utils import atomic_write_json  # noqa: E402
 from pearl.esmfold2_contract import (  # noqa: E402
     folding_identity,
     validate_complete_calibration,
+    validate_fp32_folding_config,
     validate_folding_gate,
 )
 from pearl.structure_gate import (  # noqa: E402
@@ -127,6 +128,37 @@ def validate_calibration(gate: dict[str, Any]) -> None:
         validate_complete_calibration(calibration, gate)
 
 
+def validate_frontier_esmfold2_binding(
+    config: dict[str, Any], generation: dict[str, Any]
+) -> None:
+    gate = config["structure_gate"]
+    if gate["backend"] != "esmfold2":
+        return
+    generation_config_value = config.get("generation_config")
+    if not generation_config_value:
+        raise RuntimeError("frontier ESMFold2 folding requires a folding-only successor config")
+    generation_config_path = repo_path(str(generation_config_value))
+    generation_config = read_json(generation_config_path)
+    generation_config_sha = sha256_file(generation_config_path)
+    validate_fp32_folding_config(
+        config,
+        generation_config,
+        generation_config_sha256=generation_config_sha,
+        runtime_lock=read_json(repo_path(gate["runtime_lock"])),
+        calibration=read_json(repo_path(gate["calibration"])),
+    )
+    source = generation.get("contract") or {}
+    required = {
+        "campaign_id": generation_config["campaign_id"],
+        "structural_contract": generation_config["contract"],
+        "structural_config_sha256": generation_config_sha,
+        "prompt_panel_sha256": sha256_file(repo_path(generation_config["prompt_panel"])),
+        "sampling": generation_config["sampling"],
+    }
+    if any(source.get(key) != value for key, value in required.items()):
+        raise RuntimeError("generation report does not belong to the exact frozen predecessor config")
+
+
 def report_payload(contract: dict[str, Any], results: list[dict[str, Any]], *, status: str) -> dict[str, Any]:
     expected = int(contract["expected_candidate_count"])
     passes = sum(bool(row.get("full_structural_gate_pass")) for row in results)
@@ -165,6 +197,7 @@ def main() -> None:
         raise RuntimeError("structural folding requires a complete immutable generation panel")
     if len(generation.get("candidates", [])) != int(generation["expected_candidate_count"]):
         raise RuntimeError("generation candidate count does not match its declared contract")
+    validate_frontier_esmfold2_binding(config, generation)
     contract = build_contract(config_path, config, generation)
     run_dir = repo_path(args.output_dir) / str(generation["contract"]["run_key"])
     report_path = run_dir / "structure_report.json"

@@ -1,0 +1,94 @@
+{
+  "contract": "pearl.frontier-adaptation-structural-folding/4",
+  "amendment": "docs/frontier_adaptation_v2_fp32_folding_amendment_20260823.md",
+  "generation_config": "configs/experiments/frontier_adaptation_structural_v2_original.json",
+  "generation_config_sha256": "e7781722471d366c07675161e8d7992d46d5cd3ce2cdfffbef4531c074a71ee6",
+  "campaign_id": "pearl-frontier-adaptation-v2-original",
+  "training_config": "configs/experiments/frontier_adaptation_v2_original.json",
+  "dataset_manifest": "data/phase8_dpo/scaling_paradox_v1/dataset_manifest.json",
+  "source_partition": "real_failure_challenge",
+  "prompt_panel": "configs/experiments/scaling_paradox_structural_panel_v1.jsonl",
+  "prompt_count": 24,
+  "prompt_selection_seed": 20260811,
+  "sampling": {
+    "temperature": 0.8,
+    "top_p": 0.95,
+    "top_k": 50,
+    "max_tokens": 420,
+    "sample_seeds": [
+      701,
+      1701,
+      2701,
+      3701,
+      4701,
+      5701,
+      6701,
+      7701,
+      8701,
+      9701,
+      10701,
+      11701,
+      12701,
+      13701,
+      14701,
+      15701
+    ],
+    "stop_on_newline": true,
+    "invalid_or_duplicate_candidates_count_as_failures": true
+  },
+  "checkpoints": {
+    "primary": [
+      0,
+      2250
+    ],
+    "secondary_timecourse": []
+  },
+  "structure_gate": {
+    "backend": "esmfold2",
+    "runtime_lock": "configs/esmfold2_runtime_lock.json",
+    "model_name": "biohub/ESMFold2",
+    "model_revision": "8fc3ff471022fdce52c77030685eb775de0c00a3",
+    "esmc_model_name": "biohub/ESMC-6B",
+    "esmc_model_revision": "45b0fa5d7fb06faefbd5e3b89bdcef35d564e79a",
+    "esm_package_version": "4.0.0",
+    "esm_source_revision": "9b9078cadf4e08bd02e9715ba99313fc5127379a",
+    "transformers_version": "4.57.6",
+    "transformers_source_revision": "ef32577f55da19a4989cd7b22e004dc43a4998cb",
+    "torch_version": "2.11.0",
+    "python_version": "3.12",
+    "inference": {
+      "mode": "single_sequence_no_msa",
+      "num_loops": 20,
+      "num_sampling_steps": 100,
+      "num_diffusion_samples": 1,
+      "inference_seed": 20260821,
+      "model_dtype": "float32",
+      "esmc_precision": "fp32",
+      "kernel_backend": "fused",
+      "chunk_size": null
+    },
+    "plddt_gate": 70.0,
+    "triad_hbond_max_angstrom": 3.5,
+    "required_triad_method": "sidechain",
+    "calibration": "configs/structure_gate_calibration.esmfold2.json"
+  },
+  "analysis": {
+    "experimental_unit": "independent training seed",
+    "candidate_nesting": [
+      "model",
+      "arm",
+      "training_seed",
+      "checkpoint_step",
+      "prompt_id",
+      "sample_seed"
+    ],
+    "primary_endpoint": "terminal full structural-gate yield minus matched base-model yield",
+    "family_stratification_required": true,
+    "pooled_raw_parameter_regression_prohibited": true,
+    "invalid_generation_policy": "failure",
+    "duplicate_generation_policy": "failure_for_yield_and_retained_for_diversity_audit",
+    "minimum_complete_fraction": 1.0,
+    "automated_endpoint_no_manual_selection": true
+  },
+  "samples_per_request": 4
+}

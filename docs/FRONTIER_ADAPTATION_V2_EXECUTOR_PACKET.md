@@ -248,8 +248,10 @@ An Executor runs it but does not open or interpret its output.
 
 The August 23 FP32 folding amendment supersedes only the earlier bfloat16/bf16 runtime precision.
 Do not use feasibility calibration `job-dnui9` as the production calibration: its execution was
-float32/fp32 while its receipt copied the older identity. Production folding remains blocked until a
-new 80-reference calibration binds the corrected identity exactly.
+float32/fp32 while its receipt copied the older identity. Corrected job `job-m85x4` completed and its
+80-reference artifact is committed at `configs/structure_gate_calibration.esmfold2.json`.
+Production folding must use the separate `*_fp32_folding.json` successor configs; the `/3` configs
+remain immutable generation authority.
 
 ```bash
 gh workflow run frontier-adaptation-v2-structural-supervisor.yml --ref main -f mode=status
@@ -260,17 +262,11 @@ The supervisor refuses to build the 104-cell manifest until all required trainin
 receipts are terminal-valid. It dispatches at most six exact generation jobs and retains every one of
 the 384 candidate slots per cell frozen by the August 21 result-blind structural amendment.
 
-After all generation artifacts exist, build the exact GMN manifest from a clean checkout at the
-prospective `frontier-adaptation-v2-structural-v3.0.0` structural executor tag:
-
-```bash
-python scripts/build_frontier_adaptation_gmn_manifest.py \
-  --structural-manifest STRUCTURAL_MANIFEST \
-  --generation-root GENERATION_ARTIFACT_ROOT \
-  --context-output-dir GMN_CONTEXT_DIR \
-  --git-ref EXACT_TAG_COMMIT_SHA \
-  --output FRONTIER_GMN_MANIFEST
-```
+The pre-amendment `build_frontier_adaptation_gmn_manifest.py` path packages Docker build contexts
+and is prohibited for FP32 production folding. Do not run it, patch its expected hashes, or treat its
+older fold contracts as authority. After all generation artifacts exist, a separately versioned
+stock-image submission packet must bind the reviewed FP32 successor-config commit, every immutable
+generation-report hash, the provider quote, and the explicit final paid approval.
 
 The manual provider boundary is mechanical and one-job-at-a-time:
 
@@ -301,11 +297,11 @@ reports, then combine:
 
 ```bash
 python scripts/analyze_frontier_adaptation_structural.py \
-  --config configs/experiments/frontier_adaptation_structural_v2_original.json \
+  --config configs/experiments/frontier_adaptation_structural_v2_original_fp32_folding.json \
   --reports-dir ORIGINAL_REPORTS --structural-manifest STRUCTURAL_MANIFEST \
   --output ORIGINAL_ANALYSIS
 python scripts/analyze_frontier_adaptation_structural.py \
-  --config configs/experiments/frontier_adaptation_structural_v2_replication.json \
+  --config configs/experiments/frontier_adaptation_structural_v2_replication_fp32_folding.json \
   --reports-dir REPLICATION_REPORTS --shared-base-reports-dir ORIGINAL_BASE_REPORTS \
   --structural-manifest STRUCTURAL_MANIFEST --output REPLICATION_ANALYSIS
 python scripts/analyze_frontier_adaptation_structural_combined.py \

@@ -30,8 +30,8 @@ import sys
 
 campaign = json.load(open(sys.argv[1]))["contract"]["campaign_id"]
 configs = {
-    "pearl-frontier-adaptation-v2-original": "configs/experiments/frontier_adaptation_structural_v2_original.json",
-    "pearl-frontier-adaptation-v2-replication": "configs/experiments/frontier_adaptation_structural_v2_replication.json",
+    "pearl-frontier-adaptation-v2-original": "configs/experiments/frontier_adaptation_structural_v2_original_fp32_folding.json",
+    "pearl-frontier-adaptation-v2-replication": "configs/experiments/frontier_adaptation_structural_v2_replication_fp32_folding.json",
 }
 if campaign not in configs:
     raise SystemExit(f"ESMFold2 frontier image rejects campaign: {campaign}")

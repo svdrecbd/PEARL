@@ -1,4 +1,6 @@
 import json
+import copy
+import hashlib
 import importlib.util
 import subprocess
 import sys
@@ -14,6 +16,7 @@ from pearl.esmfold2_contract import (  # noqa: E402
     folding_contract_sha,
     sha256_value,
     validate_complete_calibration,
+    validate_fp32_folding_config,
     validate_folding_gate,
 )
 
@@ -33,6 +36,10 @@ def config_and_lock():
     )
     lock = json.loads((ROOT / config["structure_gate"]["runtime_lock"]).read_text())
     return config, lock
+
+
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def test_frontier_structural_amendment_has_384_fixed_slots_and_full_model() -> None:
@@ -66,6 +73,65 @@ def test_fp32_calibration_amendment_is_separate_and_runtime_exact() -> None:
     backend_source = (ROOT / "src/pearl/structure_gate.py").read_text()
     assert 'model_dtype != "float32" or esmc_precision != "fp32"' in backend_source
     assert "precision=self.esmc_precision" in backend_source
+
+
+@pytest.mark.parametrize("cohort", ["original", "replication"])
+def test_fp32_folding_successor_preserves_exact_generation_contract(cohort: str) -> None:
+    folding_path = (
+        ROOT
+        / "configs/experiments"
+        / f"frontier_adaptation_structural_v2_{cohort}_fp32_folding.json"
+    )
+    folding = json.loads(folding_path.read_text())
+    generation_path = ROOT / folding["generation_config"]
+    generation = json.loads(generation_path.read_text())
+    gate = folding["structure_gate"]
+    lock = json.loads((ROOT / gate["runtime_lock"]).read_text())
+    calibration = json.loads((ROOT / gate["calibration"]).read_text())
+    validate_fp32_folding_config(
+        folding,
+        generation,
+        generation_config_sha256=file_sha256(generation_path),
+        runtime_lock=lock,
+        calibration=calibration,
+    )
+    assert folding["generation_config_sha256"] == file_sha256(generation_path)
+    assert generation["structure_gate"]["inference"]["model_dtype"] == "bfloat16"
+    assert generation["structure_gate"]["inference"]["esmc_precision"] == "bf16"
+    assert gate["inference"]["model_dtype"] == "float32"
+    assert gate["inference"]["esmc_precision"] == "fp32"
+    if cohort == "replication":
+        assert folding["shared_base_config"].endswith(
+            "frontier_adaptation_structural_v2_original_fp32_folding.json"
+        )
+
+
+def test_fp32_folding_successor_rejects_any_extra_scientific_change() -> None:
+    path = (
+        ROOT
+        / "configs/experiments/frontier_adaptation_structural_v2_original_fp32_folding.json"
+    )
+    folding = json.loads(path.read_text())
+    generation_path = ROOT / folding["generation_config"]
+    generation = json.loads(generation_path.read_text())
+    gate = folding["structure_gate"]
+    folding = copy.deepcopy(folding)
+    folding["sampling"]["temperature"] = 0.7
+    with pytest.raises(RuntimeError, match="changed generation science"):
+        validate_fp32_folding_config(
+            folding,
+            generation,
+            generation_config_sha256=file_sha256(generation_path),
+            runtime_lock=json.loads((ROOT / gate["runtime_lock"]).read_text()),
+            calibration=json.loads((ROOT / gate["calibration"]).read_text()),
+        )
+
+
+def test_frontier_stock_runtime_selects_successor_configs() -> None:
+    entrypoint = (ROOT / "deploy/frontier_adaptation_v2/run_esmfold2_job.sh").read_text()
+    for cohort in ("original", "replication"):
+        name = f"frontier_adaptation_structural_v2_{cohort}_fp32_folding.json"
+        assert name in entrypoint
 
 
 def test_frontier_container_pins_sources_and_cannot_fall_back_to_v1_or_fast() -> None:

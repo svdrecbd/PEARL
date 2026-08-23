@@ -20,9 +20,17 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pearl.esmfold2_contract import folding_identity  # noqa: E402
+from pearl.esmfold2_contract import (  # noqa: E402
+    folding_identity,
+    validate_fp32_folding_config,
+)
 
-DEFAULT_CONFIG = ROOT / "configs" / "experiments" / "frontier_adaptation_structural_v2_original.json"
+DEFAULT_CONFIG = (
+    ROOT
+    / "configs"
+    / "experiments"
+    / "frontier_adaptation_structural_v2_original_fp32_folding.json"
+)
 
 
 def repo_path(value: str | Path) -> Path:
@@ -154,8 +162,12 @@ def validate_matrix(
     *,
     config: dict[str, Any],
     config_path: Path,
+    generation_config: dict[str, Any],
+    generation_config_path: Path,
     base_config: dict[str, Any],
     base_config_path: Path,
+    base_generation_config: dict[str, Any],
+    base_generation_config_path: Path,
     structural_manifest: dict[str, Any],
 ) -> None:
     models = [str(row["model"]) for row in training["models"]]
@@ -224,8 +236,9 @@ def validate_matrix(
             raise RuntimeError("generation contract differs from its exact structural manifest job")
         if source.get("arm") == "base":
             if (
-                source.get("campaign_id") != base_config["campaign_id"]
-                or source.get("structural_config_sha256") != sha256_file(base_config_path)
+                source.get("campaign_id") != base_generation_config["campaign_id"]
+                or source.get("structural_config_sha256")
+                != sha256_file(base_generation_config_path)
                 or source.get("source_training") is not None
             ):
                 raise RuntimeError("base structural cell is not the exact frozen shared base")
@@ -233,8 +246,9 @@ def validate_matrix(
             expected = expected_training.get(key[:3])
             source_training = source.get("source_training") or {}
             if (
-                source.get("campaign_id") != config["campaign_id"]
-                or source.get("structural_config_sha256") != sha256_file(config_path)
+                source.get("campaign_id") != generation_config["campaign_id"]
+                or source.get("structural_config_sha256")
+                != sha256_file(generation_config_path)
                 or expected is None
                 or source_training.get("source_run_key") != expected["run_key"]
                 or source_training.get("source_run_contract_sha") != expected["run_contract_sha"]
@@ -252,16 +266,19 @@ def validate_matrix(
                 for source_key, manifest_key in file_bindings.items()
             ):
                 raise RuntimeError("structural generation source files differ from audited training evidence")
-        expected_config = base_config if source.get("arm") == "base" else config
-        expected_config_path = base_config_path if source.get("arm") == "base" else config_path
-        gate = expected_config["structure_gate"]
-        expected_candidate_count = int(expected_config["prompt_count"]) * len(
-            expected_config["sampling"]["sample_seeds"]
+        expected_generation_config = (
+            base_generation_config if source.get("arm") == "base" else generation_config
+        )
+        expected_folding_config = base_config if source.get("arm") == "base" else config
+        expected_folding_config_path = base_config_path if source.get("arm") == "base" else config_path
+        gate = expected_folding_config["structure_gate"]
+        expected_candidate_count = int(expected_folding_config["prompt_count"]) * len(
+            expected_folding_config["sampling"]["sample_seeds"]
         )
         expected_fold = {
-            "campaign_id": expected_config["campaign_id"],
-            "structural_contract": expected_config["contract"],
-            "structural_config_sha256": sha256_file(expected_config_path),
+            "campaign_id": expected_folding_config["campaign_id"],
+            "structural_contract": expected_folding_config["contract"],
+            "structural_config_sha256": sha256_file(expected_folding_config_path),
             "generation_contract_sha": source["generation_contract_sha"],
             "generation_run_key": source["run_key"],
             "expected_candidate_count": expected_candidate_count,
@@ -286,8 +303,8 @@ def validate_matrix(
         expected_fold["fold_contract_sha"] = sha256_value(expected_fold)
         if (
             source.get("prompt_panel_sha256")
-            != sha256_file(repo_path(expected_config["prompt_panel"]))
-            or source.get("sampling") != expected_config["sampling"]
+            != sha256_file(repo_path(expected_generation_config["prompt_panel"]))
+            or source.get("sampling") != expected_generation_config["sampling"]
             or fold != expected_fold
         ):
             raise RuntimeError("fold contract differs from the frozen structural contract")
@@ -401,8 +418,26 @@ def main() -> None:
     config_path = repo_path(args.config)
     config = read_json(config_path)
     training = read_json(repo_path(config["training_config"]))
+    generation_config_path = repo_path(config.get("generation_config", args.config))
+    generation_config = read_json(generation_config_path)
     base_config_path = repo_path(config.get("shared_base_config", args.config))
     base_config = read_json(base_config_path)
+    base_generation_config_path = repo_path(
+        base_config.get("generation_config", base_config_path)
+    )
+    base_generation_config = read_json(base_generation_config_path)
+    for folding_config, predecessor, predecessor_path in (
+        (config, generation_config, generation_config_path),
+        (base_config, base_generation_config, base_generation_config_path),
+    ):
+        gate = folding_config["structure_gate"]
+        validate_fp32_folding_config(
+            folding_config,
+            predecessor,
+            generation_config_sha256=sha256_file(predecessor_path),
+            runtime_lock=read_json(repo_path(gate["runtime_lock"])),
+            calibration=read_json(repo_path(gate["calibration"])),
+        )
     structural_manifest = read_json(repo_path(args.structural_manifest))
     if structural_manifest.get("contract") != "pearl.frontier-adaptation-structural-manifest/3":
         raise RuntimeError("structural analysis requires the frozen structural manifest")
@@ -433,8 +468,12 @@ def main() -> None:
         training,
         config=config,
         config_path=config_path,
+        generation_config=generation_config,
+        generation_config_path=generation_config_path,
         base_config=base_config,
         base_config_path=base_config_path,
+        base_generation_config=base_generation_config,
+        base_generation_config_path=base_generation_config_path,
         structural_manifest=structural_manifest,
     )
     summaries = [summarize_cell(cells[key]) for key in sorted(cells)]

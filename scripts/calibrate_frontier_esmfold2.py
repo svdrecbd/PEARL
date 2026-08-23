@@ -33,7 +33,7 @@ from pearl.structure_gate import (  # noqa: E402
 )
 
 
-DEFAULT_CONFIG = ROOT / "configs/experiments/frontier_adaptation_structural_v2_original.json"
+DEFAULT_CONFIG = ROOT / "configs/experiments/frontier_adaptation_v2_fp32_calibration.json"
 MIN_LENGTH = 60
 
 

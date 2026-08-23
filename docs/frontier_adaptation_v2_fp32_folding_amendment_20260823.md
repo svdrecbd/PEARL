@@ -41,3 +41,31 @@ retaining the exact generation-report hashes.
 No candidate, threshold, denominator, model, arm, training seed, prompt, sampling seed, or analysis
 changes. No existing calibration or generation artifact is deleted or relabeled. The corrected
 calibration remains under the previously approved one-H100, `$14.985` maximum exposure.
+
+## Completed calibration and folding successors
+
+The corrected natural-reference calibration completed before endpoint folding in GiveMeANode job
+`job-m85x4`. Its downloaded JSON has SHA-256
+`b69b6339334a6d16f6774e94b38969e5e7f181c03aaf67dcafcbaf4833e59b12`, records 80 of 80 unique
+references, and binds folding-contract SHA-256
+`2fb4bc7859951adbcc095615edb0bf2c6b468a05bb2f9fde748fe20de6d8a723`. All references met the
+unchanged pLDDT gate and 63.75% exposed both side-chain triad distances, exceeding the prospectively
+frozen 85% and 45% operational acceptance gates respectively. These are calibration checks, not
+frontier endpoint results.
+
+Production folding uses the separate successor configs:
+
+- `configs/experiments/frontier_adaptation_structural_v2_original_fp32_folding.json`;
+- `configs/experiments/frontier_adaptation_structural_v2_replication_fp32_folding.json`.
+
+Each successor explicitly names and hashes its immutable `/3` generation config. The successor
+validator requires every generation, prompt, sampling, checkpoint, threshold, analysis, and model
+field to be identical to that predecessor and permits only the declared bfloat16/bf16 to
+float32/fp32 precision transition. Folding reports bind the successor config hash; generation
+reports continue to bind the original generation-config hash. A final production spend/image packet
+and explicit paid approval remain required before any endpoint job is submitted.
+
+The user rejected Docker build contexts for production folding before any endpoint fold. No
+Dockerfile or Docker-context manifest change is part of this amendment. Production execution must
+use a separately versioned stock-image submission packet that binds these successor configs, the
+exact source commit, each immutable generation-report hash, and the provider quote.

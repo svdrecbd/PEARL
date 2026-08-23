@@ -118,3 +118,61 @@ def validate_complete_calibration(
         raise RuntimeError("ESMFold2 natural-reference pLDDT calibration failed")
     if triad_fraction < float(acceptance["minimum_sidechain_triad_observed_fraction"]):
         raise RuntimeError("ESMFold2 natural-reference side-chain calibration failed")
+
+
+def validate_fp32_folding_config(
+    config: dict[str, Any],
+    generation_config: dict[str, Any],
+    *,
+    generation_config_sha256: str,
+    runtime_lock: dict[str, Any],
+    calibration: dict[str, Any],
+) -> None:
+    """Validate the prospective folding-only successor without rewriting generation."""
+    if config.get("contract") != "pearl.frontier-adaptation-structural-folding/4":
+        raise RuntimeError("frontier FP32 folding config has the wrong contract")
+    if config.get("amendment") != (
+        "docs/frontier_adaptation_v2_fp32_folding_amendment_20260823.md"
+    ):
+        raise RuntimeError("frontier FP32 folding config lacks the exact amendment")
+    if generation_config.get("contract") != "pearl.frontier-adaptation-structural/3":
+        raise RuntimeError("frontier FP32 folding config lacks a v3 generation predecessor")
+    if config.get("generation_config_sha256") != generation_config_sha256:
+        raise RuntimeError("frontier FP32 folding config has the wrong generation-config hash")
+
+    preserved_keys = (
+        "campaign_id",
+        "training_config",
+        "dataset_manifest",
+        "source_partition",
+        "prompt_panel",
+        "prompt_count",
+        "prompt_selection_seed",
+        "sampling",
+        "checkpoints",
+        "analysis",
+        "samples_per_request",
+    )
+    changed = {
+        key: {"generation": generation_config.get(key), "folding": config.get(key)}
+        for key in preserved_keys
+        if generation_config.get(key) != config.get(key)
+    }
+    if changed:
+        raise RuntimeError(f"frontier FP32 folding config changed generation science: {changed}")
+
+    generation_gate = generation_config.get("structure_gate", {})
+    folding_gate = config.get("structure_gate", {})
+    generation_inference = generation_gate.get("inference", {})
+    if (
+        generation_inference.get("model_dtype") != "bfloat16"
+        or generation_inference.get("esmc_precision") != "bf16"
+    ):
+        raise RuntimeError("frontier FP32 folding predecessor lacks the frozen bf16 identity")
+    amended_generation_gate = json.loads(json.dumps(generation_gate))
+    amended_generation_gate["inference"]["model_dtype"] = "float32"
+    amended_generation_gate["inference"]["esmc_precision"] = "fp32"
+    if amended_generation_gate != folding_gate:
+        raise RuntimeError("frontier FP32 folding config changes more than precision")
+    validate_folding_gate(folding_gate, runtime_lock)
+    validate_complete_calibration(calibration, folding_gate)
