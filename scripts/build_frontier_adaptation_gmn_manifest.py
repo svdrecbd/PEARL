@@ -69,6 +69,7 @@ def expected_generation_contract(job: dict[str, Any]) -> dict[str, Any]:
         "checkpoint_step": int(job["checkpoint_step"]),
         "checkpoint_path": job["checkpoint_path"],
         "sampling": config["sampling"],
+        "samples_per_request": int(config.get("samples_per_request", 1)),
         "source_training": source_identity,
     }
     identity["generation_contract_sha"] = sha256_value(identity)
@@ -146,6 +147,8 @@ def main() -> None:
         or candidate_slots != 384
     ):
         raise RuntimeError("GMN build requires the frozen 384-slot frontier structural manifest")
+    config = read_json(ROOT / manifest["jobs"][0]["structural_config"])
+    expected_per_cell = candidate_slots * int(config.get("samples_per_request", 1))
     reports = list(Path(args.generation_root).rglob("generation_report.json"))
     jobs_by_identity: dict[tuple[Any, ...], dict[str, Any]] = {}
     for job in manifest["jobs"]:
@@ -172,9 +175,9 @@ def main() -> None:
         if (
             report.get("status") != "complete"
             or not report.get("complete")
-            or int(report.get("expected_candidate_count", -1)) != candidate_slots
-            or int(report.get("completed_candidate_count", -1)) != candidate_slots
-            or len(report.get("candidates", [])) != candidate_slots
+            or int(report.get("expected_candidate_count", -1)) != expected_per_cell
+            or int(report.get("completed_candidate_count", -1)) != expected_per_cell
+            or len(report.get("candidates", [])) != expected_per_cell
         ):
             raise RuntimeError(f"incomplete generation report for {job_key}")
         if contract != expected_generation_contract(jobs_by_identity[key]):

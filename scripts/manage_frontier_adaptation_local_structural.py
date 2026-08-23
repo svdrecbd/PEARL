@@ -108,20 +108,27 @@ def generation_report(job: dict[str, Any], output_root: Path) -> Path:
     return output_root / str(contract["run_key"]) / "generation_report.json"
 
 
+def _expected_candidate_total(job: dict[str, Any]) -> int:
+    config = read_json(ROOT / job["structural_config"])
+    slots = int(config["prompt_count"]) * len(config["sampling"]["sample_seeds"])
+    return slots * int(config.get("samples_per_request", 1))
+
+
 def complete(job: dict[str, Any], output_root: Path) -> bool:
     path = generation_report(job, output_root)
     if not path.is_file():
         return False
     builder = load_script("build_frontier_adaptation_gmn_manifest.py")
     expected = builder.expected_generation_contract(job)
+    total = _expected_candidate_total(job)
     report = read_json(path)
     return bool(
         report.get("contract") == expected
         and report.get("status") == "complete"
         and report.get("complete") is True
-        and report.get("expected_candidate_count") == 384
-        and report.get("completed_candidate_count") == 384
-        and len(report.get("candidates") or []) == 384
+        and report.get("expected_candidate_count") == total
+        and report.get("completed_candidate_count") == total
+        and len(report.get("candidates") or []) == total
     )
 
 
@@ -145,7 +152,7 @@ def validate_authorization(
     }
     if any(authorization.get(key) != value for key, value in checks.items()):
         raise RuntimeError("local structural authorization differs from requested wave")
-    if float(authorization.get("maximum_sampling_spend_usd", -1)) > 40.0:
+    if float(authorization.get("maximum_sampling_spend_usd", -1)) > 160.0:
         raise RuntimeError("local structural authorization exceeds frozen Tinker ceiling")
     if os.environ.get("PEARL_STRUCTURAL_APPROVAL_SHA256") != supplied:
         raise RuntimeError("exact local structural approval SHA is not armed in the environment")
