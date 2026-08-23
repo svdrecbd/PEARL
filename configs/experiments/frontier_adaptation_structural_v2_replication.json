@@ -13,12 +13,32 @@
     "top_p": 0.95,
     "top_k": 50,
     "max_tokens": 420,
-    "sample_seeds": [701, 1701, 2701, 3701, 4701, 5701, 6701, 7701, 8701, 9701, 10701, 11701, 12701, 13701, 14701, 15701],
+    "sample_seeds": [
+      701,
+      1701,
+      2701,
+      3701,
+      4701,
+      5701,
+      6701,
+      7701,
+      8701,
+      9701,
+      10701,
+      11701,
+      12701,
+      13701,
+      14701,
+      15701
+    ],
     "stop_on_newline": true,
     "invalid_or_duplicate_candidates_count_as_failures": true
   },
   "checkpoints": {
-    "primary": [0, 2250],
+    "primary": [
+      0,
+      2250
+    ],
     "secondary_timecourse": []
   },
   "structure_gate": {
@@ -52,7 +72,14 @@
   },
   "analysis": {
     "experimental_unit": "independent training seed",
-    "candidate_nesting": ["model", "arm", "training_seed", "checkpoint_step", "prompt_id", "sample_seed"],
+    "candidate_nesting": [
+      "model",
+      "arm",
+      "training_seed",
+      "checkpoint_step",
+      "prompt_id",
+      "sample_seed"
+    ],
     "primary_endpoint": "terminal full structural-gate yield minus matched base-model yield",
     "family_stratification_required": true,
     "pooled_raw_parameter_regression_prohibited": true,
@@ -60,5 +87,6 @@
     "duplicate_generation_policy": "failure_for_yield_and_retained_for_diversity_audit",
     "minimum_complete_fraction": 1.0,
     "automated_endpoint_no_manual_selection": true
-  }
+  },
+  "samples_per_request": 4
 }

@@ -142,6 +142,7 @@ def build_contract(args: argparse.Namespace, config: dict[str, Any], panel_path:
         "checkpoint_step": int(args.checkpoint_step),
         "checkpoint_path": args.checkpoint_path,
         "sampling": config["sampling"],
+        "samples_per_request": int(config.get("samples_per_request", 1)),
         "source_training": source_identity,
     }
     identity["generation_contract_sha"] = sha256_value(identity)
@@ -175,8 +176,16 @@ def report_payload(
     candidates: list[dict[str, Any]],
     status: str,
 ) -> dict[str, Any]:
-    expected = len(panel) * len(sample_seeds)
+    samples_per_request = int(contract.get("samples_per_request", 1))
+    expected = len(panel) * len(sample_seeds) * samples_per_request
+    confirmatory_expected = len(panel) * len(sample_seeds)
     valid = sum(bool(row.get("valid_sequence")) for row in candidates)
+    confirmatory_valid = sum(
+        bool(row.get("valid_sequence"))
+        for row in candidates
+        if row.get("cohort", "confirmatory") == "confirmatory"
+    )
+    discovery_valid = valid - confirmatory_valid
     return {
         "contract": contract,
         "status": status,
@@ -185,6 +194,10 @@ def report_payload(
         "valid_candidate_count": valid,
         "invalid_candidate_count": len(candidates) - valid,
         "complete": len(candidates) == expected,
+        "samples_per_request": samples_per_request,
+        "confirmatory_expected": confirmatory_expected,
+        "confirmatory_valid": confirmatory_valid,
+        "discovery_valid": discovery_valid,
         "candidates": candidates,
     }
 
@@ -331,22 +344,6 @@ def main() -> None:
                     "valid": valid,
                     "completed": len(candidates),
                 }), flush=True)
-            }
-            candidates.append(row)
-            completed.add(cid)
-            if sequence:
-                observed_sequences.add(sequence)
-            atomic_write_json(
-                report_path,
-                report_payload(
-                    contract=contract,
-                    panel=panel,
-                    sample_seeds=sample_seeds,
-                    candidates=candidates,
-                    status="running",
-                ),
-            )
-            print(json.dumps({"candidate_id": cid, "valid": valid, "completed": len(candidates)}), flush=True)
 
     payload = report_payload(
         contract=contract,
