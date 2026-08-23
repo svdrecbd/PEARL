@@ -174,12 +174,14 @@ def test_frontier_stock_calibration_command_enters_bash_before_pipefail() -> Non
     )
 
 
-def test_pending_calibration_hard_blocks_production() -> None:
+def test_committed_fp32_calibration_is_complete_and_runtime_bound() -> None:
     config, _ = config_and_lock()
     gate = config["structure_gate"]
-    pending = json.loads((ROOT / gate["calibration"]).read_text())
-    with pytest.raises(RuntimeError, match="blocked until calibration is complete"):
-        validate_complete_calibration(pending, gate)
+    calibration = json.loads((ROOT / gate["calibration"]).read_text())
+    validate_complete_calibration(calibration, gate)
+    assert calibration["count"] == calibration["expected_count"] == 80
+    assert calibration["folding_identity"]["inference"]["model_dtype"] == "float32"
+    assert calibration["folding_identity"]["inference"]["esmc_precision"] == "fp32"
 
 
 def test_complete_calibration_must_bind_runtime_and_pass_prospective_gates() -> None:
