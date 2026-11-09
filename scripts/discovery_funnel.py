@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 import random
@@ -28,6 +29,8 @@ MIN_ENTROPY = 2.5
 MAX_HOMOPOLYMER = 8
 ESM2_SMALL_MODEL = "facebook/esm2_t6_8M_UR50D"
 ESM2_LARGE_MODEL = "facebook/esm2_t33_650M_UR50D"
+ESM2_SMALL_REVISION = "c731040fcd8d73dceaa04b0a8e6329b345b0f5df"
+ESM2_LARGE_REVISION = "08e4846e537177426273712802403f7ba8261b6c"
 RESCORE_FRACTION = 0.20
 SELECTED_PANEL_SIZE = 96
 RANDOM_SURVIVORS = 24
@@ -86,15 +89,48 @@ def cheap_filter(sequence: str) -> tuple[bool, str | None]:
     return True, None
 
 
-def load_discovery_candidates(output_root: Path, manifest_path: Path) -> list[dict[str, Any]]:
+def rejection_category(reason: str) -> str:
+    parts = reason.split("_", 2)
+    if len(parts) > 1 and parts[0] in {"too", "low", "invalid"}:
+        return "_".join(parts[:2])
+    return parts[0]
+
+
+def load_generation_builder() -> Any:
+    path = ROOT / "scripts" / "build_frontier_adaptation_gmn_manifest.py"
+    spec = importlib.util.spec_from_file_location("frontier_generation_builder", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("could not load frontier generation contract builder")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_discovery_candidates(
+    output_root: Path,
+    manifest_path: Path,
+    *,
+    campaigns: set[str] | None = None,
+) -> list[dict[str, Any]]:
     manifest = json.loads(manifest_path.read_text())
+    builder = load_generation_builder()
     candidates = []
     seen_hashes = set()
     for job in manifest["jobs"]:
-        report_path = output_root / job["job_key"] / "generation_report.json"
-        if not report_path.is_file():
+        if campaigns is not None and str(job.get("campaign")) not in campaigns:
             continue
+        expected_contract = (
+            builder.expected_generation_contract(job) if job.get("structural_config") else None
+        )
+        run_key = expected_contract["run_key"] if expected_contract else str(job["job_key"])
+        report_path = output_root / run_key / "generation_report.json"
+        if not report_path.is_file():
+            raise RuntimeError(f"generation report missing: {report_path}")
         report = json.loads(report_path.read_text())
+        if report.get("status") != "complete" or (
+            expected_contract is not None and report.get("contract") != expected_contract
+        ):
+            raise RuntimeError(f"generation report incomplete or mismatched: {report_path}")
         for row in report.get("candidates", []):
             cohort = row.get("cohort", "confirmatory")
             if cohort != "discovery":
@@ -105,31 +141,58 @@ def load_discovery_candidates(output_root: Path, manifest_path: Path) -> list[di
             if seq_hash in seen_hashes:
                 continue
             seen_hashes.add(seq_hash)
-            candidates.append(row)
+            candidates.append({**row, "source_job_key": job["job_key"]})
     return candidates
 
 
-def esm2_score(model_name: str, sequences: list[str]) -> list[float]:
+def esm2_score(model_name: str, model_revision: str, sequences: list[str]) -> list[float]:
     """Score sequences with mean log-likelihood using ESM2."""
     try:
         import torch
-        from transformers import EsmForMaskedLM, AutoTokenizer
+        from pearl import esm_proxy
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = EsmForMaskedLM.from_pretrained(model_name).to(device).eval()
+        esm_proxy.ESM2_MODEL_NAME = model_name
+        esm_proxy.ESM2_REVISION = model_revision
+        esm_proxy._get_esm2.cache_clear()
+        esm_proxy._pll_sequence.cache_clear()
         scores = []
-        with torch.no_grad():
-            for seq in sequences:
-                inputs = tokenizer(seq, return_tensors="pt", truncation=True, max_length=1024).to(device)
-                outputs = model(**inputs, labels=inputs["input_ids"])
-                loss = outputs.loss.item()
-                scores.append(-loss)  # negative loss = higher is better
-        del model
-        torch.cuda.empty_cache()
+        chunk_size = 64
+        for start in range(0, len(sequences), chunk_size):
+            chunk = sequences[start : start + chunk_size]
+            scores.extend(esm_proxy.get_esm2_plls(chunk))
+            print(
+                json.dumps({"model": model_name, "scored": len(scores), "expected": len(sequences)}),
+                flush=True,
+            )
+        esm_proxy._get_esm2.cache_clear()
+        esm_proxy._pll_sequence.cache_clear()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
         return scores
     except ImportError:
         raise RuntimeError("torch/transformers required for ESM2 scoring")
+
+
+def select_panels(
+    combined: list[dict[str, Any]], *, seed: int = 20260822
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    rescored = [row for row in combined if row["esm2_large_score"] != 0.0]
+    rescored.sort(
+        key=lambda row: row["esm2_small_score"] + row["esm2_large_score"], reverse=True
+    )
+    rng = random.Random(seed)
+    selected_panel = rescored[:SELECTED_PANEL_SIZE]
+    selected_hashes = {row["sequence_sha256"] for row in selected_panel}
+    remaining = [row for row in combined if row["sequence_sha256"] not in selected_hashes]
+    random_survivors = rng.sample(remaining, min(RANDOM_SURVIVORS, len(remaining)))
+    survivor_hashes = {row["sequence_sha256"] for row in random_survivors}
+    audit_eligible = [
+        row for row in remaining if row["sequence_sha256"] not in survivor_hashes
+    ]
+    audit_pool = rng.sample(audit_eligible, min(AUDIT_POOL_SIZE, len(audit_eligible)))
+    return selected_panel, random_survivors, audit_pool
 
 
 def main() -> None:
@@ -138,23 +201,32 @@ def main() -> None:
     parser.add_argument("--output-root", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--skip-esm2", action="store_true", help="Skip ESM2 scoring (shape-only test)")
+    parser.add_argument(
+        "--campaign",
+        action="append",
+        dest="campaigns",
+        help="Campaign to include; repeat for multiple campaigns. Default: all.",
+    )
     args = parser.parse_args()
 
     output_root = Path(args.output_root)
     manifest_path = Path(args.manifest)
 
-    candidates = load_discovery_candidates(output_root, manifest_path)
+    campaigns = set(args.campaigns) if args.campaigns else None
+    candidates = load_discovery_candidates(output_root, manifest_path, campaigns=campaigns)
     print(f"Discovery candidates loaded: {len(candidates)}")
 
     # Stage 1: cheap deterministic filters
     passed_filter = []
     rejected = Counter()
+    rejected_detail = Counter()
     for row in candidates:
         ok, reason = cheap_filter(str(row.get("sequence", "")))
         if ok:
             passed_filter.append(row)
         else:
-            rejected[reason] += 1
+            rejected_detail[str(reason)] += 1
+            rejected[rejection_category(str(reason))] += 1
     print(f"After cheap filter: {len(passed_filter)} (rejected: {dict(rejected)})")
 
     # Stage 2: exact dedup already done in load_discovery_candidates
@@ -165,11 +237,11 @@ def main() -> None:
     large_scores: list[float] = [0.0] * len(sequences)
 
     if not args.skip_esm2 and sequences:
-        small_scores = esm2_score(ESM2_SMALL_MODEL, sequences)
+        small_scores = esm2_score(ESM2_SMALL_MODEL, ESM2_SMALL_REVISION, sequences)
         resample_n = max(1, int(len(sequences) * RESCORE_FRACTION))
         top_indices = sorted(range(len(small_scores)), key=lambda i: small_scores[i], reverse=True)[:resample_n]
         large_batch = [sequences[i] for i in top_indices]
-        large_results = esm2_score(ESM2_LARGE_MODEL, large_batch)
+        large_results = esm2_score(ESM2_LARGE_MODEL, ESM2_LARGE_REVISION, large_batch)
         for idx, score in zip(top_indices, large_results):
             large_scores[idx] = score
 
@@ -181,36 +253,32 @@ def main() -> None:
         }
         for i, row in enumerate(passed_filter)
     ]
-    combined.sort(key=lambda r: r["esm2_small_score"] + r.get("esm2_large_score", 0), reverse=True)
-
     # Stage 5: selected panel + random survivors
-    rng = random.Random(20260822)
-    selected_panel = combined[:SELECTED_PANEL_SIZE]
-    remaining = combined[SELECTED_PANEL_SIZE:]
-    random_survivors = rng.sample(remaining, min(RANDOM_SURVIVORS, len(remaining)))
-
-    # Stage 6: audit pool (random unselected candidates that didn't pass filter top)
-    audit_pool = rng.sample(combined, min(AUDIT_POOL_SIZE, len(combined)))
+    # Stage 6: disjoint audit pool from candidates outside the selected top panel.
+    if args.skip_esm2:
+        selected_panel, random_survivors, audit_pool = [], [], []
+    else:
+        selected_panel, random_survivors, audit_pool = select_panels(combined)
 
     payload = {
         "contract": "pearl.frontier-discovery-funnel-selection/1",
         "manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+        "selected_campaigns": sorted(campaigns) if campaigns else None,
+        "esm2_model_revisions": {
+            ESM2_SMALL_MODEL: ESM2_SMALL_REVISION,
+            ESM2_LARGE_MODEL: ESM2_LARGE_REVISION,
+        },
         "total_discovery_candidates": len(candidates),
         "filter_rejections": dict(rejected),
+        "filter_rejection_detail": dict(rejected_detail),
         "after_filter": len(passed_filter),
         "selected_panel_size": len(selected_panel),
         "random_survivors_size": len(random_survivors),
         "audit_pool_size": len(audit_pool),
-        "selected_sequences": [
-            {"sequence_sha256": r["sequence_sha256"], "sequence_length": r["sequence_length"]}
-            for r in selected_panel
-        ],
-        "random_survivor_sequences": [
-            {"sequence_sha256": r["sequence_sha256"]} for r in random_survivors
-        ],
-        "audit_pool_sequences": [
-            {"sequence_sha256": r["sequence_sha256"]} for r in audit_pool
-        ],
+        "status": "shape_validated" if args.skip_esm2 else "complete",
+        "selected_sequences": selected_panel,
+        "random_survivor_sequences": random_survivors,
+        "audit_pool_sequences": audit_pool,
     }
     payload["funnel_sha256"] = sha256_value(payload)
 

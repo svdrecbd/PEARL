@@ -31,7 +31,14 @@ def sha256_file(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def build_authorization(manifest_path, job_keys, output_path):
+def build_authorization(
+    manifest_path,
+    job_keys,
+    output_path,
+    *,
+    sampler_attestation_sha256=None,
+    replication_wave_plan_sha256=None,
+):
     manifest = json.loads(Path(manifest_path).read_text())
     calibration_sha = sha256_file(
         ROOT / "reports/frontier_adaptation_v2_esmfold2_preflight/calibration_result_v3.0.13.json"
@@ -46,6 +53,10 @@ def build_authorization(manifest_path, job_keys, output_path):
         "scientific_contract_changes": [],
         "source_checkpoint_deletion_authorized": False,
     }
+    if sampler_attestation_sha256 is not None:
+        payload["sampler_attestation_sha256"] = sampler_attestation_sha256
+    if replication_wave_plan_sha256 is not None:
+        payload["replication_wave_plan_sha256"] = replication_wave_plan_sha256
     payload["packet_sha256"] = sha256_value(payload)
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     Path(output_path).write_text(json.dumps(payload, indent=2) + "\n")
@@ -87,8 +98,7 @@ def wave_complete(manifest, wave_job_keys, output_root):
 
 
 def clear_stale_claims(state_dir, keys, output_root, manifest):
-    """Remove claim files for cells that are not complete, so the
-    controller can resume them. Claims for completed cells are kept."""
+    """Preserve then retire claims for cells without complete reports."""
     claims_dir = Path(state_dir) / "claims"
     if not claims_dir.is_dir():
         return
@@ -112,8 +122,58 @@ def clear_stale_claims(state_dir, keys, output_root, manifest):
                 and expected > 0
             )
         if not done:
-            claim.unlink()
-            print(f"  Cleared stale claim for {key}", flush=True)
+            value = json.loads(claim.read_text())
+            prior_sha = str(value.get("authorization_sha256", "unknown"))[:12]
+            retired = Path(state_dir) / "superseded_claims"
+            retired.mkdir(parents=True, exist_ok=True)
+            destination = retired / f"{key}.{prior_sha}.json"
+            if destination.exists() and destination.read_bytes() != claim.read_bytes():
+                raise RuntimeError(f"superseded claim collision for {key}")
+            if not destination.exists():
+                claim.replace(destination)
+            else:
+                claim.unlink()
+            print(f"  Preserved and retired stale claim for {key}", flush=True)
+
+
+def validate_wave_plan(path, manifest):
+    plan = json.loads(Path(path).read_text())
+    supplied = plan.get("wave_plan_sha256")
+    if supplied != sha256_value(
+        {key: value for key, value in plan.items() if key != "wave_plan_sha256"}
+    ):
+        raise RuntimeError("replication wave plan self-hash mismatch")
+    if (
+        plan.get("contract") != "pearl.frontier-v2-replication-duration-wave-plan/1"
+        or plan.get("structural_manifest_sha") != manifest["structural_manifest_sha"]
+        or plan.get("campaign") != "replication"
+        or plan.get("job_count") != 48
+        or plan.get("wave_count") != 8
+        or plan.get("maximum_concurrent_cells") != 6
+        or plan.get("scientific_contract_changes") != []
+        or plan.get("source_checkpoint_deletion_authorized") is not False
+        or plan.get("generation_authorized_by_this_packet") is not False
+    ):
+        raise RuntimeError("replication wave plan header mismatch")
+    jobs = {row["job_key"]: row for row in manifest["jobs"]}
+    waves = plan.get("waves") or []
+    ordered = []
+    for expected_index, wave in enumerate(waves, start=1):
+        keys = wave.get("job_keys") or []
+        if (
+            wave.get("wave_index") != expected_index
+            or len(keys) != 6
+            or len(set(keys)) != 6
+            or any(key not in jobs for key in keys)
+            or any(jobs[key].get("campaign") != "replication" for key in keys)
+            or len({jobs[key]["model"] for key in keys}) != 1
+            or wave.get("model") != jobs[keys[0]]["model"]
+        ):
+            raise RuntimeError(f"invalid grouped replication wave {expected_index}")
+        ordered.extend(keys)
+    if ordered != plan.get("ordered_job_keys") or len(set(ordered)) != 48:
+        raise RuntimeError("replication wave plan job coverage mismatch")
+    return plan
 
 
 def main():
@@ -124,13 +184,71 @@ def main():
     parser.add_argument("--state-dir", required=True)
     parser.add_argument("--auth-dir", default=str(ROOT / "reports/frontier_adaptation_v2_structural_local_authority"))
     parser.add_argument("--poll-seconds", type=int, default=60)
+    parser.add_argument(
+        "--wave-plan",
+        help="Exact self-hashed grouped replication wave plan.",
+    )
+    parser.add_argument(
+        "--waves",
+        default=None,
+        help="Comma-separated wave numbers (1-based) or inclusive ranges, e.g. '10-18'. Default: all.",
+    )
+    parser.add_argument(
+        "--exclude-campaign-substring",
+        default=None,
+        help="Drop individual jobs whose campaign contains this substring before wave batching.",
+    )
     args = parser.parse_args()
 
     if not os.environ.get("TINKER_API_KEY"):
         raise SystemExit("TINKER_API_KEY is required")
 
     manifest = json.loads(Path(args.manifest).read_text())
-    waves = manifest.get("waves", [])
+    wave_plan = None
+    if args.wave_plan:
+        if args.waves or args.exclude_campaign_substring:
+            raise SystemExit("--wave-plan cannot be combined with wave filters")
+        wave_plan = validate_wave_plan(args.wave_plan, manifest)
+        selected = set(wave_plan["ordered_job_keys"])
+        manifest["jobs"] = [
+            row for row in manifest["jobs"] if row["job_key"] in selected
+        ]
+        manifest["waves"] = [row["job_keys"] for row in wave_plan["waves"]]
+        print(
+            f"Validated grouped replication plan {wave_plan['wave_plan_sha256']}: "
+            f"8 model-homogeneous waves / 48 cells.",
+            flush=True,
+        )
+
+    # Wave selection uses ORIGINAL manifest indexing (before any exclusion re-indexing)
+    if args.waves:
+        wanted = set()
+        for part in args.waves.split(","):
+            if "-" in part:
+                lo, hi = part.split("-")
+                wanted.update(range(int(lo), int(hi) + 1))
+            else:
+                wanted.add(int(part))
+        all_waves = manifest["waves"]
+        manifest["waves"] = [w for i, w in enumerate(all_waves, start=1) if i in wanted]
+        print(f"Wave filter {args.waves}: running {len(manifest['waves'])} of {len(all_waves)} manifest waves.", flush=True)
+
+    # Optional job filtering (execution-order flexibility only; per-cell contracts unchanged)
+    excluded = set()
+    if args.exclude_campaign_substring:
+        for j in manifest["jobs"]:
+            if args.exclude_campaign_substring in str(j.get("campaign", "")):
+                excluded.add(j["job_key"])
+        if excluded:
+            print(f"Excluding {len(excluded)} jobs by campaign filter.", flush=True)
+        manifest["jobs"] = [j for j in manifest["jobs"] if j["job_key"] not in excluded]
+        manifest["waves"] = [
+            [k for k in (w if isinstance(w, list) else w.get("job_keys")) if k not in excluded]
+            for w in manifest["waves"]
+        ]
+        manifest["waves"] = [w for w in manifest["waves"] if w]
+
+    waves = manifest["waves"]
     total_cells = len(manifest["jobs"])
     completed_total = 0
 
@@ -148,8 +266,23 @@ def main():
             continue
 
         # Build authorization packet for this wave
-        auth_path = os.path.join(args.auth_dir, f"wave_{wave_idx + 1}_authorization.json")
-        packet_sha = build_authorization(args.manifest, keys, auth_path)
+        auth_name = (
+            f"replication_grouped_wave_{wave_idx + 1}_authorization.json"
+            if wave_plan
+            else f"wave_{wave_idx + 1}_authorization.json"
+        )
+        auth_path = os.path.join(args.auth_dir, auth_name)
+        packet_sha = build_authorization(
+            args.manifest,
+            keys,
+            auth_path,
+            sampler_attestation_sha256=(
+                wave_plan["sampler_attestation_sha256"] if wave_plan else None
+            ),
+            replication_wave_plan_sha256=(
+                wave_plan["wave_plan_sha256"] if wave_plan else None
+            ),
+        )
         os.environ["PEARL_STRUCTURAL_APPROVAL_SHA256"] = packet_sha
 
         # Launch wave

@@ -25,6 +25,14 @@ from pearl.model_rendering import RendererContract, build_generation_input  # no
 
 DEFAULT_CONFIG = ROOT / "configs" / "experiments" / "scaling_paradox_structural_v1.json"
 ALLOWED_ARMS = {"base", "true", "shuffled", "data_exposure", "adapter_rescue"}
+FRONTIER_V2_SAMPLER_ATTESTATION = (
+    ROOT
+    / "reports"
+    / "frontier_adaptation_v2_structural_sampler_weight_attestation_v2.json"
+)
+FRONTIER_V2_STRUCTURAL_MANIFEST_SHA = (
+    "2cf37f0b1cd1e10848a55232916be59d34e7703fcd22f13681e221207aa6c788"
+)
 
 
 def canonical_json(value: Any) -> str:
@@ -50,6 +58,70 @@ def read_json(path: Path) -> dict[str, Any]:
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def resolve_sampler_path(
+    checkpoint_path: str | None,
+    *,
+    model: str,
+    source_identity: dict[str, Any] | None,
+) -> str | None:
+    """Resolve only a terminal-valid, self-hashed frontier-v2 sampler attestation."""
+    if checkpoint_path is None or not FRONTIER_V2_SAMPLER_ATTESTATION.is_file():
+        return checkpoint_path
+    attestation = read_json(FRONTIER_V2_SAMPLER_ATTESTATION)
+    supplied = attestation.get("attestation_sha256")
+    unsigned = {
+        key: value
+        for key, value in attestation.items()
+        if key != "attestation_sha256"
+    }
+    if supplied != sha256_value(unsigned):
+        raise RuntimeError("frontier-v2 sampler attestation self-hash mismatch")
+    mappings = attestation.get("mappings")
+    if (
+        attestation.get("contract")
+        != "pearl.structural-sampler-weight-attestation/2"
+        or attestation.get("structural_manifest_sha")
+        != FRONTIER_V2_STRUCTURAL_MANIFEST_SHA
+        or attestation.get("campaign") != "replication"
+        or attestation.get("expected_mapping_count") != 48
+        or attestation.get("completed_mapping_count") != 48
+        or attestation.get("terminal_valid") is not True
+        or not isinstance(mappings, dict)
+        or len(mappings) != 48
+    ):
+        raise RuntimeError("frontier-v2 sampler attestation is not terminal-valid")
+    matches = [
+        entry
+        for entry in mappings.values()
+        if isinstance(entry, dict)
+        and entry.get("source_checkpoint_path") == checkpoint_path
+    ]
+    if len(matches) != 1:
+        return checkpoint_path
+    entry = matches[0]
+    entry_supplied = entry.get("entry_sha256")
+    entry_unsigned = {
+        key: value for key, value in entry.items() if key != "entry_sha256"
+    }
+    expected_source_sha = (
+        source_identity.get("source_run_contract_sha") if source_identity else None
+    )
+    sampler_path = entry.get("sampler_path")
+    if (
+        entry_supplied != sha256_value(entry_unsigned)
+        or entry.get("contract")
+        != "pearl.structural-sampler-weight-attestation-entry/2"
+        or entry.get("model") != model
+        or entry.get("lora_rank") != 32
+        or entry.get("source_run_contract_sha") != expected_source_sha
+        or not isinstance(sampler_path, str)
+        or not sampler_path.startswith("tinker://")
+        or "/sampler_weights/" not in sampler_path
+    ):
+        raise RuntimeError("frontier-v2 sampler attestation entry mismatch")
+    return sampler_path
 
 
 def source_training_identity(args: argparse.Namespace) -> dict[str, Any] | None:
@@ -263,8 +335,16 @@ def main() -> None:
             "contract_sha": str(contract["generation_contract_sha"]),
         }
     )
+    # Runtime-only view resolution leaves the frozen generation contract bound
+    # to the original training checkpoint and requires a separately self-hashed
+    # attestation for the exact sampler representation of that same adapter.
+    effective_model_path = resolve_sampler_path(
+        args.checkpoint_path,
+        model=args.model,
+        source_identity=contract.get("source_training"),
+    )
     sampling_client = service_client.create_sampling_client(
-        model_path=args.checkpoint_path,
+        model_path=effective_model_path,
         base_model=args.model,
     )
     tokenizer = get_tokenizer(args.model)

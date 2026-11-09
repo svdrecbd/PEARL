@@ -216,6 +216,54 @@ def test_structural_generation_contract_has_96_deterministic_candidate_slots() -
     assert contract["run_key"].startswith("struct-qwen3p5-4b-base-seed0-step0-")
 
 
+def test_frontier_replication_sampler_resolution_requires_self_hashed_attestation(
+    tmp_path: Path,
+) -> None:
+    generator = load_script("run_scaling_paradox_generation.py")
+    source_path = "tinker://source:train:0/weights/terminal"
+    source_sha = "a" * 64
+    mappings = {}
+    for index in range(48):
+        entry = {
+            "contract": "pearl.structural-sampler-weight-attestation-entry/2",
+            "source_checkpoint_path": source_path if index == 0 else f"source-{index}",
+            "source_run_contract_sha": source_sha if index == 0 else f"{index:064x}",
+            "model": "model" if index == 0 else f"model-{index}",
+            "lora_rank": 32,
+            "sampler_path": f"tinker://sampler:train:{index}/sampler_weights/cell-{index}",
+        }
+        entry["entry_sha256"] = generator.sha256_value(entry)
+        mappings[f"job-{index}"] = entry
+    attestation = {
+        "contract": "pearl.structural-sampler-weight-attestation/2",
+        "structural_manifest_sha": generator.FRONTIER_V2_STRUCTURAL_MANIFEST_SHA,
+        "campaign": "replication",
+        "expected_mapping_count": 48,
+        "completed_mapping_count": 48,
+        "terminal_valid": True,
+        "mappings": mappings,
+    }
+    attestation["attestation_sha256"] = generator.sha256_value(attestation)
+    path = tmp_path / "attestation.json"
+    path.write_text(json.dumps(attestation))
+    generator.FRONTIER_V2_SAMPLER_ATTESTATION = path
+
+    assert generator.resolve_sampler_path(
+        source_path,
+        model="model",
+        source_identity={"source_run_contract_sha": source_sha},
+    ) == "tinker://sampler:train:0/sampler_weights/cell-0"
+
+    attestation["mappings"]["job-0"]["model"] = "wrong-model"
+    path.write_text(json.dumps(attestation))
+    with pytest.raises(RuntimeError, match="self-hash"):
+        generator.resolve_sampler_path(
+            source_path,
+            model="model",
+            source_identity={"source_run_contract_sha": source_sha},
+        )
+
+
 def test_structural_image_embeds_immutable_generation_report() -> None:
     dockerfile = (ROOT / "deploy" / "scaling_paradox_v1" / "Dockerfile.esmfold").read_text()
     assert "COPY input/generation_report.json /workspace/input/generation_report.json" in dockerfile

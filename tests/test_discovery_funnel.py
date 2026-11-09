@@ -79,3 +79,35 @@ class TestFourSampleGeneration:
         """Sample index 0 is confirmatory; 1-3 are discovery."""
         cohorts = ["confirmatory" if i == 0 else "discovery" for i in range(4)]
         assert cohorts == ["confirmatory", "discovery", "discovery", "discovery"]
+
+
+class TestFrozenModelIdentity:
+    def test_model_revision_is_pinned(self):
+        from scripts.discovery_funnel import ESM2_LARGE_REVISION, ESM2_SMALL_REVISION
+
+        assert ESM2_SMALL_REVISION == "c731040fcd8d73dceaa04b0a8e6329b345b0f5df"
+        assert ESM2_LARGE_REVISION == "08e4846e537177426273712802403f7ba8261b6c"
+
+
+class TestPanelSelection:
+    def test_selected_survivor_and_audit_panels_are_disjoint(self):
+        from scripts.discovery_funnel import select_panels
+
+        rows = [
+            {
+                "sequence_sha256": f"hash-{index}",
+                "esm2_small_score": float(index),
+                "esm2_large_score": float(index) if index < 200 else 0.0,
+            }
+            for index in range(300)
+        ]
+        selected, survivors, audit = select_panels(rows)
+        groups = [
+            {row["sequence_sha256"] for row in selected},
+            {row["sequence_sha256"] for row in survivors},
+            {row["sequence_sha256"] for row in audit},
+        ]
+        assert [len(group) for group in groups] == [96, 24, 48]
+        assert groups[0].isdisjoint(groups[1])
+        assert groups[0].isdisjoint(groups[2])
+        assert groups[1].isdisjoint(groups[2])

@@ -19,6 +19,7 @@ AA_PATTERN = re.compile(rf"[ACDEFGHIKLMNPQRSTVWY]{{{MIN_EXTRACTABLE_SEQUENCE_LEN
 AMINO_ACIDS = set("ACDEFGHIKLMNPQRSTVWY")
 SEQUENCE_PREFIX = "SEQUENCE="
 ESM2_MODEL_NAME = os.environ.get("ESM2_MODEL_NAME", "facebook/esm2_t6_8M_UR50D")
+ESM2_REVISION = os.environ.get("ESM2_REVISION", "").strip()
 ESM2_BATCH_SIZE = max(1, int(os.environ.get("ESM2_BATCH_SIZE", "64")))
 ESM2_SEQUENCE_BATCH_SIZE = max(1, int(os.environ.get("ESM2_SEQUENCE_BATCH_SIZE", "16")))
 ESM2_SEQUENCE_LENGTH_BUCKET_SPAN = max(0, int(os.environ.get("ESM2_SEQUENCE_LENGTH_BUCKET_SPAN", "32")))
@@ -278,14 +279,17 @@ def _bucket_candidates_by_length(candidates: list[str]) -> list[list[str]]:
 
 @lru_cache(maxsize=1)
 def _get_esm2() -> tuple[object, object, torch.device]:
-    tokenizer = AutoTokenizer.from_pretrained(ESM2_MODEL_NAME)
+    revision_kwargs = {"revision": ESM2_REVISION} if ESM2_REVISION else {}
+    tokenizer = AutoTokenizer.from_pretrained(ESM2_MODEL_NAME, **revision_kwargs)
     device = _get_device()
     _configure_cuda_math(device=device)
     torch_dtype = _get_model_dtype(device=device)
     if torch_dtype is not None:
-        model = AutoModelForMaskedLM.from_pretrained(ESM2_MODEL_NAME, torch_dtype=torch_dtype)
+        model = AutoModelForMaskedLM.from_pretrained(
+            ESM2_MODEL_NAME, torch_dtype=torch_dtype, **revision_kwargs
+        )
     else:
-        model = AutoModelForMaskedLM.from_pretrained(ESM2_MODEL_NAME)
+        model = AutoModelForMaskedLM.from_pretrained(ESM2_MODEL_NAME, **revision_kwargs)
     model.to(device)
     model.eval()
     if device.type == "cuda" and ESM2_USE_TORCH_COMPILE and hasattr(torch, "compile"):

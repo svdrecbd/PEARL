@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 import sys
@@ -18,6 +19,16 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_generation_builder() -> Any:
+    path = ROOT / "scripts" / "build_frontier_adaptation_gmn_manifest.py"
+    spec = importlib.util.spec_from_file_location("frontier_generation_builder", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("could not load frontier generation contract builder")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def sha256_file(path: Path) -> str:
@@ -30,10 +41,19 @@ def sha256_value(value: Any) -> str:
     ).hexdigest()
 
 
-def load_generation_reports(output_root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
+def load_generation_reports(
+    output_root: Path,
+    manifest: dict[str, Any],
+    *,
+    campaigns: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    builder = load_generation_builder()
     reports = []
     for job in manifest["jobs"]:
-        run_dir = output_root / str(job["job_key"])
+        if campaigns is not None and str(job.get("campaign")) not in campaigns:
+            continue
+        expected_contract = builder.expected_generation_contract(job)
+        run_dir = output_root / str(expected_contract["run_key"])
         report_path = run_dir / "generation_report.json"
         if not report_path.is_file():
             raise RuntimeError(f"generation report missing: {report_path}")
@@ -44,15 +64,23 @@ def load_generation_reports(output_root: Path, manifest: dict[str, Any]) -> list
         completed = int(report.get("completed_candidate_count", 0))
         if completed != expected:
             raise RuntimeError(f"generation incomplete: {report_path} ({completed}/{expected})")
+        if report.get("contract") != expected_contract:
+            raise RuntimeError(f"generation contract mismatch: {report_path}")
         reports.append({"job": job, "report": report, "path": str(report_path)})
+    if not reports:
+        raise RuntimeError("candidate audit selected no generation reports")
     return reports
 
 
-def build_dedup_map(reports: list[dict[str, Any]]) -> dict[str, Any]:
+def build_dedup_map(
+    reports: list[dict[str, Any]], *, cohort: str = "confirmatory"
+) -> dict[str, Any]:
     sequence_to_slots: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for entry in reports:
         job_key = entry["job"]["job_key"]
         for row in entry["report"].get("candidates", []):
+            if str(row.get("cohort", "confirmatory")) != cohort:
+                continue
             seq_hash = row.get("sequence_sha256")
             if seq_hash and row.get("valid_sequence"):
                 sequence_to_slots[seq_hash].append({
@@ -60,7 +88,9 @@ def build_dedup_map(reports: list[dict[str, Any]]) -> dict[str, Any]:
                     "candidate_id": row["candidate_id"],
                     "prompt_id": row.get("prompt_id"),
                     "sample_seed": row.get("sample_seed"),
+                    "sample_index": row.get("sample_index", 0),
                     "length_bin": row.get("length_bin"),
+                    "sequence": row.get("sequence"),
                 })
     return dict(sequence_to_slots)
 
@@ -84,28 +114,45 @@ def load_reference_sequences(config_path: Path) -> dict[str, list[dict[str, str]
     references: dict[str, list[dict[str, str]]] = {}
 
     training_manifest = json.loads((ROOT / config["dataset_manifest"]).read_text())
-    training_path = ROOT / training_manifest.get("dataset_path", "")
-    if training_path.is_file():
-        training_seqs = []
-        for line in training_path.read_text().splitlines():
+
+    def load_partition(name: str) -> list[dict[str, str]]:
+        partition = training_manifest["partitions"][name]
+        path = ROOT / partition["path"]
+        if sha256_file(path) != partition["sha256"]:
+            raise RuntimeError(f"reference partition hash mismatch: {name}")
+        rows: list[dict[str, str]] = []
+        for line in path.read_text().splitlines():
             if not line.strip():
                 continue
-            row = json.loads(line)
-            for key in ("chosen_sequence", "rejected_sequence", "sequence"):
-                seq = row.get(key, "")
-                if seq:
-                    training_seqs.append({"source": key, "sequence": seq})
-        references["training"] = training_seqs
+            value = json.loads(line)
+            for key in ("chosen", "rejected"):
+                sequence = str(value.get(key) or "")
+                if sequence:
+                    rows.append({"source": f"{name}:{key}", "sequence": sequence})
+        return rows
+
+    references["training"] = load_partition("d10_train_true")
+    references["heldout"] = load_partition("d10_holdout_true")
 
     prompt_path = ROOT / config["prompt_panel"]
     if prompt_path.is_file():
-        prompt_seqs = []
+        prompt_values = []
         for line in prompt_path.read_text().splitlines():
             if not line.strip():
                 continue
             row = json.loads(line)
-            if row.get("reference_sequence"):
-                prompt_seqs.append({"source": "prompt", "sequence": row["reference_sequence"]})
+            prompt_values.append(str(row["prompt"]))
+        prompt_set = set(prompt_values)
+        prompt_seqs = []
+        holdout_path = ROOT / training_manifest["partitions"]["d10_holdout_true"]["path"]
+        for line in holdout_path.read_text().splitlines():
+            row = json.loads(line)
+            if str(row.get("prompt")) not in prompt_set:
+                continue
+            for key in ("chosen", "rejected"):
+                sequence = str(row.get(key) or "")
+                if sequence:
+                    prompt_seqs.append({"source": f"prompt:{key}", "sequence": sequence})
         references["prompt"] = prompt_seqs
 
     return references
@@ -128,32 +175,56 @@ def novelty_audit(
         ref_profiles[ref_name] = profiles
 
     audit_results = {}
+    reference_profiles: dict[str, list[tuple[str, str, Counter, float]]] = {}
+    inverted: dict[str, dict[str, list[int]]] = {}
+    for ref_name, ref_seqs in references.items():
+        unique: dict[str, tuple[str, str]] = {}
+        for entry in ref_seqs:
+            sequence = entry["sequence"]
+            unique.setdefault(hashlib.sha256(sequence.encode()).hexdigest(), (entry["source"], sequence))
+        profiles: list[tuple[str, str, Counter, float]] = []
+        postings: dict[str, list[int]] = defaultdict(list)
+        for ref_hash, (source, sequence) in unique.items():
+            profile = kmer_profile(sequence, kmer_k)
+            norm = math.sqrt(sum(value * value for value in profile.values()))
+            index = len(profiles)
+            profiles.append((source, ref_hash, profile, norm))
+            for kmer in profile:
+                postings[kmer].append(index)
+        reference_profiles[ref_name] = profiles
+        inverted[ref_name] = postings
+
     for seq_hash in dedup_map:
-        sequence = None
-        for slot in dedup_map[seq_hash]:
-            pass
+        sequence = str(dedup_map[seq_hash][0].get("sequence") or "")
         classification = "novel"
         best_similarity = 0.0
         best_source = None
         best_ref = None
-        for ref_name, profiles in ref_profiles.items():
-            candidate_profile = None
-            for source, ref_hash, profile in profiles:
-                if ref_hash == seq_hash:
-                    classification = "exact_match"
-                    best_similarity = 1.0
-                    best_source = ref_name
-                    best_ref = source
-                    break
-            if classification == "exact_match":
+        for ref_name, profiles in reference_profiles.items():
+            exact = next((row for row in profiles if row[1] == seq_hash), None)
+            if exact is not None:
+                classification = "exact_match"
+                best_similarity = 1.0
+                best_source = ref_name
+                best_ref = exact[0]
                 break
 
         if classification == "novel":
-            for ref_name, profiles in ref_profiles.items():
-                for source, ref_hash, profile in profiles:
-                    if candidate_profile is None:
-                        candidate_profile = kmer_profile(sequence or "", kmer_k)
-                    sim = cosine_similarity(candidate_profile, profile)
+            candidate_profile = kmer_profile(sequence, kmer_k)
+            candidate_norm = math.sqrt(sum(value * value for value in candidate_profile.values()))
+            for ref_name, profiles in reference_profiles.items():
+                candidates: set[int] = set()
+                for kmer in candidate_profile:
+                    candidates.update(inverted[ref_name].get(kmer, []))
+                for index in candidates:
+                    source, ref_hash, profile, ref_norm = profiles[index]
+                    if candidate_norm == 0.0 or ref_norm == 0.0:
+                        continue
+                    dot = sum(
+                        count * profile.get(kmer, 0)
+                        for kmer, count in candidate_profile.items()
+                    )
+                    sim = dot / (candidate_norm * ref_norm)
                     if sim >= near_threshold and sim > best_similarity:
                         best_similarity = sim
                         best_source = ref_name
@@ -192,6 +263,13 @@ def main() -> None:
     parser.add_argument("--config", required=True, help="Structural config JSON")
     parser.add_argument("--output-root", required=True, help="Generation output root")
     parser.add_argument("--output", required=True, help="Audit report output path")
+    parser.add_argument(
+        "--campaign",
+        action="append",
+        dest="campaigns",
+        help="Campaign to include; repeat for multiple campaigns. Default: all.",
+    )
+    parser.add_argument("--cohort", default="confirmatory")
     args = parser.parse_args()
 
     manifest_path = Path(args.manifest)
@@ -199,13 +277,20 @@ def main() -> None:
     config_path = Path(args.config)
     output_root = Path(args.output_root)
 
-    reports = load_generation_reports(output_root, manifest)
-    dedup_map = build_dedup_map(reports)
+    campaigns = set(args.campaigns) if args.campaigns else None
+    reports = load_generation_reports(output_root, manifest, campaigns=campaigns)
+    dedup_map = build_dedup_map(reports, cohort=args.cohort)
     references = load_reference_sequences(config_path)
     novelty = novelty_audit(dedup_map, references)
     stratification = stratification_summary(reports)
 
-    total_slots = sum(len(entry["report"].get("candidates", [])) for entry in reports)
+    selected_rows = [
+        row
+        for entry in reports
+        for row in entry["report"].get("candidates", [])
+        if str(row.get("cohort", "confirmatory")) == args.cohort
+    ]
+    total_slots = len(selected_rows)
     total_valid = sum(len(slots) for slots in dedup_map.values())
     unique_sequences = len(dedup_map)
     classification_counts = Counter(row["classification"] for row in novelty.values())
@@ -214,6 +299,12 @@ def main() -> None:
         "contract": "pearl.frontier-structural-candidate-audit/1",
         "manifest_sha256": sha256_file(manifest_path),
         "config_sha256": sha256_file(config_path),
+        "source_structural_manifest_sha": manifest.get("structural_manifest_sha"),
+        "selected_campaigns": sorted(campaigns) if campaigns else sorted(
+            {str(entry["job"].get("campaign")) for entry in reports}
+        ),
+        "selected_job_keys": [entry["job"]["job_key"] for entry in reports],
+        "candidate_cohort": args.cohort,
         "total_slots": total_slots,
         "total_valid_slots": total_valid,
         "total_invalid_slots": total_slots - total_valid,
@@ -229,6 +320,16 @@ def main() -> None:
         ),
         "stratification": stratification,
         "dedup_map": {seq_hash: len(slots) for seq_hash, slots in dedup_map.items()},
+        "sequence_catalog": {
+            seq_hash: str(slots[0].get("sequence") or "") for seq_hash, slots in dedup_map.items()
+        },
+        "slot_mappings": {
+            seq_hash: [
+                {key: value for key, value in slot.items() if key != "sequence"}
+                for slot in slots
+            ]
+            for seq_hash, slots in dedup_map.items()
+        },
         "novelty_detail": novelty,
     }
     payload["audit_sha256"] = sha256_value(payload)

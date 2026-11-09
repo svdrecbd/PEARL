@@ -23,6 +23,19 @@ if str(SRC) not in sys.path:
 from pearl.scaling_campaign import read_json, sha256_file, sha256_value, write_json  # noqa: E402
 
 
+REPLICATION_SAMPLER_ATTESTATION = (
+    ROOT
+    / "reports"
+    / "frontier_adaptation_v2_structural_sampler_weight_attestation_v2.json"
+)
+REPLICATION_WAVE_PLAN = (
+    ROOT
+    / "reports"
+    / "frontier_adaptation_v2_structural_local_authority"
+    / "replication_duration_wave_plan.json"
+)
+
+
 def load_script(name: str) -> Any:
     path = ROOT / "scripts" / name
     spec = importlib.util.spec_from_file_location(name.removesuffix(".py"), path)
@@ -156,6 +169,49 @@ def validate_authorization(
         raise RuntimeError("local structural authorization exceeds frozen Tinker ceiling")
     if os.environ.get("PEARL_STRUCTURAL_APPROVAL_SHA256") != supplied:
         raise RuntimeError("exact local structural approval SHA is not armed in the environment")
+    jobs_by_key = {row["job_key"]: row for row in manifest["jobs"]}
+    if any(jobs_by_key[key].get("campaign") == "replication" for key in requested):
+        if any(jobs_by_key[key].get("campaign") != "replication" for key in requested):
+            raise RuntimeError("grouped replication execution cannot mix cohorts")
+        attestation = read_json(REPLICATION_SAMPLER_ATTESTATION)
+        attestation_sha = attestation.get("attestation_sha256")
+        if (
+            attestation_sha
+            != sha256_value(
+                {
+                    key: value
+                    for key, value in attestation.items()
+                    if key != "attestation_sha256"
+                }
+            )
+            or attestation.get("terminal_valid") is not True
+            or attestation.get("completed_mapping_count") != 48
+            or authorization.get("sampler_attestation_sha256") != attestation_sha
+        ):
+            raise RuntimeError("replication sampler attestation differs from authorization")
+        wave_plan = read_json(REPLICATION_WAVE_PLAN)
+        wave_plan_sha = wave_plan.get("wave_plan_sha256")
+        exact_waves = [
+            row
+            for row in wave_plan.get("waves", [])
+            if row.get("job_keys") == requested
+        ]
+        if (
+            wave_plan_sha
+            != sha256_value(
+                {
+                    key: value
+                    for key, value in wave_plan.items()
+                    if key != "wave_plan_sha256"
+                }
+            )
+            or wave_plan.get("structural_manifest_sha")
+            != manifest["structural_manifest_sha"]
+            or wave_plan.get("sampler_attestation_sha256") != attestation_sha
+            or authorization.get("replication_wave_plan_sha256") != wave_plan_sha
+            or len(exact_waves) != 1
+        ):
+            raise RuntimeError("replication duration wave plan differs from authorization")
     return authorization
 
 
