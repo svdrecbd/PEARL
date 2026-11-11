@@ -1,4 +1,7 @@
-tinker==0.25.0
+# The frontier adaptation v2 and scaling paradox v1 campaigns ran on
+# tinker==0.25.0 with tinker-cookbook==0.5.3. Those are the versions of record
+# for every archived result; this file tracks the current working environment.
+tinker==0.39.0
 torch==2.12.0
 transformers==5.5.4
 tiktoken==0.13.0
@@ -8,5 +11,5 @@ sentencepiece==0.2.1
 rapidfuzz==3.14.5
 charset-normalizer==3.4.6
 wandb==0.28.1
-tinker-cookbook==0.5.3
-tml-renderers==0.1.0
+tinker-cookbook==0.6.1
+tml-renderers==0.4.1
